@@ -146,10 +146,10 @@ void perf_trace_destroy(struct perf_event *p_event)
 					    tp_event);
 
 	/*
-	 * Ensure our callback won't be called anymore. See
-	 * tracepoint_probe_unregister() and __DO_TRACE().
+	 * Ensure our callback won't be called anymore. The buffers
+	 * will be freed after that.
 	 */
-	synchronize_sched();
+	tracepoint_synchronize_unregister();
 
 	free_percpu(tp_event->perf_events);
 	tp_event->perf_events = NULL;
