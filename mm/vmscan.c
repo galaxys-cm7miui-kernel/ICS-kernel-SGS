@@ -1748,12 +1748,11 @@ static void shrink_zone(int priority, struct zone *zone,
 static void shrink_zones(int priority, struct zonelist *zonelist,
 					struct scan_control *sc)
 {
-	enum zone_type high_zoneidx = gfp_zone(sc->gfp_mask);
 	struct zoneref *z;
 	struct zone *zone;
 
-	for_each_zone_zonelist_nodemask(zone, z, zonelist, high_zoneidx,
-					sc->nodemask) {
+	for_each_zone_zonelist_nodemask(zone, z, zonelist,
+					gfp_zone(sc->gfp_mask), sc->nodemask) {
 		if (!populated_zone(zone))
 			continue;
 		/*
@@ -1827,7 +1826,6 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 	struct reclaim_state *reclaim_state = current->reclaim_state;
 	struct zoneref *z;
 	struct zone *zone;
-	enum zone_type high_zoneidx = gfp_zone(sc->gfp_mask);
 	unsigned long writeback_threshold;
 
 	get_mems_allowed();
@@ -1847,7 +1845,8 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 		 */
 		if (scanning_global_lru(sc)) {
 			unsigned long lru_pages = 0;
-			for_each_zone_zonelist(zone, z, zonelist, high_zoneidx) {
+			for_each_zone_zonelist(zone, z, zonelist,
+					gfp_zone(sc->gfp_mask)) {
 				if (!cpuset_zone_allowed_hardwall(zone, GFP_KERNEL))
 					continue;
 
