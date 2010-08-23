@@ -684,6 +684,13 @@ unsigned long radix_tree_range_tag_if_tagged(struct radix_tree_root *root,
 	 */
 	path[height - 1].node = NULL;
 
+	/*
+	 * we fill the path from (root->height - 2) to 0, leaving the index at
+	 * (root->height - 1) as a terminator. Zero the node in the terminator
+	 * so that we can use this to end walk loops back up the path.
+	 */
+	path[height - 1].node = NULL;
+
 	for (;;) {
 		int offset;
 
