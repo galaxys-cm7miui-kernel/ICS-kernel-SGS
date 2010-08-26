@@ -617,7 +617,6 @@ CIFS_SessSetup(unsigned int xid, struct cifsSesInfo *ses,
 	struct key *spnego_key = NULL;
 	__le32 phase = NtLmNegotiate; /* NTLMSSP, if needed, is multistage */
 	bool first_time;
-	char *ntlmsspblob;
 
 	if (ses == NULL)
 		return -EINVAL;
@@ -865,6 +864,8 @@ ssetup_ntlmssp_authenticate:
 				iov[1].iov_base = &pSMB->req.SecurityBlob[0];
 			} else if (phase == NtLmAuthenticate) {
 				int blob_len;
+				char *ntlmsspblob;
+
 				ntlmsspblob = kmalloc(5 *
 					sizeof(struct _AUTHENTICATE_MESSAGE),
 					GFP_KERNEL);
