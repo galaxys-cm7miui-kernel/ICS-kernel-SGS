@@ -72,10 +72,10 @@ static int
 task_notify_func(struct notifier_block *self, unsigned long val, void *data)
 {
 	struct task_struct *task = data;
-	if (task == lowmem_deathpending) {
+
+	if (task == lowmem_deathpending)
 		lowmem_deathpending = NULL;
-		task_free_unregister(&task_nb);
-	}
+
 	return NOTIFY_OK;
 }
 
@@ -181,7 +181,6 @@ static int lowmem_shrink(struct shrinker *s, int nr_to_scan, gfp_t gfp_mask)
 			     selected->pid, selected->comm,
 			     selected_oom_adj, selected_tasksize);
 		lowmem_deathpending = selected;
-		task_free_register(&task_nb);
 		force_sig(SIGKILL, selected);
 		rem -= selected_tasksize;
 	}
