@@ -1106,6 +1106,9 @@ static int do_ip_getsockopt(struct sock *sk, int level, int optname,
 	case IP_HDRINCL:
 		val = inet->hdrincl;
 		break;
+	case IP_NODEFRAG:
+		val = inet->nodefrag;
+		break;
 	case IP_MTU_DISCOVER:
 		val = inet->pmtudisc;
 		break;
