@@ -1103,9 +1103,9 @@ restart:
 		 * Note that we do rt_free on this new route entry, so that
 		 * once its refcount hits zero, we are still able to reap it
 		 * (Thanks Alexey)
-		 * Note also the rt_free uses call_rcu.  We don't actually
-		 * need rcu protection here, this is just our path to get
-		 * on the route gc list.
+		 * Note: To avoid expensive rcu stuff for this uncached dst,
+		 * we set DST_NOCACHE so that dst_release() can free dst without
+		 * waiting a grace period.
 		 */
 
 		if (rt->rt_type == RTN_UNICAST || rt->fl.iif == 0) {
@@ -1114,12 +1114,11 @@ restart:
 				if (net_ratelimit())
 					printk(KERN_WARNING
 					    "Neighbour table failure & not caching routes.\n");
-				rt_drop(rt);
+				ip_rt_put(rt);
 				return err;
 			}
 		}
 
-		rt_free(rt);
 		goto skip_hashing;
 	}
 
