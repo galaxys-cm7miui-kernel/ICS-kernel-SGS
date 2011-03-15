@@ -2051,6 +2051,7 @@ static void choose_service_tree(struct cfq_data *cfqd, struct cfq_group *cfqg)
 	unsigned count;
 	struct cfq_rb_root *st;
 	unsigned group_slice;
+	enum wl_prio_t original_prio = cfqd->serving_prio;
 
 	if (!cfqg) {
 		cfqd->serving_prio = IDLE_WORKLOAD;
@@ -2069,6 +2070,9 @@ static void choose_service_tree(struct cfq_data *cfqd, struct cfq_group *cfqg)
 		return;
 	}
 
+	if (original_prio != cfqd->serving_prio)
+		goto new_workload;
+
 	/*
 	 * For RT and BE, we have to choose also the type
 	 * (SYNC, SYNC_NOIDLE, ASYNC), and to compute a workload
@@ -2083,6 +2087,7 @@ static void choose_service_tree(struct cfq_data *cfqd, struct cfq_group *cfqg)
 	if (count && !time_after(jiffies, cfqd->workload_expires))
 		return;
 
+new_workload:
 	/* otherwise select new workload type */
 	cfqd->serving_type =
 		cfq_choose_wl(cfqd, cfqg, cfqd->serving_prio);
