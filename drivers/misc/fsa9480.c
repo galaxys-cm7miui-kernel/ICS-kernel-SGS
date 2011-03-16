@@ -411,8 +411,6 @@ static void fsa9480_detect_dev(struct fsa9480_usbsw *usbsw)
 		} else if (usbsw->dev2 & DEV_JIG_UART_ON) {
 			if (pdata->cardock_cb)
 				pdata->cardock_cb(FSA9480_DETACHED);
-			dock_status = 0;
-
 #if defined(CONFIG_MACH_ARIES)
                         ret = i2c_smbus_read_byte_data(client,
                                         FSA9480_REG_CTRL);
