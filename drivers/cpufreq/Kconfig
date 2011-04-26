@@ -118,6 +118,12 @@ config CPU_FREQ_DEFAULT_GOV_SMARTASS
 	help
 	 Use the 'smartass' governor as default.
 
+config CPU_FREQ_DEFAULT_GOV_SAVAGEDZEN
+	bool "SavagedZen"
+	select CPU_FREQ_GOV_SAVAGEDZEN
+	help
+	  Use the CPUFreq governor 'savagedzen' as default.
+
 config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 	bool "interactive"
 	select CPU_FREQ_GOV_INTERACTIVE
@@ -190,6 +196,13 @@ config CPU_FREQ_GOV_SMARTASS
 	 'smartass' - This driver adds a dynamic cpufreq policy governor.
 	 Designed like 'interactive', but spend more time in the lower
 	 frequencies. More adapted to mobile devices.
+
+config CPU_FREQ_GOV_SAVAGEDZEN
+	tristate "'savagedzen' cpufreq governor"
+	depends on CPU_FREQ
+	help
+	   'Savaged-Zen' - a "smartass" based governor
+	   If in doubt, say N.
 
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
