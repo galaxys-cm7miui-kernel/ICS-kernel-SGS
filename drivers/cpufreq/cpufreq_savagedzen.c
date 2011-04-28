@@ -75,20 +75,20 @@ static unsigned long debug_mask;
 /*
  * The minimum amount of time to spend at a frequency before we can ramp up.
  */
-#define DEFAULT_UP_RATE_US 15000;
+#define DEFAULT_UP_RATE_US 12000;
 static unsigned long up_rate_us;
 
 /*
  * The minimum amount of time to spend at a frequency before we can ramp down.
  */
-#define DEFAULT_DOWN_RATE_US 25000;
+#define DEFAULT_DOWN_RATE_US 24000;
 static unsigned long down_rate_us;
 
 /*
  * When ramping up frequency with no idle cycles jump to at least this frequency.
  * Zero disables. Set a very high value to jump to policy max freqeuncy.
  */
-#define DEFAULT_UP_MIN_FREQ 768000
+#define DEFAULT_UP_MIN_FREQ 800000
 static unsigned int up_min_freq;
 
 /*
@@ -97,14 +97,14 @@ static unsigned int up_min_freq;
  * to minimize wakeup issues.
  * Set sleep_max_freq=0 to disable this behavior.
  */
-#define DEFAULT_SLEEP_MAX_FREQ 384000
+#define DEFAULT_SLEEP_MAX_FREQ 200000
 static unsigned int sleep_max_freq;
 
 /*
  * The frequency to set when waking up from sleep.
  * When sleep_max_freq=0 this will have no effect.
  */
-#define DEFAULT_SLEEP_WAKEUP_FREQ 998000
+#define DEFAULT_SLEEP_WAKEUP_FREQ 800000
 static unsigned int sleep_wakeup_freq;
 
 /*
@@ -112,7 +112,7 @@ static unsigned int sleep_wakeup_freq;
  * go below this frequency.
  * Set awake_min_freq=0 to disable this behavior.
  */
-#define DEFAULT_AWAKE_MIN_FREQ 0
+#define DEFAULT_AWAKE_MIN_FREQ 400000
 static unsigned int awake_min_freq;
 
 /*
@@ -138,7 +138,7 @@ static unsigned int ramp_down_step;
 /*
  * CPU freq will be increased if measured load > max_cpu_load;
  */
-#define DEFAULT_MAX_CPU_LOAD 70
+#define DEFAULT_MAX_CPU_LOAD 65
 static unsigned long max_cpu_load;
 
 /*
