@@ -63,8 +63,8 @@ static cpumask_t work_cpumask;
 static unsigned int suspended;
 
 enum {
-        savagedzen_DEBUG_JUMPS=1,
-        savagedzen_DEBUG_LOAD=2
+        SAVAGEDZEN_DEBUG_JUMPS=1,
+        SAVAGEDZEN_DEBUG_LOAD=2
 };
 
 /*
@@ -88,7 +88,7 @@ static unsigned long down_rate_us;
  * When ramping up frequency with no idle cycles jump to at least this frequency.
  * Zero disables. Set a very high value to jump to policy max freqeuncy.
  */
-#define DEFAULT_UP_MIN_FREQ 800000
+#define DEFAULT_UP_MIN_FREQ 0
 static unsigned int up_min_freq;
 
 /*
@@ -97,14 +97,14 @@ static unsigned int up_min_freq;
  * to minimize wakeup issues.
  * Set sleep_max_freq=0 to disable this behavior.
  */
-#define DEFAULT_SLEEP_MAX_FREQ 200000
+#define DEFAULT_SLEEP_MAX_FREQ 400000
 static unsigned int sleep_max_freq;
 
 /*
  * The frequency to set when waking up from sleep.
  * When sleep_max_freq=0 this will have no effect.
  */
-#define DEFAULT_SLEEP_WAKEUP_FREQ 800000
+#define DEFAULT_SLEEP_WAKEUP_FREQ 1000000
 static unsigned int sleep_wakeup_freq;
 
 /*
@@ -112,7 +112,7 @@ static unsigned int sleep_wakeup_freq;
  * go below this frequency.
  * Set awake_min_freq=0 to disable this behavior.
  */
-#define DEFAULT_AWAKE_MIN_FREQ 400000
+#define DEFAULT_AWAKE_MIN_FREQ 0
 static unsigned int awake_min_freq;
 
 /*
@@ -125,7 +125,7 @@ static unsigned int sample_rate_jiffies;
  * Freqeuncy delta when ramping up.
  * zero disables and causes to always jump straight to max frequency.
  */
-#define DEFAULT_RAMP_UP_STEP 50
+#define DEFAULT_RAMP_UP_STEP 200000
 static unsigned int ramp_up_step;
 
 /*
@@ -217,7 +217,7 @@ static void cpufreq_savagedzen_timer(unsigned long data)
         else
                 cpu_load = 100 * (unsigned int)(delta_time - delta_idle) / (unsigned int)delta_time;
 
-        if (debug_mask & savagedzen_DEBUG_LOAD)
+        if (debug_mask & SAVAGEDZEN_DEBUG_LOAD)
                 printk(KERN_INFO "savagedzenT @ %d: load %d (delta_time %llu)\n",policy->cur,cpu_load,delta_time);
 
         this_savagedzen->cur_cpu_load = cpu_load;
@@ -327,7 +327,7 @@ static void cpufreq_savagedzen_freq_change_time_work(struct work_struct *work)
                 new_freq = validate_freq(this_savagedzen,new_freq);
 
                 if (new_freq != policy->cur) {
-                        if (debug_mask & savagedzen_DEBUG_JUMPS)
+                        if (debug_mask & SAVAGEDZEN_DEBUG_JUMPS)
                                 printk(KERN_INFO "savagedzenQ: jumping from %d to %d\n",policy->cur,new_freq);
 
                         __cpufreq_driver_target(policy, new_freq, relation);
@@ -609,7 +609,7 @@ static int cpufreq_governor_savagedzen(struct cpufreq_policy *new_policy,
         case CPUFREQ_GOV_LIMITS:
                 savagedzen_update_min_max(this_savagedzen,new_policy,suspended);
                 if (this_savagedzen->cur_policy->cur != this_savagedzen->max_speed) {
-                        if (debug_mask & savagedzen_DEBUG_JUMPS)
+                        if (debug_mask & SAVAGEDZEN_DEBUG_JUMPS)
                                 printk(KERN_INFO "savagedzenI: initializing to %d\n",this_savagedzen->max_speed);
                         __cpufreq_driver_target(new_policy, this_savagedzen->max_speed, CPUFREQ_RELATION_H);
                 }
@@ -645,7 +645,7 @@ static void savagedzen_suspend(int cpu, int suspend)
             if (policy->cur > this_savagedzen->max_speed) {
                     new_freq = this_savagedzen->max_speed;
 
-                    if (debug_mask & savagedzen_DEBUG_JUMPS)
+                    if (debug_mask & SAVAGEDZEN_DEBUG_JUMPS)
                             printk(KERN_INFO "savagedzenS: suspending at %d\n",new_freq);
 
                     __cpufreq_driver_target(policy, new_freq,
@@ -654,7 +654,7 @@ static void savagedzen_suspend(int cpu, int suspend)
         } else { // resume at max speed:
                 new_freq = validate_freq(this_savagedzen,sleep_wakeup_freq);
 
-                if (debug_mask & savagedzen_DEBUG_JUMPS)
+                if (debug_mask & SAVAGEDZEN_DEBUG_JUMPS)
                         printk(KERN_INFO "savagedzenS: awaking at %d\n",new_freq);
 
                 __cpufreq_driver_target(policy, new_freq,
