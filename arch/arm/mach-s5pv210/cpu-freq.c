@@ -538,7 +538,7 @@ static int s5pv210_cpufreq_target(struct cpufreq_policy *policy,
 
 /* No direct jump to low freq (under 1Ghz) and go _real_ smooth
 * this time [STEP_DN] */
-  	if (index < L4) {
+  	if (index < L5) {
     	if (old_index == L0)
       		index = L1;
     	else if (old_index == L1)
@@ -547,6 +547,8 @@ static int s5pv210_cpufreq_target(struct cpufreq_policy *policy,
       		index = L3;
     	else if (old_index == L3)
       		index = L4;
+	else if (old_index == L4)
+      		index = L5;
 
    	}
 #endif
