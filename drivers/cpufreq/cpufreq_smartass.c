@@ -63,7 +63,7 @@ static unsigned int suspended;
 * The minimum amount of time to spend at a frequency before we can ramp down,
 * default is 45ms.
 */
-#define DEFAULT_RAMP_DOWN_RATE_NS 45000;
+#define DEFAULT_RAMP_DOWN_RATE_NS 70000;
 static unsigned long ramp_down_rate_ns;
 
 /*
@@ -79,7 +79,7 @@ static unsigned int up_min_freq;
 * to minimize wakeup issues.
 * Set sleep_max_freq=0 to disable this behavior.
 */
-#define DEFAULT_SLEEP_MAX_FREQ (200*100)
+#define DEFAULT_SLEEP_MAX_FREQ (400*1000)
 static unsigned int sleep_max_freq;
 
 /*
