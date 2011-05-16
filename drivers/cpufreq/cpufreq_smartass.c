@@ -70,7 +70,7 @@ static unsigned long ramp_down_rate_ns;
 * When ramping up frequency jump to at least this frequency.
 */
 
-#define DEFAULT_UP_MIN_FREQ (100*1000)
+#define DEFAULT_UP_MIN_FREQ (800*1000)
 static unsigned int up_min_freq;
 
 /*
@@ -92,7 +92,7 @@ static unsigned int sample_rate_jiffies;
 * Max freqeuncy delta when ramping up.
 */
 
-#define DEFAULT_MAX_RAMP_UP (300 * 1000)
+#define DEFAULT_MAX_RAMP_UP (400 * 1000)
 static unsigned int max_ramp_up;
 
 /*
@@ -104,7 +104,7 @@ static unsigned long max_cpu_load;
 /*
 * CPU freq will be decreased if measured load < min_cpu_load;
 */
-#define DEFAULT_MIN_CPU_LOAD 35
+#define DEFAULT_MIN_CPU_LOAD 40
 static unsigned long min_cpu_load;
 
 //Leave this zero by default, people can tweak it if they so wish.
@@ -225,19 +225,33 @@ cpu_load = 100 * (delta_time - idle_time) / delta_time;
 if (cpu_load < min_cpu_load) {
 //if the current frequency is below 1.2ghz, everything is 200mhz steps
 if(policy->cur <= 1200000 && policy->cur >= 400000) {
+/* catch the extra 200mhz gap between 400 and 800 when scaling down -netarchy */
+if(policy->cur == 800000) {
+new_freq = policy->cur - 400000;
+return new_freq;
+}
+else {
 new_freq = policy->cur - 200000;
 return new_freq;
 }
-//above 1.2ghz though, everything is 100mhz steps
+}
+//above 1.2ghz though, everything is 200mhz steps
 else {
-new_freq = policy->cur - 100000;
+new_freq = policy->cur - 200000;
 return new_freq;
 }
 }
 if (cpu_load > max_cpu_load) {
-if(policy->cur < 1200000 && policy->cur > 100000) {
+if(policy->cur < 1200000 && policy->cur > 200000) {
+/* catch the gap between 400 and 800 when scaling up -netarchy */
+if(policy->cur == 400000) {
+new_freq = policy->cur + 400000;
+return new_freq;
+}
+else {
 new_freq = policy->cur + 200000;
 return new_freq;
+}
 }
 else {
 new_freq = policy->cur + 100000;
@@ -247,7 +261,7 @@ return new_freq;
 return policy->cur;
 }
 
-/* We use the same work function to sale up and down */
+/* We use the same work function to scale up and down */
 static void cpufreq_smartass_freq_change_time_work(struct work_struct *work)
 {
 unsigned int cpu;
