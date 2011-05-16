@@ -122,7 +122,7 @@ static struct s5pv210_dvs_conf dvs_conf[] = {
 	},
 	[L6] = {
 		.arm_volt   = 1250000,
-		.int_volt   = 1100000,
+		.int_volt   = 1050000,
 	},
 	[L7] = {
 		.arm_volt   = 1200000,
@@ -875,11 +875,18 @@ static int __init s5pv210_cpufreq_driver_init(struct cpufreq_policy *policy)
 static int s5pv210_cpufreq_notifier_event(struct notifier_block *this,
 		unsigned long event, void *ptr)
 {
+//	static int max, min;
 	int ret;
+
+//	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
 
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
-		ret = cpufreq_driver_target(cpufreq_cpu_get(0), SLEEP_FREQ,
+	ret = cpufreq_driver_target(cpufreq_cpu_get(0), SLEEP_FREQ,
+/*		max = policy->max;
+		min = policy->min;
+		policy->max = 400000;
+		ret = cpufreq_driver_target(policy, SLEEP_FREQ,*/
 				DISABLE_FURTHER_CPUFREQ);
 		if (ret < 0)
 			return NOTIFY_BAD;
@@ -887,8 +894,10 @@ static int s5pv210_cpufreq_notifier_event(struct notifier_block *this,
 	case PM_POST_RESTORE:
 	case PM_POST_SUSPEND:
 		cpufreq_driver_target(cpufreq_cpu_get(0), SLEEP_FREQ,
+//		cpufreq_driver_target(policy, SLEEP_FREQ,
 				ENABLE_FURTHER_CPUFREQ);
-
+/*		policy->max = max;
+		policy->min = min;*/
 		return NOTIFY_OK;
 	}
 	return NOTIFY_DONE;
