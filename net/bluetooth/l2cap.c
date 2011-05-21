@@ -359,6 +359,7 @@ static inline void l2cap_send_sframe(struct l2cap_pinfo *pi, u16 control)
 	struct sk_buff *skb;
 	struct l2cap_hdr *lh;
 	struct l2cap_conn *conn = pi->conn;
+	struct sock *sk = (struct sock *)pi;	
 	int count, hlen = L2CAP_HDR_SIZE + 2;
 
 	if (pi->fcs == L2CAP_FCS_CRC16)
