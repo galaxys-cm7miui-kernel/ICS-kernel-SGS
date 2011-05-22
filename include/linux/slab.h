@@ -311,6 +311,23 @@ static inline void *kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
 	return kmem_cache_alloc(k, flags | __GFP_ZERO);
 }
 
+/*
+ * NOTE: no new callers of this function should be implemented!
+ * All memory allocations should be failable whenever possible.
+ */
+static inline void *kmem_cache_zalloc_nofail(struct kmem_cache *k, gfp_t flags)
+{
+	void *ret;
+
+	for (;;) {
+		ret = kmem_cache_zalloc(k, flags);
+		if (ret)
+			return ret;
+		WARN_ON_ONCE(get_order(kmem_cache_size(k)) >
+						PAGE_ALLOC_COSTLY_ORDER);
+	}
+}
+
 /**
  * kzalloc - allocate memory. The memory is set to zero.
  * @size: how many bytes of memory are required.
