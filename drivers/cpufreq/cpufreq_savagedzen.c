@@ -77,13 +77,13 @@ static unsigned long debug_mask;
 /*
  * The minimum amount of time to spend at a frequency before we can ramp up.
  */
-#define DEFAULT_UP_RATE_US 1200;
+#define DEFAULT_UP_RATE_US 20000;
 static unsigned long up_rate_us;
 
 /*
  * The minimum amount of time to spend at a frequency before we can ramp down.
  */
-#define DEFAULT_DOWN_RATE_US 24000;
+#define DEFAULT_DOWN_RATE_US 70000;
 static unsigned long down_rate_us;
 
 /*
@@ -140,13 +140,13 @@ static unsigned int ramp_down_step;
 /*
  * CPU freq will be increased if measured load > max_cpu_load;
  */
-#define DEFAULT_MAX_CPU_LOAD 80
+#define DEFAULT_MAX_CPU_LOAD 50
 static unsigned long max_cpu_load;
 
 /*
  * CPU freq will be decreased if measured load < min_cpu_load;
  */
-#define DEFAULT_MIN_CPU_LOAD 45
+#define DEFAULT_MIN_CPU_LOAD 35
 static unsigned long min_cpu_load;
 
 
