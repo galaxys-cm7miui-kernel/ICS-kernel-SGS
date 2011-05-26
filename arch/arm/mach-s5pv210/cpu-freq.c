@@ -54,7 +54,7 @@ static DEFINE_MUTEX(set_freq_lock);
 /* frequency */
 
 static struct cpufreq_frequency_table freq_table[] = {
-	{L0, 1540*1000},
+	{L0, 1600*1000},
 	{L1, 1500*1000},
 	{L2, 1440*1000},
 	{L3, 1400*1000},
@@ -71,7 +71,7 @@ static struct cpufreq_frequency_table freq_table[] = {
 extern int exp_UV_mV[11]; //Needed for uv
 unsigned int freq_uv_table[11][3] = {
 	//freq, stock, current
-	{1540000,	1500,	1500},
+	{1600000,	1500,	1500},
 	{1500000,	1500,	1500},
 	{1440000,	1475,	1475},
 	{1400000,	1450,	1450},
@@ -118,11 +118,11 @@ static struct s5pv210_dvs_conf dvs_conf[] = {
 	},
 	[L5] = {
 		.arm_volt   = 1350000,
-		.int_volt   = 1100000,
+		.int_volt   = 1125000,
 	},
 	[L6] = {
 		.arm_volt   = 1250000,
-		.int_volt   = 1050000,
+		.int_volt   = 1100000,
 	},
 	[L7] = {
 		.arm_volt   = 1200000,
@@ -149,7 +149,7 @@ static u32 clkdiv_val[11][11] = {
 	 * MFC, G3D }
 	 */
 	//L0:1540
-	{0, 6, 6, 1, 3, 1, 4, 1, 3, 0, 0},
+	{0, 7, 7, 1, 3, 1, 4, 1, 3, 0, 0},
 	//L1:1500
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
 	//L2: 1440
@@ -159,7 +159,7 @@ static u32 clkdiv_val[11][11] = {
 	//L4: 1300
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
 	/* L5 : [1200/200/200/100][166/83][133/66][200/200] */
-	{0, 4, 4, 1, 3, 1, 4, 1, 3, 0, 0},
+	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
 	/* L6 : [1000/200/200/100][166/83][133/66][200/200] */
 	{0, 4, 4, 1, 3, 1, 4, 1, 3, 0, 0},
 	/* L7 : [800/200/200/100][166/83][133/66][200/200] */
@@ -175,12 +175,12 @@ static u32 clkdiv_val[11][11] = {
 //And even more clocks
 static struct s3c_freq clk_info[] = {
 	[L0] = {        /* L0: 1.54GHz */
-                .fclk       = 1540000,
-                .armclk     = 1540000,
+                .fclk       = 1600000,
+                .armclk     = 1600000,
                 .hclk_tns   = 0,
                 .hclk       = 133000,
                 .pclk       = 66000,
-                .hclk_msys  = 256666,
+                .hclk_msys  = 200000,
                 .pclk_msys  = 100000,
                 .hclk_dsys  = 166750,
                 .pclk_dsys  = 83375
@@ -403,7 +403,7 @@ static void s5pv210_cpufreq_clksrcs_MPLL2APLL(unsigned int index,
 
 //Fixed up the 1200mhz overclock (Thanks netarchy!)
 	if (index == L0)
-		__raw_writel(PLL45XX_APLL_VAL_1540, S5P_APLL_CON);
+		__raw_writel(PLL45XX_APLL_VAL_1600, S5P_APLL_CON);
 	else if (index == L1)
 		__raw_writel(PLL45XX_APLL_VAL_1500, S5P_APLL_CON);
 	else if (index == L2)
