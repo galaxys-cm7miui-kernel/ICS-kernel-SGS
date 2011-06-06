@@ -57,6 +57,10 @@ modules.builtin
 include/config
 include/linux/version.h
 include/generated
+arch/arm/boot/compressed/lib1funcs.S
+arch/arm/boot/compressed/vmlinux
+release/boot.img
+
 
 # stgit generated dirs
 patches-*
