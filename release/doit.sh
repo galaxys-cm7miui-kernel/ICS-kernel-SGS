@@ -1,7 +1,5 @@
 #!/bin/sh
 
-set -x
-
 [[ -d release ]] || {
 	echo "must be in kernel root dir"
 	exit 1;
