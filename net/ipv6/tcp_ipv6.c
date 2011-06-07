@@ -1187,7 +1187,7 @@ static int tcp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	__u32 isn = TCP_SKB_CB(skb)->when;
 #ifdef CONFIG_SYN_COOKIES
-	int want_cookie = 0;
+	int want_cookie = 1;
 #else
 #define want_cookie 0
 #endif
@@ -1257,7 +1257,7 @@ static int tcp_v6_conn_request(struct sock *sk, struct sk_buff *skb)
 			*c++ ^= *hash_location++;
 
 #ifdef CONFIG_SYN_COOKIES
-		want_cookie = 0;	/* not our kind of cookie */
+		want_cookie = 1;	/* not our kind of cookie */
 #endif
 		tmp_ext.cookie_out_never = 0; /* false */
 		tmp_ext.cookie_plus = tmp_opt.cookie_plus;
