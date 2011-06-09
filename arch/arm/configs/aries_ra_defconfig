@@ -1184,8 +1184,8 @@ CONFIG_SERIO_LIBPS2=y
 # Character devices
 #
 # CONFIG_VT is not set
-CONFIG_DEVMEM=y
-CONFIG_DEVKMEM=y
+# CONFIG_DEVMEM is not set
+# CONFIG_DEVKMEM is not set
 # CONFIG_SERIAL_NONSTANDARD is not set
 # CONFIG_N_GSM is not set
 
