@@ -7,7 +7,7 @@
 
 echo "packaging it up"
 
-RELVER=`cat .version`
+RELVER=$1
 
 REL=CM7_FuguMod_$(date +%Y%m%d_r)${RELVER}_update.zip
 
