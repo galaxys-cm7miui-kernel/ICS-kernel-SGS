@@ -6,9 +6,8 @@ RELVER=`cat .version`
 
 echo "building kernel with voodoo color"
 sed -i 's/^.*CONFIG_FB_VOODOO=.*$//' .config
-echo 'CONFIG_FB_VOODOO=y
-# CONFIG_FB_VOODOO_DEBUG_LOG is not set
-' >> .config
+echo 'CONFIG_FB_VOODOO=y' >> .config
+
 make -j8
 
 echo "creating boot.img with voodoo color"
@@ -23,9 +22,8 @@ mv release/CM7_FuguMod* ../../public_html/
 
 echo "building kernel without voodoo color"
 sed -i 's/^.*CONFIG_FB_VOODOO=.*$//' .config
-echo '# CONFIG_FB_VOODOO is not set
-# CONFIG_FB_VOODOO_DEBUG_LOG is not set
-' >> .config
+echo '# CONFIG_FB_VOODOO is not set' >> .config
+
 make -j8
 
 echo "creating boot.img without voodoo color"
