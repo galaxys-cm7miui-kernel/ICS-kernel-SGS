@@ -1,6 +1,7 @@
 #!/bin/sh
 
 RELVER=`cat .version`
+let RELVER=RELVER+1
 
 . ./setenv.sh
 
