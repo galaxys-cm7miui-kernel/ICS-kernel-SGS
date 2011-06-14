@@ -7,7 +7,8 @@ let RELVER=RELVER+1
 
 echo "building kernel with voodoo color"
 sed -i 's/^.*CONFIG_FB_VOODOO=.*$//' .config
-echo 'CONFIG_FB_VOODOO=y' >> .config
+echo 'CONFIG_FB_VOODOO=y
+# FB_VOODOO_DEBUG_LOG is not set' >> .config
 
 make -j8
 
