@@ -11,8 +11,7 @@ export RANLIB=/home/r/arm-2010q1/arm-none-eabi/bin/ranlib
 export PATH=$PATH:/home/r/arm-2010q1/bin
 export PATH=$PATH:/home/r/arm-2010q1/
 export PATH=$PATH:/home/r/arm-2010q1/lib
-#export CFLAGS="-static -Os -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -fno-gcse -fprefetch-loop-arrays --param l2-cache-size=512 --param l1-cache-size=64 --param simultaneous-prefetches=6 --param prefetch-latency=400 --param l1-cache-line-size=64"
-export CFLAGS="-mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -static -Os -fstack-protector -fstack-protector-all -mfpu=neon -mfloat-abi=softfp -fno-gcse -fprefetch-loop-arrays --param l2-cache-size=512 --param l1-cache-size=64 --param simultaneous-prefetches=6 --param prefetch-latency=400 --param l1-cache-line-size=64"
+export CFLAGS="-mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -static -Os -fstack-protector -fstack-protector-all -fno-gcse -fprefetch-loop-arrays --param l2-cache-size=512 --param l1-cache-size=64 --param simultaneous-prefetches=6 --param prefetch-latency=400 --param l1-cache-line-size=64"
 export LDFLAGS="-static -Os"
 export CPPFLAGS="-static -Os"
 
