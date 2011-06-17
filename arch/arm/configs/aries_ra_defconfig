@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35.13
-# Wed Jun 15 14:23:56 2011
+# Fri Jun 17 07:15:19 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -130,7 +130,7 @@ CONFIG_PERF_USE_VMALLOC=y
 # CONFIG_PERF_COUNTERS is not set
 CONFIG_VM_EVENT_COUNTERS=y
 # CONFIG_SLUB_DEBUG is not set
-CONFIG_COMPAT_BRK=y
+# CONFIG_COMPAT_BRK is not set
 # CONFIG_SLAB is not set
 CONFIG_SLUB=y
 # CONFIG_SLOB is not set
