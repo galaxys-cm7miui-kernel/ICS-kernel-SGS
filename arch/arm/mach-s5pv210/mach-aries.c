@@ -284,7 +284,7 @@ static struct s3cfb_lcd s6e63m0 = {
 	.p_width = 52,
 	.p_height = 86,
 	.bpp = 24,
-	.freq = 72,
+	.freq = 66,
 
 	.timing = {
 		.h_fp = 16,
