@@ -13,7 +13,7 @@ TYPE=$1
 RELVER=$2
 [[ "$RELVER" == '' ]] && RELVER="0"
 
-REL=CM7_${TYPE}_$(date +%Y%m%d-%I)_platypus-revolutions-kernel.zip
+REL=CM7_${TYPE}_$(date +%Y%m%d-%I)_platypus.zip
 
 rm -r release/system 2> /dev/null
 mkdir  -p release/system/lib/modules || exit 1
