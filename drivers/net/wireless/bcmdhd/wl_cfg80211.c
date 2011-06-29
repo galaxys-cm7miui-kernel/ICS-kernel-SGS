@@ -77,6 +77,38 @@ u32 wl_dbg_level = WL_DBG_ERR | WL_DBG_INFO;
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
 #define MAX_WAIT_TIME 3000
 
+static ctl_table wl_sysctl_child[] = {
+	{
+	.procname = "p2p_dev_addr",
+	.data = &wl_sysctl_macstring[0],
+	.maxlen = MAC_STRING_LEN,
+	.mode =  0444,
+	.child = NULL,
+	.proc_handler = proc_dostring,
+	},
+	{
+	.procname = "p2p_int_addr",
+	.data = &wl_sysctl_macstring[1],
+	.maxlen = MAC_STRING_LEN,
+	.mode =  0444,
+	.child = NULL,
+	.proc_handler = proc_dostring,
+	},
+	{0}
+};
+static ctl_table wl_sysctl_table[] = {
+	{
+	.procname = "wifi",
+	.data = NULL,
+	.maxlen = 0,
+	.mode =  0555,
+	.child = wl_sysctl_child,
+	.proc_handler = NULL,
+	},
+	{0}
+};
+static struct ctl_table_header *wl_sysctl_hdr;
+#endif /* CONFIG_SYSCTL */ 
 
 /* Data Element Definitions */
 #define WPS_ID_CONFIG_METHODS     0x1008
