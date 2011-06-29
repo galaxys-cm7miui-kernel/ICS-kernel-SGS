@@ -1439,13 +1439,58 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	uint32 apsta = 1; /* Enable APSTA mode */
 #endif
 
-	/* Get the device MAC address */
+#ifdef GET_CUSTOM_MAC_ENABLE
+	/*
+	** Read MAC address from external customer place
+	** NOTE that default mac address has to be present in otp or nvram file
+	** to bring up firmware but unique per board mac address maybe provided
+	** by customer code
+	*/
+	ret = dhd_custom_get_mac_address(ea_addr.octet);
+	if (!ret) {
+		bcm_mkiovar("cur_etheraddr", (void *)&ea_addr, ETHER_ADDR_LEN, buf, sizeof(buf));
+		ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+		if (ret < 0) {
+			DHD_ERROR(("%s: can't set MAC address , error=%d\n", __FUNCTION__, ret));
+		} else
+			memcpy(dhd->mac.octet, (void *)&ea_addr, ETHER_ADDR_LEN);
+	} else {
+#endif /* GET_CUSTOM_MAC_ENABLE */
+	/* Get the default device MAC address directly from firmware */
 	strcpy(iovbuf, "cur_etheraddr");
 	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), FALSE, 0)) < 0) {
 		DHD_ERROR(("%s: can't get MAC address , error=%d\n", __FUNCTION__, ret));
 		return BCME_NOTUP;
 	}
 	memcpy(dhd->mac.octet, iovbuf, ETHER_ADDR_LEN);
+#ifdef GET_CUSTOM_MAC_ENABLE
+	}
+#endif /* GET_CUSTOM_MAC_ENABLE */
+
+#ifdef SET_RANDOM_MAC_SOFTAP
+	if (strstr(fw_path, "apsta") != NULL) {
+		uint rand_mac;
+
+		srandom32((uint)jiffies);
+		rand_mac = random32();
+		iovbuf[0] = 0x02;              /* locally administered bit */
+		iovbuf[1] = 0x1A;
+		iovbuf[2] = 0x11;
+		iovbuf[3] = (unsigned char)(rand_mac & 0x0F) | 0xF0;
+		iovbuf[4] = (unsigned char)(rand_mac >> 8);
+		iovbuf[5] = (unsigned char)(rand_mac >> 16);
+
+		printk("Broadcom Dongle Host Driver mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
+			iovbuf[0], iovbuf[1], iovbuf[2], iovbuf[3], iovbuf[4], iovbuf[5]);
+
+		bcm_mkiovar("cur_etheraddr", (void *)iovbuf, ETHER_ADDR_LEN, buf, sizeof(buf));
+		ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, sizeof(buf), TRUE, 0);
+		if (ret < 0) {
+			DHD_ERROR(("%s: can't set MAC address , error=%d\n", __FUNCTION__, ret));
+		} else
+			memcpy(dhd->mac.octet, iovbuf, ETHER_ADDR_LEN);
+	}
+#endif /* SET_RANDOM_MAC_SOFTAP */
 
 	/* Set Country code  */
 	if (dhd->dhd_cspec.ccode[0] != 0) {
