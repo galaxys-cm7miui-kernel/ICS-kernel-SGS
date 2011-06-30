@@ -271,6 +271,7 @@ dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t * ioc, void * buf, int len)
 		goto done;
 	}
 
+
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 	ASSERT(len <= WLC_IOCTL_MAXLEN);
@@ -2286,6 +2287,7 @@ dhd_prot_init(dhd_pub_t *dhd)
 	int ret = 0;
 	wlc_rev_info_t revinfo;
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+
 
 
 	/* Get the device rev info */
