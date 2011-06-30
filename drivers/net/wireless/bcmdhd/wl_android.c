@@ -91,7 +91,7 @@ extern bool ap_fw_loaded;
  * time (only) in dhd_open, subsequential wifi on will be handled by
  * wl_android_wifi_on
  */
-static int g_wifi_on = 1;
+static int g_wifi_on = TRUE;
 
 /**
  * Local (static) function definitions
@@ -324,12 +324,15 @@ exit:
 
 	return ret;
 }
+
 int wl_android_init(void)
 {
 	int ret = 0;
 
 	dhd_msg_level = DHD_ERROR_VAL;
-	dhd_download_fw_on_driverload = 0;
+#ifdef ENABLE_INSMOD_NO_FW_LOAD
+	dhd_download_fw_on_driverload = FALSE;
+#endif /* ENABLE_INSMOD_NO_FW_LOAD */
 	return ret;
 }
 

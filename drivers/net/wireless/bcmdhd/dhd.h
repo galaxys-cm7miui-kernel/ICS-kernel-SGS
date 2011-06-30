@@ -248,6 +248,9 @@ typedef struct dhd_cmn {
 #endif /* DHDTHREAD */
 #define DHD_IF_VIF	0x01	/* Virtual IF (Hidden from user) */
 
+unsigned long dhd_os_spin_lock(dhd_pub_t *pub);
+void dhd_os_spin_unlock(dhd_pub_t *pub, unsigned long flags);
+
 /*  Wakelock Functions */
 extern int dhd_os_wake_lock(dhd_pub_t *pub);
 extern int dhd_os_wake_unlock(dhd_pub_t *pub);
@@ -279,9 +282,6 @@ inline static void MUTEX_UNLOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 #define DHD_OS_WAKE_UNLOCK(pub) 		dhd_os_wake_unlock(pub)
 #define DHD_OS_WAKE_LOCK_TIMEOUT(pub)		dhd_os_wake_lock_timeout(pub)
 #define DHD_OS_WAKE_LOCK_TIMEOUT_ENABLE(pub)	dhd_os_wake_lock_timeout_enable(pub)
-
-extern unsigned long dhd_os_spin_lock(dhd_pub_t *pub);
-extern void dhd_os_spin_unlock(dhd_pub_t *pub, unsigned long flags);
 
 
 /* interface operations (register, remove) should be atomic, use this lock to prevent race
@@ -511,6 +511,9 @@ extern uint dhd_sdiod_drive_strength;
 
 /* Override to force tx queueing all the time */
 extern uint dhd_force_tx_queueing;
+/* Default KEEP_ALIVE Period is 55 sec to prevent AP from sending Keep Alive probe frame */
+#define KEEP_ALIVE_PERIOD 55000
+#define NULL_PKT_STR	"null_pkt"
 
 #ifdef SDTEST
 /* Echo packet generator (SDIO), pkts/s */
@@ -671,4 +674,11 @@ int dhd_os_wlfc_unblock(dhd_pub_t *pub);
 extern void dhd_wait_for_event(dhd_pub_t *dhd, bool *lockvar);
 extern void dhd_wait_event_wakeup(dhd_pub_t*dhd);
 
+#ifdef ARP_OFFLOAD_SUPPORT
+/* dhd_commn arp offload wrapers */
+void dhd_aoe_hostip_clr(dhd_pub_t *dhd);
+void dhd_aoe_arp_clr(dhd_pub_t *dhd);
+int dhd_arp_get_arp_hostip_table(dhd_pub_t *dhd, void *buf, int buflen);
+void dhd_arp_offload_add_ip(dhd_pub_t *dhd, uint32 ipaddr);
+#endif /* ARP_OFFLOAD_SUPPORT */
 #endif /* _dhd_h_ */
