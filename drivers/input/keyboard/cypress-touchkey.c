@@ -46,7 +46,7 @@
 
 #define DEVICE_NAME "cypress-touchkey"
 
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 int bl_on = 0;
 #endif
 struct cypress_touchkey_devdata *bl_devdata;
@@ -125,7 +125,7 @@ static void all_keys_up(struct cypress_touchkey_devdata *devdata)
 
 static void bl_off(struct work_struct *bl_off_work)
 {
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 	if (bl_devdata == NULL || unlikely(bl_devdata->is_dead) ||
 		bl_devdata->is_powering_on || bl_on || bl_devdata->is_sleeping)
 		return;
@@ -235,7 +235,7 @@ static irqreturn_t touchkey_interrupt_handler(int irq, void *touchkey_devdata)
 	return IRQ_WAKE_THREAD;
 }
 
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 static void notify_led_on(void) {
     unsigned long flags;
 	if (unlikely(bl_devdata->is_dead))
@@ -282,7 +282,7 @@ static void cypress_touchkey_early_suspend(struct early_suspend *h)
 	devdata->pdata->touchkey_onoff(TOUCHKEY_OFF);
 	all_keys_up(devdata);
 	devdata->is_sleeping = true;
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 	if (bl_on)
 		notify_led_on();
 #endif
@@ -310,7 +310,7 @@ static void cypress_touchkey_early_resume(struct early_suspend *h)
 }
 #endif
 
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 static ssize_t led_status_read(struct device *dev, struct device_attribute *attr, char *buf) {
 	return sprintf(buf,"%u\n", bl_on);
 }
@@ -456,7 +456,7 @@ static int cypress_touchkey_probe(struct i2c_client *client,
 
 	devdata->is_powering_on = false;
 
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 	if (misc_register(&bl_led_device))
 		printk("%s misc_register(%s) failed\n", __FUNCTION__, bl_led_device.name);
 	else {
@@ -491,7 +491,7 @@ static int __devexit i2c_touchkey_remove(struct i2c_client *client)
 
 	dev_err(&client->dev, "%s: i2c_touchkey_remove\n", __func__);
 
-#if 0 /* disable backlight notification for now */
+#if 1 /* enable backlight notification for now */
 	misc_deregister(&bl_led_device);
 #endif
 	unregister_early_suspend(&devdata->early_suspend);
