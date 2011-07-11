@@ -1241,6 +1241,15 @@ static struct gpio_event_direct_entry aries_keypad_key_map[] = {
 		.gpio	= S5PV210_GPH3(1),
 		.code	= KEY_VOLUMEUP,
 	}
+#elif defined(CONFIG_SAMSUNG_FASCINATE)
+	{
+		.gpio	= S5PV210_GPH3(1),
+		.code	= KEY_VOLUMEDOWN,
+	},
+	{
+		.gpio	= S5PV210_GPH3(3),
+		.code	= KEY_VOLUMEUP,
+	}
 #else
 	{
 		.gpio	= S5PV210_GPH3(1),
@@ -1304,42 +1313,46 @@ static bool jack_mic_bias;
 static void set_shared_mic_bias(void)
 {
 #if defined(CONFIG_SAMSUNG_CAPTIVATE)
-	if((HWREV == 0x04) || (HWREV == 0x08) || (HWREV == 0x0C) || (HWREV == 0x02) || (HWREV == 0x0A)) //0x08:00, 0x04:01, 0x0C:02, 0x02:03, 0x0A:04
-        gpio_set_value(GPIO_MICBIAS_EN, wm8994_mic_bias || jack_mic_bias);
-	else // from 05 board (0x06: 05, 0x0E: 06)
-        gpio_set_value(GPIO_EAR_MICBIAS_EN, wm8994_mic_bias || jack_mic_bias);
+	gpio_set_value(GPIO_MICBIAS_EN, wm8994_mic_bias);
+    gpio_set_value(GPIO_EARPATH_SEL, jack_mic_bias);
+	gpio_set_value(GPIO_EAR_MICBIAS_EN, jack_mic_bias);
 #elif defined(CONFIG_SAMSUNG_VIBRANT)
-	if((HWREV == 0x0A) || (HWREV == 0x0C) || (HWREV == 0x0D) || (HWREV == 0x0E) ) //0x0A:00, 0x0C:00, 0x0D:01, 0x0E:05
+    if((HWREV == 0x0A) || (HWREV == 0x0C) || (HWREV == 0x0D) || (HWREV == 0x0E) ) //0x0A:00, 0x0C:00, 0x0D:01, 0x0E:05
         gpio_set_value(GPIO_MICBIAS_EN, wm8994_mic_bias || jack_mic_bias);
-	else// from 06 board(0x0F: 06)
-        gpio_set_value(GPIO_MICBIAS_EN2, wm8994_mic_bias || jack_mic_bias);
+    else {
+        gpio_set_value(GPIO_MICBIAS_EN2, jack_mic_bias);
+        gpio_set_value(GPIO_MICBIAS_EN, wm8994_mic_bias);
+    }
+    gpio_set_value(GPIO_EARPATH_SEL, jack_mic_bias);
 #else
 	gpio_set_value(GPIO_MICBIAS_EN, wm8994_mic_bias || jack_mic_bias);
-	/* high : earjack, low: TV_OUT */
-	gpio_set_value(GPIO_EARPATH_SEL, wm8994_mic_bias || jack_mic_bias);
+    gpio_set_value(GPIO_EARPATH_SEL, wm8994_mic_bias || jack_mic_bias);
 #endif
 }
 
 static void wm8994_set_mic_bias(bool on)
 {
-	unsigned long flags;
-	spin_lock_irqsave(&mic_bias_lock, flags);
-	wm8994_mic_bias = on;
-	set_shared_mic_bias();
-	spin_unlock_irqrestore(&mic_bias_lock, flags);
+    unsigned long flags;
+    pr_debug("%s: HWREV=%d, on=%d\n", __func__, HWREV, on ? 1 : 0);
+    spin_lock_irqsave(&mic_bias_lock, flags);
+    wm8994_mic_bias = on;
+    set_shared_mic_bias();
+    spin_unlock_irqrestore(&mic_bias_lock, flags);
 }
 
 static void sec_jack_set_micbias_state(bool on)
 {
-	unsigned long flags;
-	spin_lock_irqsave(&mic_bias_lock, flags);
-	jack_mic_bias = on;
-	set_shared_mic_bias();
-	spin_unlock_irqrestore(&mic_bias_lock, flags);
+    unsigned long flags;
+    pr_debug("%s: HWREV=%d, on=%d\n", __func__, HWREV, on ? 1 : 0);
+    spin_lock_irqsave(&mic_bias_lock, flags);
+    jack_mic_bias = on;
+    set_shared_mic_bias();
+    spin_unlock_irqrestore(&mic_bias_lock, flags);
 }
 
 static struct wm8994_platform_data wm8994_pdata = {
 	.ldo = GPIO_CODEC_LDO_EN,
+        .ear_sel = GPIO_EARPATH_SEL,
 	.set_mic_bias = wm8994_set_mic_bias,
 };
 
@@ -2318,9 +2331,15 @@ static struct i2c_board_info i2c_devs10[] __initdata = {
 };
 
 static struct i2c_board_info i2c_devs5[] __initdata = {
+#if defined(CONFIG_SAMSUNG_FASCINATE)
+	{
+		I2C_BOARD_INFO("kr3dh", 0x19),
+	},
+#else
 	{
 		I2C_BOARD_INFO("bma023", 0x38),
 	},
+#endif
 };
 
 static struct i2c_board_info i2c_devs8[] __initdata = {
@@ -2590,17 +2609,55 @@ static struct platform_device sec_device_btsleep = {
 	.id	= -1,
 };
 
-/* stock headset adc 2970 - 2990 */
 static struct sec_jack_zone sec_jack_zones[] = {
 	{
 		/* adc == 0, unstable zone, default to 3pole if it stays
-		 * in this range for 300ms (15ms delays, 20 samples)
+		 * in this range for a half second (20ms delays, 25 samples)
 		 */
 		.adc_high = 0,
-		.delay_ms = 15,
-		.check_count = 20,
+		.delay_ms = 20,
+		.check_count = 25,
 		.jack_type = SEC_HEADSET_3POLE,
 	},
+#if defined(CONFIG_SAMSUNG_CAPTIVATE)
+	{
+		/* 0 < adc <= 700, unstable zone, default to 3pole if it stays
+		 * in this range for a second (10ms delays, 80 samples)
+		 */
+		.adc_high = 700,
+		.delay_ms = 10,
+		.check_count = 80,
+		.jack_type = SEC_HEADSET_3POLE,
+	},
+	{
+		/* 700 < adc <= 2500, default to 4pole if it
+		 * stays in this range for 800ms second (10ms delays, 80 samples)
+		 */
+		.adc_high = 2500,
+		.delay_ms = 10,
+		.check_count = 80,
+		.jack_type = SEC_HEADSET_4POLE,
+	},
+#elif defined(CONFIG_SAMSUNG_VIBRANT)
+	{
+		/* 0 < adc <= 500, unstable zone, default to 3pole if it stays
+		 * in this range for 800ms (10ms delays, 80 samples)
+		 */
+		.adc_high = 500,
+		.delay_ms = 10,
+		.check_count = 80,
+		.jack_type = SEC_HEADSET_3POLE,
+	},
+	{
+		/* 500 < adc <= 3300, default to 4pole if it
+		 * stays in this range for 800ms (10ms delays, 80 samples)
+		 */
+		.adc_high = 3300,
+		.delay_ms = 10,
+		.check_count = 80,
+		.jack_type = SEC_HEADSET_4POLE,
+	},
+#else
 	{
 		/* 0 < adc <= 900, unstable zone, default to 3pole if it stays
 		 * in this range for 800ms (10ms delays, 80 samples)
@@ -2628,8 +2685,9 @@ static struct sec_jack_zone sec_jack_zones[] = {
 		.check_count = 10,
 		.jack_type = SEC_HEADSET_4POLE,
 	},
+#endif
 	{
-		/* adc > 3400, unstable zone, default to 3pole if it stays
+		/* adc > max for device above, unstable zone, default to 3pole if it stays
 		 * in this range for two seconds (10ms delays, 200 samples)
 		 */
 		.adc_high = 0x7fffffff,
@@ -2639,23 +2697,40 @@ static struct sec_jack_zone sec_jack_zones[] = {
 	},
 };
 
-/* Only support one button of earjack on mach aries.
- * If your HW supports 3-buttons earjack made by Samsung and HTC,
- * add some zones here.
- */
+/* To support 3-buttons earjack */
 static struct sec_jack_buttons_zone sec_jack_buttons_zones[] = {
+#if defined(CONFIG_SAMSUNG_CAPTIVATE) || defined(CONFIG_SAMSUNG_VIBRANT)
+	{
+		/* 0 <= adc <=110, stable zone */
+		.code		= KEY_MEDIA,
+		.adc_low	= 0,
+		.adc_high	= 110,
+	},
+	{
+		/* 130 <= adc <= 365, stable zone */
+		.code		= KEY_PREVIOUSSONG,
+		.adc_low	= 130,
+		.adc_high	= 365,
+	},
+	{
+		/* 385 <= adc <= 870, stable zone */
+		.code		= KEY_NEXTSONG,
+		.adc_low	= 385,
+		.adc_high	= 870,
+	},
+#else
 	{
 		/* 300 <= adc <=1000, stable zone */
-                /* stock headset button adc 390 - 420 */
 		.code		= KEY_MEDIA,
 		.adc_low	= 300,
 		.adc_high	= 1000,
 	},
+#endif
 };
 
 static int sec_jack_get_adc_value(void)
 {
-	pr_info("%s: sec_jack adc value = %i \n", __func__, s3c_adc_get_adc_data(3));
+    pr_info("%s: sec_jack adc value = %i \n", __func__, s3c_adc_get_adc_data(3));
 	return s3c_adc_get_adc_data(3);
 }
 
@@ -2672,7 +2747,6 @@ struct sec_jack_platform_data sec_jack_pdata = {
 #else
 	.send_end_gpio = GPIO_EAR_SEND_END,
 #endif
-    .ear_sel = GPIO_EARPATH_SEL,
 };
 
 static struct platform_device sec_device_jack = {
@@ -3280,11 +3354,19 @@ static struct gpio_init_data aries_init_gpios[] = {
 		.pud	= S3C_GPIO_PULL_DOWN,
 		.drv	= S3C_GPIO_DRVSTR_1X,
 	}, {
+#if defined(CONFIG_SAMSUNG_FASCINATE)
+		.num	= S5PV210_GPH1(3),
+		.cfg	= S3C_GPIO_INPUT,
+		.val	= S3C_GPIO_SETPIN_NONE,
+		.pud	= S3C_GPIO_PULL_DOWN,
+		.drv	= S3C_GPIO_DRVSTR_1X,
+#else
 		.num	= S5PV210_GPH1(3),
 		.cfg	= S3C_GPIO_INPUT,
 		.val	= S3C_GPIO_SETPIN_NONE,
 		.pud	= S3C_GPIO_PULL_NONE,
 		.drv	= S3C_GPIO_DRVSTR_1X,
+#endif
 	}, { /* NFC_IRQ */
 		.num	= S5PV210_GPH1(4),
 		.cfg	= S3C_GPIO_INPUT,
@@ -3304,11 +3386,19 @@ static struct gpio_init_data aries_init_gpios[] = {
 		.pud	= S3C_GPIO_PULL_DOWN,
 		.drv	= S3C_GPIO_DRVSTR_1X,
 	}, {
+#if defined(CONFIG_SAMSUNG_FASCINATE)
+		.num	= S5PV210_GPH1(7), // GPIO_PHONE_ACTIVE
+		.cfg	= S3C_GPIO_INPUT,
+		.val	= S3C_GPIO_SETPIN_NONE,
+		.pud	= S3C_GPIO_PULL_DOWN,
+		.drv	= S3C_GPIO_DRVSTR_1X,
+#else
 		.num	= S5PV210_GPH1(7), // GPIO_PHONE_ACTIVE
 		.cfg	= S3C_GPIO_SFN(0xF),
 		.val	= S3C_GPIO_SETPIN_NONE,
 		.pud	= S3C_GPIO_PULL_NONE,
 		.drv	= S3C_GPIO_DRVSTR_1X,
+#endif
 	},
 
 	// GPH2 ----------------------------
@@ -3422,11 +3512,19 @@ static struct gpio_init_data aries_init_gpios[] = {
 		.drv	= S3C_GPIO_DRVSTR_1X,
 #endif
 	}, {
+#if defined(CONFIG_SAMSUNG_FASCINATE)
+		.num	= S5PV210_GPH3(7), // GPIO_CP_RST	
+		.cfg	= S3C_GPIO_INPUT,
+		.val	= S3C_GPIO_SETPIN_NONE,
+		.pud	= S3C_GPIO_PULL_DOWN,
+		.drv	= S3C_GPIO_DRVSTR_1X,
+#else
 		.num	= S5PV210_GPH3(7), // GPIO_CP_RST	
 		.cfg	= S3C_GPIO_OUTPUT,
 		.val	= S3C_GPIO_SETPIN_ZERO,
 		.pud	= S3C_GPIO_PULL_NONE,
 		.drv	= S3C_GPIO_DRVSTR_1X,
+#endif
 	},
 
 	// GPI ----------------------------
@@ -3742,9 +3840,15 @@ static struct gpio_init_data aries_init_gpios[] = {
 		.drv	= S3C_GPIO_DRVSTR_1X,
 	}, {
 		.num	= S5PV210_GPJ4(4), // GPIO_TV_EN, GPIO_EAR_MICBIAS_EN
+#if defined(CONFIG_SAMSUNG_CAPTIVATE)
+		.cfg	= S3C_GPIO_OUTPUT,
+		.val	= S3C_GPIO_SETPIN_ZERO,
+		.pud	= S3C_GPIO_PULL_NONE,
+#else
 		.cfg	= S3C_GPIO_INPUT,
 		.val	= S3C_GPIO_SETPIN_NONE,
 		.pud	= S3C_GPIO_PULL_DOWN,
+#endif
 		.drv	= S3C_GPIO_DRVSTR_1X,
 	},
 
@@ -3983,8 +4087,11 @@ static unsigned int aries_sleep_gpio_table[][3] = {
 	// GPA1 ---------------------------------------------------
 	{ S5PV210_GPA1(0), S3C_GPIO_SLP_INPUT,	S3C_GPIO_PULL_DOWN},
 	{ S5PV210_GPA1(1), S3C_GPIO_SLP_OUT0,	S3C_GPIO_PULL_NONE},
+#if defined(CONFIG_SAMSUNG_FASCINATE)
+	{ S5PV210_GPA1(2), S3C_GPIO_SLP_INPUT,	S3C_GPIO_PULL_DOWN},
+#else
         { S5PV210_GPA1(2), S3C_GPIO_SLP_INPUT,  S3C_GPIO_PULL_NONE},
-//	{ S5PV210_GPA1(2), S3C_GPIO_SLP_INPUT,	S3C_GPIO_PULL_DOWN}, JVB-MERGE <<<<<<<<<<<<<<<<
+#endif
 	{ S5PV210_GPA1(3), S3C_GPIO_SLP_OUT0,	S3C_GPIO_PULL_NONE},
 
 	// GPB ----------------------------------------------------
@@ -4259,6 +4366,8 @@ static unsigned int aries_sleep_gpio_table[][3] = {
 	// GPJ1 ---------------------------------------------------
 #if defined (CONFIG_SAMSUNG_CAPTIVATE)
 	{ S5PV210_GPJ1(0), S3C_GPIO_SLP_OUT0,   S3C_GPIO_PULL_NONE},	//GPIO_PHONE_ON
+#elif defined(CONFIG_SAMSUNG_FASCINATE)
+  	{ S5PV210_GPJ1(0), S3C_GPIO_SLP_PREV,   S3C_GPIO_PULL_DOWN},
 #else
   	{ S5PV210_GPJ1(0), S3C_GPIO_SLP_INPUT,  S3C_GPIO_PULL_DOWN},
 #endif
@@ -4775,6 +4884,10 @@ static struct platform_device *aries_devices[] __initdata = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
 	&s3c_device_rndis,
 #endif
+#endif
+
+#ifdef CONFIG_PHONE_ARIES_CDMA
+	&sec_device_dpram,
 #endif
 
 #ifdef CONFIG_S3C_DEV_HSMMC
