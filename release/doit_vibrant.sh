@@ -17,6 +17,7 @@ REL=CM7_${TYPE}_$(date +%Y%m%d-%H)_platypus.zip
 
 rm -r release/system 2> /dev/null
 mkdir  -p release/system/lib/modules || exit 1
+mkdir  -p release/system/etc/init.d || exit 1
 #cp release/logger.module release/system/lib/modules/logger.ko
 find . -name "*.ko" -exec cp {} release/system/lib/modules/ \; 2>/dev/null || exit 1
 
