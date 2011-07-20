@@ -36,6 +36,7 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/random.h>
+#include <linux/ctype.h>
 #include <linux/nl80211.h>
 #include <linux/platform_device.h>
 #include <net/cfg80211.h>
@@ -73,7 +74,11 @@ const struct ieee80211_regdomain *cfg80211_regdomain;
  *     - last_request
  */
 static DEFINE_MUTEX(reg_mutex);
-#define assert_reg_lock() WARN_ON(!mutex_is_locked(&reg_mutex))
+
+static inline void assert_reg_lock(void)
+{
+	lockdep_assert_held(&reg_mutex);
+}
 
 /* Used to queue up regulatory hints */
 static LIST_HEAD(reg_requests_list);
@@ -181,14 +186,6 @@ static bool is_alpha2_set(const char *alpha2)
 	return false;
 }
 
-static bool is_alpha_upper(char letter)
-{
-	/* ASCII A - Z */
-	if (letter >= 65 && letter <= 90)
-		return true;
-	return false;
-}
-
 static bool is_unknown_alpha2(const char *alpha2)
 {
 	if (!alpha2)
@@ -220,7 +217,7 @@ static bool is_an_alpha2(const char *alpha2)
 {
 	if (!alpha2)
 		return false;
-	if (is_alpha_upper(alpha2[0]) && is_alpha_upper(alpha2[1]))
+	if (isalpha(alpha2[0]) && isalpha(alpha2[1]))
 		return true;
 	return false;
 }
@@ -753,8 +750,26 @@ static void handle_channel(struct wiphy *wiphy,
 			  desired_bw_khz,
 			  &reg_rule);
 
-	if (r)
+	if (r) {
+		/*
+		 * We will disable all channels that do not match our
+		 * recieved regulatory rule unless the hint is coming
+		 * from a Country IE and the Country IE had no information
+		 * about a band. The IEEE 802.11 spec allows for an AP
+		 * to send only a subset of the regulatory rules allowed,
+		 * so an AP in the US that only supports 2.4 GHz may only send
+		 * a country IE with information for the 2.4 GHz band
+		 * while 5 GHz is still supported.
+		 */
+		if (initiator == NL80211_REGDOM_SET_BY_COUNTRY_IE &&
+		    r == -ERANGE)
+			return;
+
+		REG_DBG_PRINT("cfg80211: Disabling freq %d MHz\n",
+			      chan->center_freq);
+		chan->flags = IEEE80211_CHAN_DISABLED;
 		return;
+	}
 
 	power_rule = &reg_rule->power_rule;
 	freq_range = &reg_rule->freq_range;
@@ -1404,6 +1419,11 @@ static DECLARE_WORK(reg_work, reg_todo);
 
 static void queue_regulatory_request(struct regulatory_request *request)
 {
+	if (isalpha(request->alpha2[0]))
+		request->alpha2[0] = toupper(request->alpha2[0]);
+	if (isalpha(request->alpha2[1]))
+		request->alpha2[1] = toupper(request->alpha2[1]);
+
 	spin_lock(&reg_requests_lock);
 	list_add_tail(&request->list, &reg_requests_list);
 	spin_unlock(&reg_requests_lock);
