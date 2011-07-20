@@ -35,8 +35,9 @@ rdev_freq_to_chan(struct cfg80211_registered_device *rdev,
 		if (!ht_cap->ht_supported)
 			return NULL;
 
-		if (!(ht_cap->cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40) ||
-		    ht_cap->cap & IEEE80211_HT_CAP_40MHZ_INTOLERANT)
+		if (channel_type != NL80211_CHAN_HT20 &&
+		    (!(ht_cap->cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40) ||
+		    ht_cap->cap & IEEE80211_HT_CAP_40MHZ_INTOLERANT))
 			return NULL;
 	}
 
@@ -53,10 +54,8 @@ static bool can_beacon_sec_chan(struct wiphy *wiphy,
 	switch (channel_type) {
 	case NL80211_CHAN_HT40PLUS:
 		diff = 20;
-		break;
 	case NL80211_CHAN_HT40MINUS:
 		diff = -20;
-		break;
 	default:
 		return false;
 	}
