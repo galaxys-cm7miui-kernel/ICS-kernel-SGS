@@ -8,7 +8,7 @@
 echo "packaging it up"
 
 TYPE=$1
-[[ "$TYPE" == '' ]] && TYPE=TELUSMTD
+[[ "$TYPE" == '' ]] && TYPE=TELUS
 
 RELVER=$2
 [[ "$RELVER" == '' ]] && RELVER="0"

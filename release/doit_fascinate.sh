@@ -8,7 +8,7 @@
 echo "packaging it up"
 
 TYPE=$1
-[[ "$TYPE" == '' ]] && TYPE=FASCINATEMTD
+[[ "$TYPE" == '' ]] && TYPE=FASCINATE
 
 RELVER=$2
 [[ "$RELVER" == '' ]] && RELVER="0"
