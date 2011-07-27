@@ -20,6 +20,12 @@ echo "launching packaging script with voodoo color"
 
 mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd
 
+echo "updating CM7 kernel tree"
+cp arch/arm/boot/zImage ~/android/system/device/samsung/galaxysmtd/kernel
+cp drivers/net/wireless/bcm4329/bcm4329.ko ~/android/system/device/samsung/galaxysmtd/
+cp drivers/net/tun.ko ~/android/system/device/samsung/galaxysmtd/
+cp fs/cifs/cifs.ko ~/android/system/device/samsung/galaxysmtd/
+
 . ./setenv.sh
 
 echo "building kernel without voodoo color"
