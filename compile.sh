@@ -18,7 +18,7 @@ echo "creating boot.img with voodoo color"
 echo "launching packaging script with voodoo color"
 ./release/doit.sh ${RELVER}v
 
-mv release/CM7_FuguMod* ../../public_html/
+mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd
 
 . ./setenv.sh
 
@@ -34,4 +34,4 @@ echo "creating boot.img without voodoo color"
 echo "launching packaging script without voodoo color"
 ./release/doit.sh ${RELVER}n
 
-mv release/CM7_FuguMod* ../../public_html/
+mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd
