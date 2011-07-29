@@ -629,7 +629,7 @@ struct transaction_s
 	/*
 	 * How many handles used this transaction? [t_handle_lock]
 	 */
-	int t_handle_count;
+	atomic_t		t_handle_count;
 
 	/*
 	 * This transaction is being forced and some process is
@@ -764,7 +764,7 @@ struct journal_s
 	/*
 	 * Protect the various scalars in the journal
 	 */
-	spinlock_t		j_state_lock;
+	rwlock_t		j_state_lock;
 
 	/*
 	 * Number of processes waiting to create a barrier lock [j_state_lock]
@@ -1082,7 +1082,9 @@ static inline handle_t *journal_current_handle(void)
  */
 
 extern handle_t *jbd2_journal_start(journal_t *, int nblocks);
-extern int	 jbd2_journal_restart (handle_t *, int nblocks);
+extern handle_t *jbd2__journal_start(journal_t *, int nblocks, int gfp_mask);
+extern int	 jbd2_journal_restart(handle_t *, int nblocks);
+extern int	 jbd2__journal_restart(handle_t *, int nblocks, int gfp_mask);
 extern int	 jbd2_journal_extend (handle_t *, int nblocks);
 extern int	 jbd2_journal_get_write_access(handle_t *, struct buffer_head *);
 extern int	 jbd2_journal_get_create_access (handle_t *, struct buffer_head *);

@@ -150,11 +150,11 @@ static int journal_submit_commit_record(journal_t *journal,
 	 */
 	if (ret == -EOPNOTSUPP && barrier_done) {
 		printk(KERN_WARNING
-		       "JBD: barrier-based sync failed on %s - "
-		       "disabling barriers\n", journal->j_devname);
-		spin_lock(&journal->j_state_lock);
+		       "JBD2: Disabling barriers on %s, "
+		       "not supported by device\n", journal->j_devname);
+		write_lock(&journal->j_state_lock);
 		journal->j_flags &= ~JBD2_BARRIER;
-		spin_unlock(&journal->j_state_lock);
+		write_unlock(&journal->j_state_lock);
 
 		/* And try again, without the barrier */
 		lock_buffer(bh);
@@ -180,11 +180,11 @@ retry:
 	wait_on_buffer(bh);
 	if (buffer_eopnotsupp(bh) && (journal->j_flags & JBD2_BARRIER)) {
 		printk(KERN_WARNING
-		       "JBD2: wait_on_commit_record: sync failed on %s - "
-		       "disabling barriers\n", journal->j_devname);
-		spin_lock(&journal->j_state_lock);
+		       "JBD2: %s: disabling barries on %s - not supported "
+		       "by device\n", __func__, journal->j_devname);
+		write_lock(&journal->j_state_lock);
 		journal->j_flags &= ~JBD2_BARRIER;
-		spin_unlock(&journal->j_state_lock);
+		write_unlock(&journal->j_state_lock);
 
 		lock_buffer(bh);
 		clear_buffer_dirty(bh);
@@ -409,7 +409,7 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 	jbd_debug(1, "JBD: starting commit of transaction %d\n",
 			commit_transaction->t_tid);
 
-	spin_lock(&journal->j_state_lock);
+	write_lock(&journal->j_state_lock);
 	commit_transaction->t_state = T_LOCKED;
 
 	/*
@@ -433,9 +433,9 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 					TASK_UNINTERRUPTIBLE);
 		if (atomic_read(&commit_transaction->t_updates)) {
 			spin_unlock(&commit_transaction->t_handle_lock);
-			spin_unlock(&journal->j_state_lock);
+			write_unlock(&journal->j_state_lock);
 			schedule();
-			spin_lock(&journal->j_state_lock);
+			write_lock(&journal->j_state_lock);
 			spin_lock(&commit_transaction->t_handle_lock);
 		}
 		finish_wait(&journal->j_wait_updates, &wait);
@@ -506,7 +506,7 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 	start_time = ktime_get();
 	commit_transaction->t_log_start = journal->j_head;
 	wake_up(&journal->j_wait_transaction_locked);
-	spin_unlock(&journal->j_state_lock);
+	write_unlock(&journal->j_state_lock);
 
 	jbd_debug (3, "JBD: commit phase 2\n");
 
@@ -528,9 +528,9 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 	 * transaction!  Now comes the tricky part: we need to write out
 	 * metadata.  Loop over the transaction's entire buffer list:
 	 */
-	spin_lock(&journal->j_state_lock);
+	write_lock(&journal->j_state_lock);
 	commit_transaction->t_state = T_COMMIT;
-	spin_unlock(&journal->j_state_lock);
+	write_unlock(&journal->j_state_lock);
 
 	trace_jbd2_commit_logging(journal, commit_transaction);
 	stats.run.rs_logging = jiffies;
@@ -987,7 +987,7 @@ restart_loop:
 	 * __jbd2_journal_drop_transaction(). Otherwise we could race with
 	 * other checkpointing code processing the transaction...
 	 */
-	spin_lock(&journal->j_state_lock);
+	write_lock(&journal->j_state_lock);
 	spin_lock(&journal->j_list_lock);
 	/*
 	 * Now recheck if some buffers did not get attached to the transaction
@@ -995,7 +995,7 @@ restart_loop:
 	 */
 	if (commit_transaction->t_forget) {
 		spin_unlock(&journal->j_list_lock);
-		spin_unlock(&journal->j_state_lock);
+		write_unlock(&journal->j_state_lock);
 		goto restart_loop;
 	}
 
@@ -1013,7 +1013,8 @@ restart_loop:
 	 * File the transaction statistics
 	 */
 	stats.ts_tid = commit_transaction->t_tid;
-	stats.run.rs_handle_count = commit_transaction->t_handle_count;
+	stats.run.rs_handle_count =
+		atomic_read(&commit_transaction->t_handle_count);
 	trace_jbd2_run_stats(journal->j_fs_dev->bd_dev,
 			     commit_transaction->t_tid, &stats.run);
 
@@ -1047,7 +1048,7 @@ restart_loop:
 				journal->j_average_commit_time*3) / 4;
 	else
 		journal->j_average_commit_time = commit_time;
-	spin_unlock(&journal->j_state_lock);
+	write_unlock(&journal->j_state_lock);
 
 	if (commit_transaction->t_checkpoint_list == NULL &&
 	    commit_transaction->t_checkpoint_io_list == NULL) {
