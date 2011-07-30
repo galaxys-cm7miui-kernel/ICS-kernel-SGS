@@ -58,7 +58,7 @@ static inline void handle_sysrq(int key, struct tty_struct *tty)
 {
 }
 
-static inline void __handle_sysrq(int key, struct tty_struct *tty, int check_mask);
+static inline void __handle_sysrq(int key, struct tty_struct *tty, int check_mask)
 {
 }
 
