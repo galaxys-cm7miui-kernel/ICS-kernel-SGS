@@ -1,6 +1,6 @@
 #!/bin/sh
 export ARCH=arm 
-export TOOLCHAIN=~/arm-2011.03
+export TOOLCHAIN=~/arm-2010q1
 export PATH=$PATH:${TOOLCHAIN}/bin:/usr/java/jdk1.6.0_21/bin
 export CROSS_COMPILE=${TOOLCHAIN}/bin/arm-none-eabi-
 #export ac_cv_linux_vers=2.6.32
