@@ -64,6 +64,26 @@ static struct afs_cell *afs_cell_alloc(const char *name, char *vllist)
 	INIT_LIST_HEAD(&cell->vl_list);
 	spin_lock_init(&cell->vl_lock);
 
+	/* if the ip address is invalid, try dns query */
+	if (!vllist || strlen(vllist) < 7) {
+		ret = dns_query("afsdb", name, namelen, "ipv4", &dvllist, NULL);
+		if (ret < 0) {
+			if (ret == -ENODATA || ret == -EAGAIN || ret == -ENOKEY)
+				/* translate these errors into something
+				 * userspace might understand */
+				ret = -EDESTADDRREQ;
+			_leave(" = %d", ret);
+			return ERR_PTR(ret);
+		}
+		_vllist = dvllist;
+
+		/* change the delimiter for user-space reply */
+		delimiter = ',';
+
+	} else {
+		_vllist = vllist;
+	}
+
 	/* fill in the VL server list from the rest of the string */
 	do {
 		unsigned a, b, c, d;
