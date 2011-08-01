@@ -175,9 +175,11 @@ static long __mlock_vma_pages_range(struct vm_area_struct *vma,
 		gup_flags |= FOLL_WRITE;
 
 	/* We don't try to access the guard page of a stack vma */
-	if (stack_guard_page(vma, start)) {
-		addr += PAGE_SIZE;
-		nr_pages--;
+	if (vma->vm_flags & VM_GROWSDOWN) {
+		if (start == vma->vm_start) {
+			start += PAGE_SIZE;
+			nr_pages--;
+		}
 	}
 
 	while (nr_pages > 0) {
