@@ -128,9 +128,36 @@ select_route universal_wm8994_playback_paths[] =
 	{wm8994_set_off, wm8994_set_playback_receiver,
 	wm8994_set_playback_speaker, wm8994_set_playback_headset, wm8994_set_off, wm8994_set_playback_speaker_headset};
 
-select_route universal_wm8994_voicecall_paths[] = 
-	{wm8994_set_off, wm8994_set_voicecall_receiver, 
-	wm8994_set_voicecall_speaker, wm8994_set_voicecall_headset, wm8994_set_voicecall_bluetooth}; 
+/* codec private data */
+struct wm8994_priv {
+	struct wm_hubs_data hubs;
+	struct snd_soc_codec codec;
+	u16 reg_cache[WM8994_REG_CACHE_SIZE + 1];
+	int sysclk[2];
+	int sysclk_rate[2];
+	int mclk[2];
+	int aifclk[2];
+	struct fll_config fll[2], fll_suspend[2];
+
+	int dac_rates[2];
+	int lrclk_shared[2];
+
+	/* Platform dependant DRC configuration */
+	const char **drc_texts;
+	int drc_cfg[WM8994_NUM_DRC];
+	struct soc_enum drc_enum;
+
+	/* Platform dependant ReTune mobile configuration */
+	int num_retune_mobile_texts;
+	const char **retune_mobile_texts;
+	int retune_mobile_cfg[WM8994_NUM_EQ];
+	struct soc_enum retune_mobile_enum;
+
+	struct wm8994_micdet micdet[2];
+
+	int revision;
+	struct wm8994_pdata *pdata;
+};
 
 select_mic_route universal_wm8994_mic_paths[] = {wm8994_record_main_mic,wm8994_record_headset_mic};
 
@@ -991,6 +1018,8 @@ static int wm8994_set_sysclk(struct snd_soc_dai *codec_dai,
 static int wm8994_set_bias_level(struct snd_soc_codec *codec,
 				 enum snd_soc_bias_level level)
 {
+	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
+
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 		break;
@@ -1005,10 +1034,14 @@ static int wm8994_set_bias_level(struct snd_soc_codec *codec,
 		if (codec->bias_level == SND_SOC_BIAS_OFF) {
 			/* Tweak DC servo and DSP configuration for
 			 * improved performance. */
-			snd_soc_write(codec, 0x102, 0x3);
-			snd_soc_write(codec, 0x56, 0x3);
-			snd_soc_write(codec, 0x817, 0);
-			snd_soc_write(codec, 0x102, 0);
+			if (wm8994->revision < 4) {
+				/* Tweak DC servo and DSP configuration for
+				 * improved performance. */
+				snd_soc_write(codec, 0x102, 0x3);
+				snd_soc_write(codec, 0x56, 0x3);
+				snd_soc_write(codec, 0x817, 0);
+				snd_soc_write(codec, 0x102, 0);
+			}
 
 			/* Discharge LINEOUT1 & 2 */
 			snd_soc_update_bits(codec, WM8994_ANTIPOP_1,
@@ -1861,11 +1894,75 @@ static int wm8994_pcm_probe(struct platform_device *pdev)
 /* power down chip */
 static int wm8994_pcm_remove(struct platform_device *pdev)
 {
-        struct snd_soc_device *socdev = platform_get_drvdata(pdev);
-	struct snd_soc_codec *codec = wm8994_pcm_codec;
+	int ret;
+	struct wm8994_priv *wm8994;
+	struct snd_soc_codec *codec;
+	int i;
 
-        snd_soc_free_pcms(socdev);
-        snd_soc_dapm_free(socdev);
+	if (wm8994_codec) {
+		dev_err(&pdev->dev, "Another WM8994 is registered\n");
+		return -EINVAL;
+	}
+
+	wm8994 = kzalloc(sizeof(struct wm8994_priv), GFP_KERNEL);
+	if (!wm8994) {
+		dev_err(&pdev->dev, "Failed to allocate private data\n");
+		return -ENOMEM;
+	}
+
+	codec = &wm8994->codec;
+
+	mutex_init(&codec->mutex);
+	INIT_LIST_HEAD(&codec->dapm_widgets);
+	INIT_LIST_HEAD(&codec->dapm_paths);
+
+	snd_soc_codec_set_drvdata(codec, wm8994);
+	codec->control_data = dev_get_drvdata(pdev->dev.parent);
+	codec->name = "WM8994";
+	codec->owner = THIS_MODULE;
+	codec->read = wm8994_read;
+	codec->write = wm8994_write;
+	codec->readable_register = wm8994_readable;
+	codec->bias_level = SND_SOC_BIAS_OFF;
+	codec->set_bias_level = wm8994_set_bias_level;
+	codec->dai = &wm8994_dai[0];
+	codec->num_dai = 3;
+	codec->reg_cache_size = WM8994_MAX_REGISTER;
+	codec->reg_cache = &wm8994->reg_cache;
+	codec->dev = &pdev->dev;
+
+	wm8994->pdata = pdev->dev.parent->platform_data;
+
+	/* Fill the cache with physical values we inherited; don't reset */
+	ret = wm8994_bulk_read(codec->control_data, 0,
+			       ARRAY_SIZE(wm8994->reg_cache) - 1,
+			       codec->reg_cache);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to fill register cache: %d\n",
+			ret);
+		goto err;
+	}
+
+	/* Clear the cached values for unreadable/volatile registers to
+	 * avoid potential confusion.
+	 */
+	for (i = 0; i < ARRAY_SIZE(wm8994->reg_cache); i++)
+		if (wm8994_volatile(i) || !wm8994_readable(i))
+			wm8994->reg_cache[i] = 0;
+
+	/* Set revision-specific configuration */
+	wm8994->revision = snd_soc_read(codec, WM8994_CHIP_REVISION);
+	switch (wm8994->revision) {
+	case 2:
+	case 3:
+		wm8994->hubs.dcs_codes = -5;
+		wm8994->hubs.hp_startup_mode = 1;
+		wm8994->hubs.dcs_readback_mode = 1;
+		break;
+	default:
+		wm8994->hubs.dcs_readback_mode = 1;
+		break;
+	}
 
 #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)	// It's executed by I2S
       //  i2c_unregister_device(codec->control_data);
