@@ -1112,46 +1112,6 @@ static int too_many_isolated(struct zone *zone, int file,
 }
 
 /*
-<<<<<<< HEAD
- * Returns true if the caller should wait to clean dirty/writeback pages.
- *
- * If we are direct reclaiming for contiguous pages and we do not reclaim
- * everything in the list, try again and wait for writeback IO to complete.
- * This will stall high-order allocations noticeably. Only do that when really
- * need to free the pages under high memory pressure.
- */
-static inline bool should_reclaim_stall(unsigned long nr_taken,
-					unsigned long nr_freed,
-					int priority,
-					struct scan_control *sc)
-{
-	int lumpy_stall_priority;
-
-	/* kswapd should not stall on sync IO */
-	if (current_is_kswapd())
-		return false;
-
-	/* Only stall on lumpy reclaim */
-	if (!sc->lumpy_reclaim_mode)
-		return false;
-
-	/* If we have relaimed everything on the isolated list, no stall */
-	if (nr_freed == nr_taken)
-		return false;
-
-	/*
-	 * For high-order allocations, there are two stall thresholds.
-	 * High-cost allocations stall immediately where as lower
-	 * order allocations such as stacks require the scanning
-	 * priority to be much higher before stalling.
-	 */
-	if (sc->order > PAGE_ALLOC_COSTLY_ORDER)
-		lumpy_stall_priority = DEF_PRIORITY;
-	else
-		lumpy_stall_priority = DEF_PRIORITY / 3;
-
-	return priority <= lumpy_stall_priority;
-=======
  * TODO: Try merging with migrations version of putback_lru_pages
  */
 static noinline_for_stack void
@@ -1197,7 +1157,6 @@ putback_lru_pages(struct zone *zone, struct zone_reclaim_stat *reclaim_stat,
 
 	spin_unlock_irq(&zone->lru_lock);
 	pagevec_release(&pvec);
->>>>>>> 6663562... vmscan: set up pagevec as late as possible in shrink_inactive_list()
 }
 
 /*
