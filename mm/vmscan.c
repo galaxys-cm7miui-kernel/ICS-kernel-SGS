@@ -1112,6 +1112,7 @@ static int too_many_isolated(struct zone *zone, int file,
 }
 
 /*
+<<<<<<< HEAD
  * Returns true if the caller should wait to clean dirty/writeback pages.
  *
  * If we are direct reclaiming for contiguous pages and we do not reclaim
@@ -1150,22 +1151,67 @@ static inline bool should_reclaim_stall(unsigned long nr_taken,
 		lumpy_stall_priority = DEF_PRIORITY / 3;
 
 	return priority <= lumpy_stall_priority;
+=======
+ * TODO: Try merging with migrations version of putback_lru_pages
+ */
+static noinline_for_stack void
+putback_lru_pages(struct zone *zone, struct zone_reclaim_stat *reclaim_stat,
+				unsigned long nr_anon, unsigned long nr_file,
+				struct list_head *page_list)
+{
+	struct page *page;
+	struct pagevec pvec;
+
+	pagevec_init(&pvec, 1);
+
+	/*
+	 * Put back any unfreeable pages.
+	 */
+	spin_lock(&zone->lru_lock);
+	while (!list_empty(page_list)) {
+		int lru;
+		page = lru_to_page(page_list);
+		VM_BUG_ON(PageLRU(page));
+		list_del(&page->lru);
+		if (unlikely(!page_evictable(page, NULL))) {
+			spin_unlock_irq(&zone->lru_lock);
+			putback_lru_page(page);
+			spin_lock_irq(&zone->lru_lock);
+			continue;
+		}
+		SetPageLRU(page);
+		lru = page_lru(page);
+		add_page_to_lru_list(zone, page, lru);
+		if (is_active_lru(lru)) {
+			int file = is_file_lru(lru);
+			reclaim_stat->recent_rotated[file]++;
+		}
+		if (!pagevec_add(&pvec, page)) {
+			spin_unlock_irq(&zone->lru_lock);
+			__pagevec_release(&pvec);
+			spin_lock_irq(&zone->lru_lock);
+		}
+	}
+	__mod_zone_page_state(zone, NR_ISOLATED_ANON, -nr_anon);
+	__mod_zone_page_state(zone, NR_ISOLATED_FILE, -nr_file);
+
+	spin_unlock_irq(&zone->lru_lock);
+	pagevec_release(&pvec);
+>>>>>>> 6663562... vmscan: set up pagevec as late as possible in shrink_inactive_list()
 }
 
 /*
  * shrink_inactive_list() is a helper for shrink_zone().  It returns the number
  * of reclaimed pages
  */
-static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
-			struct zone *zone, struct scan_control *sc,
-			int priority, int file)
+static noinline_for_stack unsigned long
+shrink_inactive_list(unsigned long nr_to_scan, struct zone *zone,
+			struct scan_control *sc, int priority, int file)
 {
 	LIST_HEAD(page_list);
-	struct pagevec pvec;
 	unsigned long nr_scanned;
 	unsigned long nr_reclaimed = 0;
 	struct zone_reclaim_stat *reclaim_stat = get_reclaim_stat(zone, sc);
-	struct page *page;
 	unsigned long nr_taken;
 	unsigned long nr_active;
 	unsigned int count[NR_LRU_LISTS] = { 0, };
@@ -1180,8 +1226,6 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 			return SWAP_CLUSTER_MAX;
 	}
 
-
-	pagevec_init(&pvec, 1);
 
 	lru_add_drain();
 	spin_lock_irq(&zone->lru_lock);
@@ -1212,8 +1256,10 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 		 */
 	}
 
-	if (nr_taken == 0)
-		goto done;
+	if (nr_taken == 0) {
+		spin_unlock_irq(&zone->lru_lock);
+		return 0;
+	}
 
 	nr_active = clear_active_flags(&page_list, count);
 	__count_vm_events(PGDEACTIVATE, nr_active);
@@ -1264,40 +1310,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 		__count_vm_events(KSWAPD_STEAL, nr_reclaimed);
 	__count_zone_vm_events(PGSTEAL, zone, nr_reclaimed);
 
-	spin_lock(&zone->lru_lock);
-	/*
-	 * Put back any unfreeable pages.
-	 */
-	while (!list_empty(&page_list)) {
-		int lru;
-		page = lru_to_page(&page_list);
-		VM_BUG_ON(PageLRU(page));
-		list_del(&page->lru);
-		if (unlikely(!page_evictable(page, NULL))) {
-			spin_unlock_irq(&zone->lru_lock);
-			putback_lru_page(page);
-			spin_lock_irq(&zone->lru_lock);
-			continue;
-		}
-		SetPageLRU(page);
-		lru = page_lru(page);
-		add_page_to_lru_list(zone, page, lru);
-		if (is_active_lru(lru)) {
-			int file = is_file_lru(lru);
-			reclaim_stat->recent_rotated[file]++;
-		}
-		if (!pagevec_add(&pvec, page)) {
-			spin_unlock_irq(&zone->lru_lock);
-			__pagevec_release(&pvec);
-			spin_lock_irq(&zone->lru_lock);
-		}
-	}
-	__mod_zone_page_state(zone, NR_ISOLATED_ANON, -nr_anon);
-	__mod_zone_page_state(zone, NR_ISOLATED_FILE, -nr_file);
-
-done:
-	spin_unlock_irq(&zone->lru_lock);
-	pagevec_release(&pvec);
+	putback_lru_pages(zone, reclaim_stat, nr_anon, nr_file, &page_list);
 	return nr_reclaimed;
 }
 
