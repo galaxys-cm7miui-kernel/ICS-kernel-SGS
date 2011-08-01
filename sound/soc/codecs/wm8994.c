@@ -988,6 +988,71 @@ static int wm8994_set_sysclk(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
+static int wm8994_set_bias_level(struct snd_soc_codec *codec,
+				 enum snd_soc_bias_level level)
+{
+	switch (level) {
+	case SND_SOC_BIAS_ON:
+		break;
+
+	case SND_SOC_BIAS_PREPARE:
+		/* VMID=2x40k */
+		snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
+				    WM8994_VMID_SEL_MASK, 0x2);
+		break;
+
+	case SND_SOC_BIAS_STANDBY:
+		if (codec->bias_level == SND_SOC_BIAS_OFF) {
+			/* Tweak DC servo and DSP configuration for
+			 * improved performance. */
+			snd_soc_write(codec, 0x102, 0x3);
+			snd_soc_write(codec, 0x56, 0x3);
+			snd_soc_write(codec, 0x817, 0);
+			snd_soc_write(codec, 0x102, 0);
+
+			/* Discharge LINEOUT1 & 2 */
+			snd_soc_update_bits(codec, WM8994_ANTIPOP_1,
+					    WM8994_LINEOUT1_DISCH |
+					    WM8994_LINEOUT2_DISCH,
+					    WM8994_LINEOUT1_DISCH |
+					    WM8994_LINEOUT2_DISCH);
+
+			/* Startup bias, VMID ramp & buffer */
+			snd_soc_update_bits(codec, WM8994_ANTIPOP_2,
+					    WM8994_STARTUP_BIAS_ENA |
+					    WM8994_VMID_BUF_ENA |
+					    WM8994_VMID_RAMP_MASK,
+					    WM8994_STARTUP_BIAS_ENA |
+					    WM8994_VMID_BUF_ENA |
+					    (0x11 << WM8994_VMID_RAMP_SHIFT));
+
+			/* Main bias enable, VMID=2x40k */
+			snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
+					    WM8994_BIAS_ENA |
+					    WM8994_VMID_SEL_MASK,
+					    WM8994_BIAS_ENA | 0x2);
+
+			msleep(20);
+		}
+
+		/* VMID=2x500k */
+		snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
+				    WM8994_VMID_SEL_MASK, 0x4);
+
+		break;
+
+	case SND_SOC_BIAS_OFF:
+		if (codec->bias_level == SND_SOC_BIAS_STANDBY) {
+			/* Switch over to startup biases */
+			snd_soc_update_bits(codec, WM8994_ANTIPOP_2,
+					    WM8994_BIAS_SRC |
+					    WM8994_STARTUP_BIAS_ENA |
+					    WM8994_VMID_BUF_ENA |
+					    WM8994_VMID_RAMP_MASK,
+					    WM8994_BIAS_SRC |
+					    WM8994_STARTUP_BIAS_ENA |
+					    WM8994_VMID_BUF_ENA |
+					    (1 << WM8994_VMID_RAMP_SHIFT));
 
 static int wm8994_set_dai_fmt(struct snd_soc_dai *dai,
 			      unsigned int fmt)
