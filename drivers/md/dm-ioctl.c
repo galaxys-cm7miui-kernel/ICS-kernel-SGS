@@ -274,10 +274,6 @@ retry:
 			up_write(&_hash_lock);
 
 			dm_put(md);
-			if (likely(keep_open_devices))
-				dm_destroy(md);
-			else
-				dm_destroy_immediate(md);
 
 			/*
 			 * Some mapped devices may be using other mapped
