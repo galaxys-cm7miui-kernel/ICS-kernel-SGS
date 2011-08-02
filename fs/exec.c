@@ -449,10 +449,6 @@ static int copy_strings(int argc, const char __user *const __user *argv,
 		while (len > 0) {
 			int offset, bytes_to_copy;
 
-			if (fatal_signal_pending(current)) {
-				ret = -ERESTARTNOHAND;
-				goto out;
-			}
 			cond_resched();
 
 			offset = pos % PAGE_SIZE;
