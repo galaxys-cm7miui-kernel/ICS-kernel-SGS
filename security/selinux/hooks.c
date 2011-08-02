@@ -2172,7 +2172,6 @@ static inline void flush_unauthorized_files(const struct cred *cred,
 	if (tty) {
 		spin_lock(&tty_files_lock);
 		if (!list_empty(&tty->tty_files)) {
-			struct tty_file_private *file_priv;
 			struct inode *inode;
 
 			/* Revalidate access to controlling tty.
@@ -2180,9 +2179,7 @@ static inline void flush_unauthorized_files(const struct cred *cred,
 			   than using file_has_perm, as this particular open
 			   file may belong to another process and we are only
 			   interested in the inode-based check here. */
-			file_priv = list_first_entry(&tty->tty_files,
-						struct tty_file_private, list);
-			file = file_priv->file;
+			file = list_first_entry(&tty->tty_files, struct file, f_u.fu_list);
 			inode = file->f_path.dentry->d_inode;
 			if (inode_has_perm(cred, inode,
 					   FILE__READ | FILE__WRITE, NULL)) {
