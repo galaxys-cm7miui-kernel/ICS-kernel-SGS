@@ -242,7 +242,7 @@ return new_freq;
 }
 }
 if (cpu_load > max_cpu_load) {
-if(policy->cur < 1200000 && policy->cur > 200000) {
+if(policy->cur < 1200000 && policy->cur >= 200000) {
 /* catch the gap between 400 and 800 when scaling up -netarchy */
 if(policy->cur == 400000) {
 new_freq = policy->cur + 400000;
