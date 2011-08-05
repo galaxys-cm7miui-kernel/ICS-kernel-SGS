@@ -3,6 +3,12 @@
 RELVER=`cat .version`
 let RELVER=RELVER+1
 
+if [ -f testcompile ]
+then
+        TEST=test
+	echo '************* WARNING, this is a TEST BUILD ***************'
+fi
+
 . ./setenv.sh
 
 echo "building kernel with voodoo color"
@@ -18,7 +24,7 @@ echo "creating boot.img with voodoo color"
 echo "launching packaging script with voodoo color"
 ./release/doit.sh ${RELVER}v
 
-mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd
+mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd/${TEST}/
 
 echo "updating CM7 kernel tree"
 cp arch/arm/boot/zImage ~/android/system/device/samsung/galaxysmtd/kernel
@@ -40,4 +46,4 @@ echo "creating boot.img without voodoo color"
 echo "launching packaging script without voodoo color"
 ./release/doit.sh ${RELVER}n
 
-mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd
+mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd/${TEST}/
