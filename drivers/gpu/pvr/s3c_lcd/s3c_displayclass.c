@@ -330,7 +330,7 @@ static void VsyncWorkqueueFunc(struct work_struct *psWork)
 
 static S3C_BOOL CreateVsyncWorkQueue(S3C_LCD_DEVINFO *psDevInfo)
 {
-	psDevInfo->psWorkQueue = create_rt_workqueue("vsync_workqueue");
+	psDevInfo->psWorkQueue = create_singlethread_workqueue("vsync_workqueue");
 
 	if (psDevInfo->psWorkQueue == IMG_NULL)
 	{

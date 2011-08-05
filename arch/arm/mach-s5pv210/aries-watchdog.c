@@ -71,7 +71,7 @@ static void watchdog_stop(void)
 
 static int watchdog_probe(struct platform_device *pdev)
 {
-	watchdog_wq = create_rt_workqueue("pet_watchdog");
+	watchdog_wq = create_singlethread_workqueue("pet_watchdog");
 	watchdog_start();
 	return 0;
 }
