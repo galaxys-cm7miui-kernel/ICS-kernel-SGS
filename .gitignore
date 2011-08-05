@@ -50,6 +50,7 @@ modules.builtin
 #
 !.gitignore
 !.mailmap
+!.version
 
 #
 # Generated include files
