@@ -10,6 +10,7 @@
 #include <linux/module.h>
 #include <linux/writeback.h>
 #include <linux/device.h>
+#include <trace/events/writeback.h>
 
 static atomic_long_t bdi_seq = ATOMIC_LONG_INIT(0);
 
@@ -50,8 +51,6 @@ static struct timer_list sync_supers_timer;
 static int bdi_sync_supers(void *);
 static void sync_supers_timer_fn(unsigned long);
 
-static void bdi_add_default_flusher_thread(struct backing_dev_info *bdi);
-
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
@@ -83,7 +82,8 @@ static int bdi_debug_stats_show(struct seq_file *m, void *v)
 		nr_more_io++;
 	spin_unlock(&inode_lock);
 
-	get_dirty_limits(&background_thresh, &dirty_thresh, &bdi_thresh, bdi);
+	global_dirty_limits(&background_thresh, &dirty_thresh);
+	bdi_thresh = bdi_dirty_limit(bdi, dirty_thresh);
 
 #define K(x) ((x) << (PAGE_SHIFT - 10))
 	seq_printf(m,
@@ -238,7 +238,6 @@ static int __init default_bdi_init(void)
 	sync_supers_tsk = kthread_run(bdi_sync_supers, NULL, "sync_supers");
 	BUG_ON(IS_ERR(sync_supers_tsk));
 
-	init_timer(&sync_supers_timer);
 	setup_timer(&sync_supers_timer, sync_supers_timer_fn, 0);
 	bdi_arm_supers_timer();
 
@@ -250,17 +249,6 @@ static int __init default_bdi_init(void)
 	return err;
 }
 subsys_initcall(default_bdi_init);
-
-static void bdi_wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi)
-{
-	memset(wb, 0, sizeof(*wb));
-
-	wb->bdi = bdi;
-	wb->last_old_flush = jiffies;
-	INIT_LIST_HEAD(&wb->b_dirty);
-	INIT_LIST_HEAD(&wb->b_io);
-	INIT_LIST_HEAD(&wb->b_more_io);
-}
 
 int bdi_has_dirty_io(struct backing_dev_info *bdi)
 {
@@ -319,6 +307,57 @@ static void sync_supers_timer_fn(unsigned long unused)
 	bdi_arm_supers_timer();
 }
 
+static void wakeup_timer_fn(unsigned long data)
+{
+	struct backing_dev_info *bdi = (struct backing_dev_info *)data;
+
+	spin_lock_bh(&bdi->wb_lock);
+	if (bdi->wb.task) {
+		trace_writeback_wake_thread(bdi);
+		wake_up_process(bdi->wb.task);
+	} else {
+		/*
+		 * When bdi tasks are inactive for long time, they are killed.
+		 * In this case we have to wake-up the forker thread which
+		 * should create and run the bdi thread.
+		 */
+		trace_writeback_wake_forker_thread(bdi);
+		wake_up_process(default_backing_dev_info.wb.task);
+	}
+	spin_unlock_bh(&bdi->wb_lock);
+}
+
+/*
+ * This function is used when the first inode for this bdi is marked dirty. It
+ * wakes-up the corresponding bdi thread which should then take care of the
+ * periodic background write-out of dirty inodes. Since the write-out would
+ * starts only 'dirty_writeback_interval' centisecs from now anyway, we just
+ * set up a timer which wakes the bdi thread up later.
+ *
+ * Note, we wouldn't bother setting up the timer, but this function is on the
+ * fast-path (used by '__mark_inode_dirty()'), so we save few context switches
+ * by delaying the wake-up.
+ */
+void bdi_wakeup_thread_delayed(struct backing_dev_info *bdi)
+{
+	unsigned long timeout;
+
+	timeout = msecs_to_jiffies(dirty_writeback_interval * 10);
+	mod_timer(&bdi->wb.wakeup_timer, jiffies + timeout);
+}
+
+/*
+ * Calculate the longest interval (jiffies) bdi threads are allowed to be
+ * inactive.
+ */
+static unsigned long bdi_longest_inactive(void)
+{
+	unsigned long interval;
+
+	interval = msecs_to_jiffies(dirty_writeback_interval * 10);
+	return max(5UL * 60 * HZ, interval);
+}
+
 static int bdi_forker_thread(void *ptr)
 {
 	struct bdi_writeback *me = ptr;
@@ -332,129 +371,135 @@ static int bdi_forker_thread(void *ptr)
 	set_user_nice(current, 0);
 
 	for (;;) {
-		struct task_struct *task;
-		struct backing_dev_info *bdi, *tmp;
+		struct task_struct *task = NULL;
+		struct backing_dev_info *bdi;
+		enum {
+			NO_ACTION,   /* Nothing to do */
+			FORK_THREAD, /* Fork bdi thread */
+			KILL_THREAD, /* Kill inactive bdi thread */
+		} action = NO_ACTION;
 
 		/*
 		 * Temporary measure, we want to make sure we don't see
 		 * dirty data on the default backing_dev_info
 		 */
-		if (wb_has_dirty_io(me) || !list_empty(&me->bdi->work_list))
+		if (wb_has_dirty_io(me) || !list_empty(&me->bdi->work_list)) {
+			del_timer(&me->wakeup_timer);
 			wb_do_writeback(me, 0);
-
-		spin_lock_bh(&bdi_lock);
-
-		/*
-		 * Check if any existing bdi's have dirty data without
-		 * a thread registered. If so, set that up.
-		 */
-		list_for_each_entry_safe(bdi, tmp, &bdi_list, bdi_list) {
-			if (bdi->wb.task)
-				continue;
-			if (list_empty(&bdi->work_list) &&
-			    !bdi_has_dirty_io(bdi))
-				continue;
-
-			bdi_add_default_flusher_thread(bdi);
 		}
 
+		spin_lock_bh(&bdi_lock);
 		set_current_state(TASK_INTERRUPTIBLE);
 
-		if (list_empty(&bdi_pending_list)) {
-			unsigned long wait;
+		list_for_each_entry(bdi, &bdi_list, bdi_list) {
+			bool have_dirty_io;
 
-			spin_unlock_bh(&bdi_lock);
-			wait = msecs_to_jiffies(dirty_writeback_interval * 10);
-			if (wait)
-				schedule_timeout(wait);
+			if (!bdi_cap_writeback_dirty(bdi) ||
+			     bdi_cap_flush_forker(bdi))
+				continue;
+
+			WARN(!test_bit(BDI_registered, &bdi->state),
+			     "bdi %p/%s is not registered!\n", bdi, bdi->name);
+
+			have_dirty_io = !list_empty(&bdi->work_list) ||
+					wb_has_dirty_io(&bdi->wb);
+
+			/*
+			 * If the bdi has work to do, but the thread does not
+			 * exist - create it.
+			 */
+			if (!bdi->wb.task && have_dirty_io) {
+				/*
+				 * Set the pending bit - if someone will try to
+				 * unregister this bdi - it'll wait on this bit.
+				 */
+				set_bit(BDI_pending, &bdi->state);
+				action = FORK_THREAD;
+				break;
+			}
+
+			spin_lock(&bdi->wb_lock);
+
+			/*
+			 * If there is no work to do and the bdi thread was
+			 * inactive long enough - kill it. The wb_lock is taken
+			 * to make sure no-one adds more work to this bdi and
+			 * wakes the bdi thread up.
+			 */
+			if (bdi->wb.task && !have_dirty_io &&
+			    time_after(jiffies, bdi->wb.last_active +
+						bdi_longest_inactive())) {
+				task = bdi->wb.task;
+				bdi->wb.task = NULL;
+				spin_unlock(&bdi->wb_lock);
+				set_bit(BDI_pending, &bdi->state);
+				action = KILL_THREAD;
+				break;
+			}
+			spin_unlock(&bdi->wb_lock);
+		}
+		spin_unlock_bh(&bdi_lock);
+
+		/* Keep working if default bdi still has things to do */
+		if (!list_empty(&me->bdi->work_list))
+			__set_current_state(TASK_RUNNING);
+
+		switch (action) {
+		case FORK_THREAD:
+			__set_current_state(TASK_RUNNING);
+			task = kthread_create(bdi_writeback_thread, &bdi->wb,
+					      "flush-%s", dev_name(bdi->dev));
+			if (IS_ERR(task)) {
+				/*
+				 * If thread creation fails, force writeout of
+				 * the bdi from the thread.
+				 */
+				bdi_flush_io(bdi);
+			} else {
+				/*
+				 * The spinlock makes sure we do not lose
+				 * wake-ups when racing with 'bdi_queue_work()'.
+				 * And as soon as the bdi thread is visible, we
+				 * can start it.
+				 */
+				spin_lock_bh(&bdi->wb_lock);
+				bdi->wb.task = task;
+				spin_unlock_bh(&bdi->wb_lock);
+				wake_up_process(task);
+			}
+			break;
+
+		case KILL_THREAD:
+			__set_current_state(TASK_RUNNING);
+			kthread_stop(task);
+			break;
+
+		case NO_ACTION:
+			if (!wb_has_dirty_io(me) || !dirty_writeback_interval)
+				/*
+				 * There are no dirty data. The only thing we
+				 * should now care about is checking for
+				 * inactive bdi threads and killing them. Thus,
+				 * let's sleep for longer time, save energy and
+				 * be friendly for battery-driven devices.
+				 */
+				schedule_timeout(bdi_longest_inactive());
 			else
-				schedule();
+				schedule_timeout(msecs_to_jiffies(dirty_writeback_interval * 10));
 			try_to_freeze();
+			/* Back to the main loop */
 			continue;
 		}
 
-		__set_current_state(TASK_RUNNING);
-
 		/*
-		 * This is our real job - check for pending entries in
-		 * bdi_pending_list, and create the threads that got added
+		 * Clear pending bit and wakeup anybody waiting to tear us down.
 		 */
-		bdi = list_entry(bdi_pending_list.next, struct backing_dev_info,
-				 bdi_list);
-		list_del_init(&bdi->bdi_list);
-		spin_unlock_bh(&bdi_lock);
-
-		task = kthread_run(bdi_writeback_thread, &bdi->wb, "flush-%s",
-				   dev_name(bdi->dev));
-		if (IS_ERR(task)) {
-			/*
-			 * If thread creation fails, then readd the bdi back to
-			 * the list and force writeout of the bdi from this
-			 * forker thread. That will free some memory and we can
-			 * try again. Add it to the tail so we get a chance to
-			 * flush other bdi's to free memory.
-			 */
-			spin_lock_bh(&bdi_lock);
-			list_add_tail(&bdi->bdi_list, &bdi_pending_list);
-			spin_unlock_bh(&bdi_lock);
-
-			bdi_flush_io(bdi);
-		} else
-			bdi->wb.task = task;
+		clear_bit(BDI_pending, &bdi->state);
+		smp_mb__after_clear_bit();
+		wake_up_bit(&bdi->state, BDI_pending);
 	}
 
 	return 0;
-}
-
-static void bdi_add_to_pending(struct rcu_head *head)
-{
-	struct backing_dev_info *bdi;
-
-	bdi = container_of(head, struct backing_dev_info, rcu_head);
-	INIT_LIST_HEAD(&bdi->bdi_list);
-
-	spin_lock(&bdi_lock);
-	list_add_tail(&bdi->bdi_list, &bdi_pending_list);
-	spin_unlock(&bdi_lock);
-
-	/*
-	 * We are now on the pending list, wake up bdi_forker_task()
-	 * to finish the job and add us back to the active bdi_list
-	 */
-	wake_up_process(default_backing_dev_info.wb.task);
-}
-
-/*
- * Add the default flusher thread that gets created for any bdi
- * that has dirty data pending writeout
- */
-static void bdi_add_default_flusher_thread(struct backing_dev_info *bdi)
-{
-	if (!bdi_cap_writeback_dirty(bdi))
-		return;
-
-	if (WARN_ON(!test_bit(BDI_registered, &bdi->state))) {
-		printk(KERN_ERR "bdi %p/%s is not registered!\n",
-							bdi, bdi->name);
-		return;
-	}
-
-	/*
-	 * Check with the helper whether to proceed adding a thread. Will only
-	 * abort if we two or more simultanous calls to
-	 * bdi_add_default_flusher_thread() occured, further additions will
-	 * block waiting for previous additions to finish.
-	 */
-	if (!test_and_set_bit(BDI_pending, &bdi->state)) {
-		list_del_rcu(&bdi->bdi_list);
-
-		/*
-		 * We must wait for the current RCU period to end before
-		 * moving to the pending list. So schedule that operation
-		 * from an RCU callback.
-		 */
-		call_rcu(&bdi->rcu_head, bdi_add_to_pending);
-	}
 }
 
 /*
@@ -473,23 +518,16 @@ int bdi_register(struct backing_dev_info *bdi, struct device *parent,
 		const char *fmt, ...)
 {
 	va_list args;
-	int ret = 0;
 	struct device *dev;
 
 	if (bdi->dev)	/* The driver needs to use separate queues per device */
-		goto exit;
+		return 0;
 
 	va_start(args, fmt);
 	dev = device_create_vargs(bdi_class, parent, MKDEV(0, 0), bdi, fmt, args);
 	va_end(args);
-	if (IS_ERR(dev)) {
-		ret = PTR_ERR(dev);
-		goto exit;
-	}
-
-	spin_lock_bh(&bdi_lock);
-	list_add_tail_rcu(&bdi->bdi_list, &bdi_list);
-	spin_unlock_bh(&bdi_lock);
+	if (IS_ERR(dev))
+		return PTR_ERR(dev);
 
 	bdi->dev = dev;
 
@@ -503,19 +541,19 @@ int bdi_register(struct backing_dev_info *bdi, struct device *parent,
 
 		wb->task = kthread_run(bdi_forker_thread, wb, "bdi-%s",
 						dev_name(dev));
-		if (IS_ERR(wb->task)) {
-			wb->task = NULL;
-			ret = -ENOMEM;
-
-			bdi_remove_from_list(bdi);
-			goto exit;
-		}
+		if (IS_ERR(wb->task))
+			return PTR_ERR(wb->task);
 	}
 
 	bdi_debug_register(bdi, dev_name(dev));
 	set_bit(BDI_registered, &bdi->state);
-exit:
-	return ret;
+
+	spin_lock_bh(&bdi_lock);
+	list_add_tail_rcu(&bdi->bdi_list, &bdi_list);
+	spin_unlock_bh(&bdi_lock);
+
+	trace_writeback_bdi_register(bdi);
+	return 0;
 }
 EXPORT_SYMBOL(bdi_register);
 
@@ -534,15 +572,15 @@ static void bdi_wb_shutdown(struct backing_dev_info *bdi)
 		return;
 
 	/*
+	 * Make sure nobody finds us on the bdi_list anymore
+	 */
+	bdi_remove_from_list(bdi);
+
+	/*
 	 * If setup is pending, wait for that to complete first
 	 */
 	wait_on_bit(&bdi->state, BDI_pending, bdi_sched_wait,
 			TASK_UNINTERRUPTIBLE);
-
-	/*
-	 * Make sure nobody finds us on the bdi_list anymore
-	 */
-	bdi_remove_from_list(bdi);
 
 	/*
 	 * Finally, kill the kernel thread. We don't need to be RCU
@@ -574,7 +612,9 @@ static void bdi_prune_sb(struct backing_dev_info *bdi)
 void bdi_unregister(struct backing_dev_info *bdi)
 {
 	if (bdi->dev) {
+		trace_writeback_bdi_unregister(bdi);
 		bdi_prune_sb(bdi);
+		del_timer_sync(&bdi->wb.wakeup_timer);
 
 		if (!bdi_cap_flush_forker(bdi))
 			bdi_wb_shutdown(bdi);
@@ -584,6 +624,18 @@ void bdi_unregister(struct backing_dev_info *bdi)
 	}
 }
 EXPORT_SYMBOL(bdi_unregister);
+
+static void bdi_wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi)
+{
+	memset(wb, 0, sizeof(*wb));
+
+	wb->bdi = bdi;
+	wb->last_old_flush = jiffies;
+	INIT_LIST_HEAD(&wb->b_dirty);
+	INIT_LIST_HEAD(&wb->b_io);
+	INIT_LIST_HEAD(&wb->b_more_io);
+	setup_timer(&wb->wakeup_timer, wakeup_timer_fn, (unsigned long)bdi);
+}
 
 int bdi_init(struct backing_dev_info *bdi)
 {

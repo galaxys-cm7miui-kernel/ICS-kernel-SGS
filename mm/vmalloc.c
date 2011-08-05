@@ -31,6 +31,7 @@
 #include <asm/tlbflush.h>
 #include <asm/shmparam.h>
 
+bool vmap_lazy_unmap __read_mostly = true;
 
 /*** Page table manipulation functions ***/
 
@@ -502,6 +503,9 @@ static unsigned long lazy_max_pages(void)
 {
 	unsigned int log;
 
+	if (!vmap_lazy_unmap)
+		return 0;
+
 	log = fls(num_online_cpus());
 
 	return log * (32UL * 1024 * 1024 / PAGE_SIZE);
@@ -511,15 +515,6 @@ static atomic_t vmap_lazy_nr = ATOMIC_INIT(0);
 
 /* for per-CPU blocks */
 static void purge_fragmented_blocks_allcpus(void);
-
-/*
- * called before a call to iounmap() if the caller wants vm_area_struct's
- * immediately freed.
- */
-void set_iounmap_nonlazy(void)
-{
-	atomic_set(&vmap_lazy_nr, lazy_max_pages()+1);
-}
 
 /*
  * Purges all lazily-freed vmap areas.
@@ -2412,7 +2407,7 @@ static int s_show(struct seq_file *m, void *p)
 		seq_printf(m, " pages=%d", v->nr_pages);
 
 	if (v->phys_addr)
-		seq_printf(m, " phys=%lx", v->phys_addr);
+		seq_printf(m, " phys=%llx", (unsigned long long)v->phys_addr);
 
 	if (v->flags & VM_IOREMAP)
 		seq_printf(m, " ioremap");
