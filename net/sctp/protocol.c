@@ -490,7 +490,7 @@ static struct dst_entry *sctp_v4_get_dst(struct sctp_association *asoc,
 			  __func__, &fl.fl4_dst, &fl.fl4_src);
 
 	if (!ip_route_output_key(&init_net, &rt, &fl)) {
-		dst = &rt->u.dst;
+		dst = &rt->dst;
 	}
 
 	/* If there is no association or if a source address is passed, no
@@ -534,7 +534,7 @@ static struct dst_entry *sctp_v4_get_dst(struct sctp_association *asoc,
 			fl.fl4_src = laddr->a.v4.sin_addr.s_addr;
 			fl.fl_ip_sport = laddr->a.v4.sin_port;
 			if (!ip_route_output_key(&init_net, &rt, &fl)) {
-				dst = &rt->u.dst;
+				dst = &rt->dst;
 				goto out_unlock;
 			}
 		}
@@ -1002,7 +1002,8 @@ int sctp_register_pf(struct sctp_pf *pf, sa_family_t family)
 static inline int init_sctp_mibs(void)
 {
 	return snmp_mib_init((void __percpu **)sctp_statistics,
-			     sizeof(struct sctp_mib));
+			     sizeof(struct sctp_mib),
+			     __alignof__(struct sctp_mib));
 }
 
 static inline void cleanup_sctp_mibs(void)
@@ -1161,16 +1162,14 @@ SCTP_STATIC __init int sctp_init(void)
 
 	/* Set the pressure threshold to be a fraction of global memory that
 	 * is up to 1/2 at 256 MB, decreasing toward zero with the amount of
-	 * memory, with a floor of 128 pages, and a ceiling that prevents an
-	 * integer overflow.
-	 * Note this initalizes the data in sctpv6_prot too
+	 * memory, with a floor of 128 pages.
+	 * Note this initializes the data in sctpv6_prot too
 	 * Unabashedly stolen from tcp_init
 	 */
 	nr_pages = totalram_pages - totalhigh_pages;
 	limit = min(nr_pages, 1UL<<(28-PAGE_SHIFT)) >> (20-PAGE_SHIFT);
 	limit = (limit * (nr_pages >> (20-PAGE_SHIFT))) >> (PAGE_SHIFT-11);
 	limit = max(limit, 128UL);
-	limit = min(limit, INT_MAX * 4UL / 3 / 2);
 	sysctl_sctp_mem[0] = limit / 4 * 3;
 	sysctl_sctp_mem[1] = limit;
 	sysctl_sctp_mem[2] = sysctl_sctp_mem[0] * 2;

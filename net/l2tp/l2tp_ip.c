@@ -348,7 +348,7 @@ static int l2tp_ip_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len
 	sk->sk_state = TCP_ESTABLISHED;
 	inet->inet_id = jiffies;
 
-	sk_dst_set(sk, &rt->u.dst);
+	sk_dst_set(sk, &rt->dst);
 
 	write_lock_bh(&l2tp_ip_lock);
 	hlist_del_init(&sk->sk_bind_node);
@@ -496,9 +496,9 @@ static int l2tp_ip_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *m
 			if (ip_route_output_flow(sock_net(sk), &rt, &fl, sk, 0))
 				goto no_route;
 		}
-		sk_setup_caps(sk, &rt->u.dst);
+		sk_setup_caps(sk, &rt->dst);
 	}
-	skb_dst_set(skb, dst_clone(&rt->u.dst));
+	skb_dst_set(skb, dst_clone(&rt->dst));
 
 	/* Queue the packet to IP for output */
 	rc = ip_queue_xmit(skb);
@@ -676,8 +676,4 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("James Chapman <jchapman@katalix.com>");
 MODULE_DESCRIPTION("L2TP over IP");
 MODULE_VERSION("1.0");
-
-/* Use the value of SOCK_DGRAM (2) directory, because __stringify does't like
- * enums
- */
-MODULE_ALIAS_NET_PF_PROTO_TYPE(PF_INET, 2, IPPROTO_L2TP);
+MODULE_ALIAS_NET_PF_PROTO_TYPE(PF_INET, SOCK_DGRAM, IPPROTO_L2TP);

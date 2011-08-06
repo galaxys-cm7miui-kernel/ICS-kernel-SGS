@@ -32,14 +32,10 @@
  * rely on some SHA1 checksum of the regdomain for example.
  *
  */
-
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/random.h>
-#include <linux/ctype.h>
 #include <linux/nl80211.h>
 #include <linux/platform_device.h>
 #include <net/cfg80211.h>
@@ -51,7 +47,7 @@
 #ifdef CONFIG_CFG80211_REG_DEBUG
 #define REG_DBG_PRINT(format, args...) \
 	do { \
-		printk(KERN_DEBUG pr_fmt(format), ##args);	\
+		printk(KERN_DEBUG format , ## args); \
 	} while (0)
 #else
 #define REG_DBG_PRINT(args...)
@@ -77,11 +73,7 @@ const struct ieee80211_regdomain *cfg80211_regdomain;
  *     - last_request
  */
 static DEFINE_MUTEX(reg_mutex);
-
-static inline void assert_reg_lock(void)
-{
-	lockdep_assert_held(&reg_mutex);
-}
+#define assert_reg_lock() WARN_ON(!mutex_is_locked(&reg_mutex))
 
 /* Used to queue up regulatory hints */
 static LIST_HEAD(reg_requests_list);
@@ -98,9 +90,6 @@ struct reg_beacon {
 	struct list_head list;
 	struct ieee80211_channel chan;
 };
-
-static void reg_todo(struct work_struct *work);
-static DECLARE_WORK(reg_work, reg_todo);
 
 /* We keep a static world regulatory domain in case of the absence of CRDA */
 static const struct ieee80211_regdomain world_regdom = {
@@ -192,6 +181,14 @@ static bool is_alpha2_set(const char *alpha2)
 	return false;
 }
 
+static bool is_alpha_upper(char letter)
+{
+	/* ASCII A - Z */
+	if (letter >= 65 && letter <= 90)
+		return true;
+	return false;
+}
+
 static bool is_unknown_alpha2(const char *alpha2)
 {
 	if (!alpha2)
@@ -223,7 +220,7 @@ static bool is_an_alpha2(const char *alpha2)
 {
 	if (!alpha2)
 		return false;
-	if (isalpha(alpha2[0]) && isalpha(alpha2[1]))
+	if (is_alpha_upper(alpha2[0]) && is_alpha_upper(alpha2[1]))
 		return true;
 	return false;
 }
@@ -373,10 +370,11 @@ static int call_crda(const char *alpha2)
 	};
 
 	if (!is_world_regdom((char *) alpha2))
-		pr_info("Calling CRDA for country: %c%c\n",
+		printk(KERN_INFO "cfg80211: Calling CRDA for country: %c%c\n",
 			alpha2[0], alpha2[1]);
 	else
-		pr_info("Calling CRDA to update world regulatory domain\n");
+		printk(KERN_INFO "cfg80211: Calling CRDA to update world "
+			"regulatory domain\n");
 
 	/* query internal regulatory database (if it exists) */
 	reg_regdb_query(alpha2);
@@ -661,8 +659,7 @@ static int freq_reg_info_regd(struct wiphy *wiphy,
 	 * Follow the driver's regulatory domain, if present, unless a country
 	 * IE has been processed or a user wants to help complaince further
 	 */
-	if (!custom_regd &&
-	    last_request->initiator != NL80211_REGDOM_SET_BY_COUNTRY_IE &&
+	if (last_request->initiator != NL80211_REGDOM_SET_BY_COUNTRY_IE &&
 	    last_request->initiator != NL80211_REGDOM_SET_BY_USER &&
 	    wiphy->regd)
 		regd = wiphy->regd;
@@ -717,60 +714,6 @@ int freq_reg_info(struct wiphy *wiphy,
 }
 EXPORT_SYMBOL(freq_reg_info);
 
-#ifdef CONFIG_CFG80211_REG_DEBUG
-static const char *reg_initiator_name(enum nl80211_reg_initiator initiator)
-{
-	switch (initiator) {
-	case NL80211_REGDOM_SET_BY_CORE:
-		return "Set by core";
-	case NL80211_REGDOM_SET_BY_USER:
-		return "Set by user";
-	case NL80211_REGDOM_SET_BY_DRIVER:
-		return "Set by driver";
-	case NL80211_REGDOM_SET_BY_COUNTRY_IE:
-		return "Set by country IE";
-	default:
-		WARN_ON(1);
-		return "Set by bug";
-	}
-}
-
-static void chan_reg_rule_print_dbg(struct ieee80211_channel *chan,
-				    u32 desired_bw_khz,
-				    const struct ieee80211_reg_rule *reg_rule)
-{
-	const struct ieee80211_power_rule *power_rule;
-	const struct ieee80211_freq_range *freq_range;
-	char max_antenna_gain[32];
-
-	power_rule = &reg_rule->power_rule;
-	freq_range = &reg_rule->freq_range;
-
-	if (!power_rule->max_antenna_gain)
-		snprintf(max_antenna_gain, 32, "N/A");
-	else
-		snprintf(max_antenna_gain, 32, "%d", power_rule->max_antenna_gain);
-
-	REG_DBG_PRINT("Updating information on frequency %d MHz "
-		      "for a %d MHz width channel with regulatory rule:\n",
-		      chan->center_freq,
-		      KHZ_TO_MHZ(desired_bw_khz));
-
-	REG_DBG_PRINT("%d KHz - %d KHz @  KHz), (%s mBi, %d mBm)\n",
-		      freq_range->start_freq_khz,
-		      freq_range->end_freq_khz,
-		      max_antenna_gain,
-		      power_rule->max_eirp);
-}
-#else
-static void chan_reg_rule_print_dbg(struct ieee80211_channel *chan,
-				    u32 desired_bw_khz,
-				    const struct ieee80211_reg_rule *reg_rule)
-{
-	return;
-}
-#endif
-
 /*
  * Note that right now we assume the desired channel bandwidth
  * is always 20 MHz for each individual channel (HT40 uses 20 MHz
@@ -780,9 +723,7 @@ static void chan_reg_rule_print_dbg(struct ieee80211_channel *chan,
  * on the wiphy with the target_bw specified. Then we can simply use
  * that below for the desired_bw_khz below.
  */
-static void handle_channel(struct wiphy *wiphy,
-			   enum nl80211_reg_initiator initiator,
-			   enum ieee80211_band band,
+static void handle_channel(struct wiphy *wiphy, enum ieee80211_band band,
 			   unsigned int chan_idx)
 {
 	int r;
@@ -810,27 +751,8 @@ static void handle_channel(struct wiphy *wiphy,
 			  desired_bw_khz,
 			  &reg_rule);
 
-	if (r) {
-		/*
-		 * We will disable all channels that do not match our
-		 * recieved regulatory rule unless the hint is coming
-		 * from a Country IE and the Country IE had no information
-		 * about a band. The IEEE 802.11 spec allows for an AP
-		 * to send only a subset of the regulatory rules allowed,
-		 * so an AP in the US that only supports 2.4 GHz may only send
-		 * a country IE with information for the 2.4 GHz band
-		 * while 5 GHz is still supported.
-		 */
-		if (initiator == NL80211_REGDOM_SET_BY_COUNTRY_IE &&
-		    r == -ERANGE)
-			return;
-
-		REG_DBG_PRINT("Disabling freq %d MHz\n", chan->center_freq);
-		chan->flags = IEEE80211_CHAN_DISABLED;
+	if (r)
 		return;
-	}
-
-	chan_reg_rule_print_dbg(chan, desired_bw_khz, reg_rule);
 
 	power_rule = &reg_rule->power_rule;
 	freq_range = &reg_rule->freq_range;
@@ -865,9 +787,7 @@ static void handle_channel(struct wiphy *wiphy,
 		chan->max_power = (int) MBM_TO_DBM(power_rule->max_eirp);
 }
 
-static void handle_band(struct wiphy *wiphy,
-			enum ieee80211_band band,
-			enum nl80211_reg_initiator initiator)
+static void handle_band(struct wiphy *wiphy, enum ieee80211_band band)
 {
 	unsigned int i;
 	struct ieee80211_supported_band *sband;
@@ -876,42 +796,24 @@ static void handle_band(struct wiphy *wiphy,
 	sband = wiphy->bands[band];
 
 	for (i = 0; i < sband->n_channels; i++)
-		handle_channel(wiphy, initiator, band, i);
+		handle_channel(wiphy, band, i);
 }
 
 static bool ignore_reg_update(struct wiphy *wiphy,
 			      enum nl80211_reg_initiator initiator)
 {
-	if (!last_request) {
-		REG_DBG_PRINT("Ignoring regulatory request %s since "
-			      "last_request is not set\n",
-			      reg_initiator_name(initiator));
+	if (!last_request)
 		return true;
-	}
-
 	if (initiator == NL80211_REGDOM_SET_BY_CORE &&
-	    wiphy->flags & WIPHY_FLAG_CUSTOM_REGULATORY) {
-		REG_DBG_PRINT("Ignoring regulatory request %s "
-			      "since the driver uses its own custom "
-			      "regulatory domain ",
-			      reg_initiator_name(initiator));
+	    wiphy->flags & WIPHY_FLAG_CUSTOM_REGULATORY)
 		return true;
-	}
-
 	/*
 	 * wiphy->regd will be set once the device has its own
 	 * desired regulatory domain set
 	 */
 	if (wiphy->flags & WIPHY_FLAG_STRICT_REGULATORY && !wiphy->regd &&
-	    initiator != NL80211_REGDOM_SET_BY_COUNTRY_IE &&
-	    !is_world_regdom(last_request->alpha2)) {
-		REG_DBG_PRINT("Ignoring regulatory request %s "
-			      "since the driver requires its own regulaotry "
-			      "domain to be set first",
-			      reg_initiator_name(initiator));
+	    !is_world_regdom(last_request->alpha2))
 		return true;
-	}
-
 	return false;
 }
 
@@ -1131,7 +1033,7 @@ void wiphy_update_regulatory(struct wiphy *wiphy,
 		goto out;
 	for (band = 0; band < IEEE80211_NUM_BANDS; band++) {
 		if (wiphy->bands[band])
-			handle_band(wiphy, band, initiator);
+			handle_band(wiphy, band);
 	}
 out:
 	reg_process_beacons(wiphy);
@@ -1167,16 +1069,9 @@ static void handle_channel_custom(struct wiphy *wiphy,
 			       regd);
 
 	if (r) {
-		REG_DBG_PRINT("Disabling freq %d MHz as custom "
-			      "regd has no rule that fits a %d MHz "
-			      "wide channel\n",
-			      chan->center_freq,
-			      KHZ_TO_MHZ(desired_bw_khz));
 		chan->flags = IEEE80211_CHAN_DISABLED;
 		return;
 	}
-
-	chan_reg_rule_print_dbg(chan, desired_bw_khz, reg_rule);
 
 	power_rule = &reg_rule->power_rule;
 	freq_range = &reg_rule->freq_range;
@@ -1275,7 +1170,7 @@ static int ignore_request(struct wiphy *wiphy,
 				return 0;
 			return -EALREADY;
 		}
-		return 0;
+		return REG_INTERSECT;
 	case NL80211_REGDOM_SET_BY_DRIVER:
 		if (last_request->initiator == NL80211_REGDOM_SET_BY_CORE) {
 			if (regdom_changes(pending_request->alpha2))
@@ -1321,21 +1216,6 @@ static int ignore_request(struct wiphy *wiphy,
 	}
 
 	return -EINVAL;
-}
-
-static void reg_set_request_processed(void)
-{
-	bool need_more_processing = false;
-
-	last_request->processed = true;
-
-	spin_lock(&reg_requests_lock);
-	if (!list_empty(&reg_requests_list))
-		need_more_processing = true;
-	spin_unlock(&reg_requests_lock);
-
-	if (need_more_processing)
-		schedule_work(&reg_work);
 }
 
 /**
@@ -1413,10 +1293,8 @@ new_request:
 		 * have applied the requested regulatory domain before we just
 		 * inform userspace we have processed the request
 		 */
-		if (r == -EALREADY) {
+		if (r == -EALREADY)
 			nl80211_send_reg_change_event(last_request);
-			reg_set_request_processed();
-		}
 		return r;
 	}
 
@@ -1432,13 +1310,16 @@ static void reg_process_hint(struct regulatory_request *reg_request)
 
 	BUG_ON(!reg_request->alpha2);
 
+	mutex_lock(&cfg80211_mutex);
+	mutex_lock(&reg_mutex);
+
 	if (wiphy_idx_valid(reg_request->wiphy_idx))
 		wiphy = wiphy_idx_to_wiphy(reg_request->wiphy_idx);
 
 	if (reg_request->initiator == NL80211_REGDOM_SET_BY_DRIVER &&
 	    !wiphy) {
 		kfree(reg_request);
-		return;
+		goto out;
 	}
 
 	r = __regulatory_hint(wiphy, reg_request);
@@ -1446,46 +1327,28 @@ static void reg_process_hint(struct regulatory_request *reg_request)
 	if (r == -EALREADY && wiphy &&
 	    wiphy->flags & WIPHY_FLAG_STRICT_REGULATORY)
 		wiphy_update_regulatory(wiphy, initiator);
-}
-
-/*
- * Processes regulatory hints, this is all the NL80211_REGDOM_SET_BY_*
- * Regulatory hints come on a first come first serve basis and we
- * must process each one atomically.
- */
-static void reg_process_pending_hints(void)
-{
-	struct regulatory_request *reg_request;
-
-	mutex_lock(&cfg80211_mutex);
-	mutex_lock(&reg_mutex);
-
-	/* When last_request->processed becomes true this will be rescheduled */
-	if (last_request && !last_request->processed) {
-		REG_DBG_PRINT("Pending regulatory request, waiting "
-			      "for it to be processed...");
-		goto out;
-	}
-
-	spin_lock(&reg_requests_lock);
-
-	if (list_empty(&reg_requests_list)) {
-		spin_unlock(&reg_requests_lock);
-		goto out;
-	}
-
-	reg_request = list_first_entry(&reg_requests_list,
-				       struct regulatory_request,
-				       list);
-	list_del_init(&reg_request->list);
-
-	spin_unlock(&reg_requests_lock);
-
-	reg_process_hint(reg_request);
-
 out:
 	mutex_unlock(&reg_mutex);
 	mutex_unlock(&cfg80211_mutex);
+}
+
+/* Processes regulatory hints, this is all the NL80211_REGDOM_SET_BY_* */
+static void reg_process_pending_hints(void)
+	{
+	struct regulatory_request *reg_request;
+
+	spin_lock(&reg_requests_lock);
+	while (!list_empty(&reg_requests_list)) {
+		reg_request = list_first_entry(&reg_requests_list,
+					       struct regulatory_request,
+					       list);
+		list_del_init(&reg_request->list);
+
+		spin_unlock(&reg_requests_lock);
+		reg_process_hint(reg_request);
+		spin_lock(&reg_requests_lock);
+	}
+	spin_unlock(&reg_requests_lock);
 }
 
 /* Processes beacon hints -- this has nothing to do with country IEs */
@@ -1532,13 +1395,10 @@ static void reg_todo(struct work_struct *work)
 	reg_process_pending_beacon_hints();
 }
 
+static DECLARE_WORK(reg_work, reg_todo);
+
 static void queue_regulatory_request(struct regulatory_request *request)
 {
-	if (isalpha(request->alpha2[0]))
-		request->alpha2[0] = toupper(request->alpha2[0]);
-	if (isalpha(request->alpha2[1]))
-		request->alpha2[1] = toupper(request->alpha2[1]);
-
 	spin_lock(&reg_requests_lock);
 	list_add_tail(&request->list, &reg_requests_list);
 	spin_unlock(&reg_requests_lock);
@@ -1566,7 +1426,12 @@ static int regulatory_hint_core(const char *alpha2)
 	request->alpha2[1] = alpha2[1];
 	request->initiator = NL80211_REGDOM_SET_BY_CORE;
 
-	queue_regulatory_request(request);
+	/*
+	 * This ensures last_request is populated once modules
+	 * come swinging in and calling regulatory hints and
+	 * wiphy_apply_custom_regulatory().
+	 */
+	reg_process_hint(request);
 
 	return 0;
 }
@@ -1692,7 +1557,7 @@ static void restore_alpha2(char *alpha2, bool reset_user)
 	if (is_user_regdom_saved()) {
 		/* Unless we're asked to ignore it and reset it */
 		if (reset_user) {
-			REG_DBG_PRINT("Restoring regulatory settings "
+			REG_DBG_PRINT("cfg80211: Restoring regulatory settings "
 			       "including user preference\n");
 			user_alpha2[0] = '9';
 			user_alpha2[1] = '7';
@@ -1703,7 +1568,7 @@ static void restore_alpha2(char *alpha2, bool reset_user)
 			 * back as they were for a full restore.
 			 */
 			if (!is_world_regdom(ieee80211_regdom)) {
-				REG_DBG_PRINT("Keeping preference on "
+				REG_DBG_PRINT("cfg80211: Keeping preference on "
 				       "module parameter ieee80211_regdom: %c%c\n",
 				       ieee80211_regdom[0],
 				       ieee80211_regdom[1]);
@@ -1711,7 +1576,7 @@ static void restore_alpha2(char *alpha2, bool reset_user)
 				alpha2[1] = ieee80211_regdom[1];
 			}
 		} else {
-			REG_DBG_PRINT("Restoring regulatory settings "
+			REG_DBG_PRINT("cfg80211: Restoring regulatory settings "
 			       "while preserving user preference for: %c%c\n",
 			       user_alpha2[0],
 			       user_alpha2[1]);
@@ -1719,14 +1584,14 @@ static void restore_alpha2(char *alpha2, bool reset_user)
 			alpha2[1] = user_alpha2[1];
 		}
 	} else if (!is_world_regdom(ieee80211_regdom)) {
-		REG_DBG_PRINT("Keeping preference on "
+		REG_DBG_PRINT("cfg80211: Keeping preference on "
 		       "module parameter ieee80211_regdom: %c%c\n",
 		       ieee80211_regdom[0],
 		       ieee80211_regdom[1]);
 		alpha2[0] = ieee80211_regdom[0];
 		alpha2[1] = ieee80211_regdom[1];
 	} else
-		REG_DBG_PRINT("Restoring regulatory settings\n");
+		REG_DBG_PRINT("cfg80211: Restoring regulatory settings\n");
 }
 
 /*
@@ -1794,7 +1659,7 @@ static void restore_regulatory_settings(bool reset_user)
 
 void regulatory_hint_disconnect(void)
 {
-	REG_DBG_PRINT("All devices are disconnected, going to "
+	REG_DBG_PRINT("cfg80211: All devices are disconnected, going to "
 		      "restore regulatory settings\n");
 	restore_regulatory_settings(false);
 }
@@ -1824,7 +1689,7 @@ int regulatory_hint_found_beacon(struct wiphy *wiphy,
 	if (!reg_beacon)
 		return -ENOMEM;
 
-	REG_DBG_PRINT("Found new beacon on "
+	REG_DBG_PRINT("cfg80211: Found new beacon on "
 		      "frequency: %d MHz (Ch %d) on %s\n",
 		      beacon_chan->center_freq,
 		      ieee80211_frequency_to_channel(beacon_chan->center_freq),
@@ -1854,7 +1719,8 @@ static void print_rd_rules(const struct ieee80211_regdomain *rd)
 	const struct ieee80211_freq_range *freq_range = NULL;
 	const struct ieee80211_power_rule *power_rule = NULL;
 
-	pr_info("    (start_freq - end_freq @ bandwidth), (max_antenna_gain, max_eirp)\n");
+	printk(KERN_INFO "    (start_freq - end_freq @ bandwidth), "
+		"(max_antenna_gain, max_eirp)\n");
 
 	for (i = 0; i < rd->n_reg_rules; i++) {
 		reg_rule = &rd->reg_rules[i];
@@ -1866,14 +1732,16 @@ static void print_rd_rules(const struct ieee80211_regdomain *rd)
 		 * in certain regions
 		 */
 		if (power_rule->max_antenna_gain)
-			pr_info("    (%d KHz - %d KHz @ %d KHz), (%d mBi, %d mBm)\n",
+			printk(KERN_INFO "    (%d KHz - %d KHz @ %d KHz), "
+				"(%d mBi, %d mBm)\n",
 				freq_range->start_freq_khz,
 				freq_range->end_freq_khz,
 				freq_range->max_bandwidth_khz,
 				power_rule->max_antenna_gain,
 				power_rule->max_eirp);
 		else
-			pr_info("    (%d KHz - %d KHz @ %d KHz), (N/A, %d mBm)\n",
+			printk(KERN_INFO "    (%d KHz - %d KHz @ %d KHz), "
+				"(N/A, %d mBm)\n",
 				freq_range->start_freq_khz,
 				freq_range->end_freq_khz,
 				freq_range->max_bandwidth_khz,
@@ -1892,20 +1760,27 @@ static void print_regdomain(const struct ieee80211_regdomain *rd)
 			rdev = cfg80211_rdev_by_wiphy_idx(
 				last_request->wiphy_idx);
 			if (rdev) {
-				pr_info("Current regulatory domain updated by AP to: %c%c\n",
+				printk(KERN_INFO "cfg80211: Current regulatory "
+					"domain updated by AP to: %c%c\n",
 					rdev->country_ie_alpha2[0],
 					rdev->country_ie_alpha2[1]);
 			} else
-				pr_info("Current regulatory domain intersected:\n");
+				printk(KERN_INFO "cfg80211: Current regulatory "
+					"domain intersected:\n");
 		} else
-			pr_info("Current regulatory domain intersected:\n");
+			printk(KERN_INFO "cfg80211: Current regulatory "
+				"domain intersected:\n");
 	} else if (is_world_regdom(rd->alpha2))
-		pr_info("World regulatory domain updated:\n");
+		printk(KERN_INFO "cfg80211: World regulatory "
+			"domain updated:\n");
 	else {
 		if (is_unknown_alpha2(rd->alpha2))
-			pr_info("Regulatory domain changed to driver built-in settings (unknown country)\n");
+			printk(KERN_INFO "cfg80211: Regulatory domain "
+				"changed to driver built-in settings "
+				"(unknown country)\n");
 		else
-			pr_info("Regulatory domain changed to country: %c%c\n",
+			printk(KERN_INFO "cfg80211: Regulatory domain "
+				"changed to country: %c%c\n",
 				rd->alpha2[0], rd->alpha2[1]);
 	}
 	print_rd_rules(rd);
@@ -1913,7 +1788,8 @@ static void print_regdomain(const struct ieee80211_regdomain *rd)
 
 static void print_regdomain_info(const struct ieee80211_regdomain *rd)
 {
-	pr_info("Regulatory domain: %c%c\n", rd->alpha2[0], rd->alpha2[1]);
+	printk(KERN_INFO "cfg80211: Regulatory domain: %c%c\n",
+		rd->alpha2[0], rd->alpha2[1]);
 	print_rd_rules(rd);
 }
 
@@ -1964,7 +1840,8 @@ static int __set_regdom(const struct ieee80211_regdomain *rd)
 		return -EINVAL;
 
 	if (!is_valid_rd(rd)) {
-		pr_err("Invalid regulatory domain detected:\n");
+		printk(KERN_ERR "cfg80211: Invalid "
+			"regulatory domain detected:\n");
 		print_regdomain_info(rd);
 		return -EINVAL;
 	}
@@ -2080,8 +1957,6 @@ int set_regdom(const struct ieee80211_regdomain *rd)
 
 	nl80211_send_reg_change_event(last_request);
 
-	reg_set_request_processed();
-
 	mutex_unlock(&reg_mutex);
 
 	return r;
@@ -2138,7 +2013,8 @@ int __init regulatory_init(void)
 		 * early boot for call_usermodehelper(). For now treat these
 		 * errors as non-fatal.
 		 */
-		pr_err("kobject_uevent_env() was unable to call CRDA during init\n");
+		printk(KERN_ERR "cfg80211: kobject_uevent_env() was unable "
+			"to call CRDA during init");
 #ifdef CONFIG_CFG80211_REG_DEBUG
 		/* We want to find out exactly why when debugging */
 		WARN_ON(err);

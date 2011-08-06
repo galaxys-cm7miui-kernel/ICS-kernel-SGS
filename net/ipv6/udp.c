@@ -765,7 +765,6 @@ int __udp6_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 		UDP6_INC_STATS_BH(net, UDP_MIB_NOPORTS,
 				proto == IPPROTO_UDPLITE);
 
-		if (skb->dev->flags & IFF_LOOPBACK)
 		icmpv6_send(skb, ICMPV6_DEST_UNREACH, ICMPV6_PORT_UNREACH, 0);
 
 		kfree_skb(skb);
@@ -937,7 +936,7 @@ int udpv6_sendmsg(struct kiocb *iocb, struct sock *sk,
 	struct inet_sock *inet = inet_sk(sk);
 	struct ipv6_pinfo *np = inet6_sk(sk);
 	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) msg->msg_name;
-	struct in6_addr *daddr, *final_p = NULL, final;
+	struct in6_addr *daddr, *final_p, final;
 	struct ipv6_txoptions *opt = NULL;
 	struct ip6_flowlabel *flowlabel = NULL;
 	struct flowi fl;
@@ -1107,14 +1106,9 @@ do_udp_sendmsg:
 		ipv6_addr_copy(&fl.fl6_src, &np->saddr);
 	fl.fl_ip_sport = inet->inet_sport;
 
-	/* merge ip6_build_xmit from ip6_output */
-	if (opt && opt->srcrt) {
-		struct rt0_hdr *rt0 = (struct rt0_hdr *) opt->srcrt;
-		ipv6_addr_copy(&final, &fl.fl6_dst);
-		ipv6_addr_copy(&fl.fl6_dst, rt0->addr);
-		final_p = &final;
+	final_p = fl6_update_dst(&fl, opt, &final);
+	if (final_p)
 		connected = 0;
-	}
 
 	if (!fl.oif && ipv6_addr_is_multicast(&fl.fl6_dst)) {
 		fl.oif = np->mcast_oif;

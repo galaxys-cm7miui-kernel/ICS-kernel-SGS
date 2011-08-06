@@ -283,16 +283,13 @@ unsigned int arpt_do_table(struct sk_buff *skb,
 	arp = arp_hdr(skb);
 	do {
 		const struct arpt_entry_target *t;
-		int hdr_len;
 
 		if (!arp_packet_match(arp, skb->dev, indev, outdev, &e->arp)) {
 			e = arpt_next_entry(e);
 			continue;
 		}
 
-		hdr_len = sizeof(*arp) + (2 * sizeof(struct in_addr)) +
-			(2 * skb->dev->addr_len);
-		ADD_COUNTER(e->counters, hdr_len, 1);
+		ADD_COUNTER(e->counters, arp_hdr_len(skb->dev), 1);
 
 		t = arpt_get_target_c(e);
 
@@ -738,6 +735,7 @@ static void get_counters(const struct xt_table_info *t,
 		if (cpu == curcpu)
 			continue;
 		i = 0;
+		local_bh_disable();
 		xt_info_wrlock(cpu);
 		xt_entry_foreach(iter, t->entries[cpu], t->size) {
 			ADD_COUNTER(counters[i], iter->counters.bcnt,
@@ -745,6 +743,7 @@ static void get_counters(const struct xt_table_info *t,
 			++i;
 		}
 		xt_info_wrunlock(cpu);
+		local_bh_enable();
 	}
 	put_cpu();
 }
@@ -760,7 +759,7 @@ static struct xt_counters *alloc_counters(const struct xt_table *table)
 	 * about).
 	 */
 	countersize = sizeof(struct xt_counters) * private->number;
-	counters = vmalloc_node(countersize, numa_node_id());
+	counters = vmalloc(countersize);
 
 	if (counters == NULL)
 		return ERR_PTR(-ENOMEM);
@@ -1007,8 +1006,7 @@ static int __do_replace(struct net *net, const char *name,
 	struct arpt_entry *iter;
 
 	ret = 0;
-	counters = vmalloc_node(num_counters * sizeof(struct xt_counters),
-				numa_node_id());
+	counters = vmalloc(num_counters * sizeof(struct xt_counters));
 	if (!counters) {
 		ret = -ENOMEM;
 		goto out;
@@ -1083,7 +1081,6 @@ static int do_replace(struct net *net, const void __user *user,
 	/* overflow check */
 	if (tmp.num_counters >= INT_MAX / sizeof(struct xt_counters))
 		return -ENOMEM;
-	tmp.name[sizeof(tmp.name)-1] = 0;
 
 	newinfo = xt_alloc_table_info(tmp.size);
 	if (!newinfo)
@@ -1162,7 +1159,7 @@ static int do_add_counters(struct net *net, const void __user *user,
 	if (len != size + num_counters * sizeof(struct xt_counters))
 		return -EINVAL;
 
-	paddc = vmalloc_node(len - size, numa_node_id());
+	paddc = vmalloc(len - size);
 	if (!paddc)
 		return -ENOMEM;
 
@@ -1505,7 +1502,6 @@ static int compat_do_replace(struct net *net, void __user *user,
 		return -ENOMEM;
 	if (tmp.num_counters >= INT_MAX / sizeof(struct xt_counters))
 		return -ENOMEM;
-	tmp.name[sizeof(tmp.name)-1] = 0;
 
 	newinfo = xt_alloc_table_info(tmp.size);
 	if (!newinfo)
@@ -1758,7 +1754,6 @@ static int do_arpt_get_ctl(struct sock *sk, int cmd, void __user *user, int *len
 			ret = -EFAULT;
 			break;
 		}
-		rev.name[sizeof(rev.name)-1] = 0;
 
 		try_then_request_module(xt_find_revision(NFPROTO_ARP, rev.name,
 							 rev.revision, 1, &ret),

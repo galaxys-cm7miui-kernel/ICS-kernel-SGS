@@ -432,16 +432,13 @@ int cfg80211_wext_giwretry(struct net_device *dev,
 EXPORT_SYMBOL_GPL(cfg80211_wext_giwretry);
 
 static int __cfg80211_set_encryption(struct cfg80211_registered_device *rdev,
-				     struct net_device *dev, bool pairwise,
-				     const u8 *addr, bool remove, bool tx_key,
-				     int idx, struct key_params *params)
+				     struct net_device *dev, const u8 *addr,
+				     bool remove, bool tx_key, int idx,
+				     struct key_params *params)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	int err, i;
 	bool rejoin = false;
-
-	if (pairwise && !addr)
-		return -EINVAL;
 
 	if (!wdev->wext.keys) {
 		wdev->wext.keys = kzalloc(sizeof(*wdev->wext.keys),
@@ -481,13 +478,7 @@ static int __cfg80211_set_encryption(struct cfg80211_registered_device *rdev,
 				__cfg80211_leave_ibss(rdev, wdev->netdev, true);
 				rejoin = true;
 			}
-
-			if (!pairwise && addr &&
-			    !(rdev->wiphy.flags & WIPHY_FLAG_IBSS_RSN))
-				err = -ENOENT;
-			else
-				err = rdev->ops->del_key(&rdev->wiphy, dev, idx,
-							 pairwise, addr);
+			err = rdev->ops->del_key(&rdev->wiphy, dev, idx, addr);
 		}
 		wdev->wext.connect.privacy = false;
 		/*
@@ -516,13 +507,12 @@ static int __cfg80211_set_encryption(struct cfg80211_registered_device *rdev,
 	if (addr)
 		tx_key = false;
 
-	if (cfg80211_validate_key_settings(rdev, params, idx, pairwise, addr))
+	if (cfg80211_validate_key_settings(rdev, params, idx, addr))
 		return -EINVAL;
 
 	err = 0;
 	if (wdev->current_bss)
-		err = rdev->ops->add_key(&rdev->wiphy, dev, idx,
-					 pairwise, addr, params);
+		err = rdev->ops->add_key(&rdev->wiphy, dev, idx, addr, params);
 	if (err)
 		return err;
 
@@ -548,8 +538,8 @@ static int __cfg80211_set_encryption(struct cfg80211_registered_device *rdev,
 				__cfg80211_leave_ibss(rdev, wdev->netdev, true);
 				rejoin = true;
 			}
-			err = rdev->ops->set_default_key(&rdev->wiphy, dev,
-							 idx, true, true);
+			err = rdev->ops->set_default_key(&rdev->wiphy,
+							 dev, idx);
 		}
 		if (!err) {
 			wdev->wext.default_key = idx;
@@ -573,17 +563,17 @@ static int __cfg80211_set_encryption(struct cfg80211_registered_device *rdev,
 }
 
 static int cfg80211_set_encryption(struct cfg80211_registered_device *rdev,
-				   struct net_device *dev, bool pairwise,
-				   const u8 *addr, bool remove, bool tx_key,
-				   int idx, struct key_params *params)
+				   struct net_device *dev, const u8 *addr,
+				   bool remove, bool tx_key, int idx,
+				   struct key_params *params)
 {
 	int err;
 
 	/* devlist mutex needed for possible IBSS re-join */
 	mutex_lock(&rdev->devlist_mtx);
 	wdev_lock(dev->ieee80211_ptr);
-	err = __cfg80211_set_encryption(rdev, dev, pairwise, addr,
-					remove, tx_key, idx, params);
+	err = __cfg80211_set_encryption(rdev, dev, addr, remove,
+					tx_key, idx, params);
 	wdev_unlock(dev->ieee80211_ptr);
 	mutex_unlock(&rdev->devlist_mtx);
 
@@ -627,8 +617,8 @@ int cfg80211_wext_siwencode(struct net_device *dev,
 		err = 0;
 		wdev_lock(wdev);
 		if (wdev->current_bss)
-			err = rdev->ops->set_default_key(&rdev->wiphy, dev,
-							 idx, true, true);
+			err = rdev->ops->set_default_key(&rdev->wiphy,
+							 dev, idx);
 		if (!err)
 			wdev->wext.default_key = idx;
 		wdev_unlock(wdev);
@@ -645,7 +635,7 @@ int cfg80211_wext_siwencode(struct net_device *dev,
 	else if (!remove)
 		return -EINVAL;
 
-	return cfg80211_set_encryption(rdev, dev, false, NULL, remove,
+	return cfg80211_set_encryption(rdev, dev, NULL, remove,
 				       wdev->wext.default_key == -1,
 				       idx, &params);
 }
@@ -735,9 +725,7 @@ int cfg80211_wext_siwencodeext(struct net_device *dev,
 	}
 
 	return cfg80211_set_encryption(
-			rdev, dev,
-			!(ext->ext_flags & IW_ENCODE_EXT_GROUP_KEY),
-			addr, remove,
+			rdev, dev, addr, remove,
 			ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY,
 			idx, &params);
 }
@@ -802,11 +790,11 @@ int cfg80211_wext_siwfreq(struct net_device *dev,
 			return freq;
 		if (freq == 0)
 			return -EINVAL;
-		mutex_lock(&rdev->devlist_mtx);
 		wdev_lock(wdev);
+		mutex_lock(&rdev->devlist_mtx);
 		err = cfg80211_set_freq(rdev, wdev, freq, NL80211_CHAN_NO_HT);
-		wdev_unlock(wdev);
 		mutex_unlock(&rdev->devlist_mtx);
+		wdev_unlock(wdev);
 		return err;
 	default:
 		return -EOPNOTSUPP;
@@ -1366,10 +1354,6 @@ struct iw_statistics *cfg80211_wireless_stats(struct net_device *dev)
 	}
 
 	wstats.qual.updated |= IW_QUAL_NOISE_INVALID;
-	if (sinfo.filled & STATION_INFO_RX_DROP_MISC)
-		wstats.discard.misc = sinfo.rx_dropped_misc;
-	if (sinfo.filled & STATION_INFO_TX_FAILED)
-		wstats.discard.retries = sinfo.tx_failed;
 
 	return &wstats;
 }

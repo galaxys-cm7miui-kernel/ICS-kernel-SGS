@@ -437,7 +437,7 @@ static struct sk_buff *br_ip6_multicast_alloc_query(struct net_bridge *br,
 	ip6h = ipv6_hdr(skb);
 
 	*(__force __be32 *)ip6h = htonl(0x60000000);
-	ip6h->payload_len = htons(8 + sizeof(*mldq));
+	ip6h->payload_len = 8 + sizeof(*mldq);
 	ip6h->nexthdr = IPPROTO_HOPOPTS;
 	ip6h->hop_limit = 1;
 	ipv6_addr_set(&ip6h->saddr, 0, 0, 0, 0);
@@ -1435,7 +1435,7 @@ static int br_multicast_ipv6_rcv(struct net_bridge *br,
 	struct icmp6hdr *icmp6h;
 	u8 nexthdr;
 	unsigned len;
-	unsigned offset;
+	int offset;
 	int err;
 
 	if (!pskb_may_pull(skb, sizeof(*ip6h)))
@@ -1728,18 +1728,17 @@ unlock:
 int br_multicast_toggle(struct net_bridge *br, unsigned long val)
 {
 	struct net_bridge_port *port;
-	int err = -ENOENT;
+	int err = 0;
 
 	spin_lock(&br->multicast_lock);
-	if (!netif_running(br->dev))
-		goto unlock;
-
-	err = 0;
 	if (br->multicast_disabled == !val)
 		goto unlock;
 
 	br->multicast_disabled = !val;
 	if (br->multicast_disabled)
+		goto unlock;
+
+	if (!netif_running(br->dev))
 		goto unlock;
 
 	if (br->mdb) {

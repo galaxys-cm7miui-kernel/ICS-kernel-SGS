@@ -60,13 +60,14 @@ long verify_iovec(struct msghdr *m, struct iovec *iov, struct sockaddr *address,
 	err = 0;
 
 	for (ct = 0; ct < m->msg_iovlen; ct++) {
-		size_t len = iov[ct].iov_len;
-
-		if (len > INT_MAX - err) {
-			len = INT_MAX - err;
-			iov[ct].iov_len = len;
-		}
-		err += len;
+		err += iov[ct].iov_len;
+		/*
+		 * Goal is not to verify user data, but to prevent returning
+		 * negative value, which is interpreted as errno.
+		 * Overflow is still possible, but it is harmless.
+		 */
+		if (err < 0)
+			return -EMSGSIZE;
 	}
 
 	return err;
@@ -95,6 +96,7 @@ int memcpy_toiovec(struct iovec *iov, unsigned char *kdata, int len)
 
 	return 0;
 }
+EXPORT_SYMBOL(memcpy_toiovec);
 
 /*
  *	Copy kernel to iovec. Returns -EFAULT on error.
@@ -120,6 +122,7 @@ int memcpy_toiovecend(const struct iovec *iov, unsigned char *kdata,
 
 	return 0;
 }
+EXPORT_SYMBOL(memcpy_toiovecend);
 
 /*
  *	Copy iovec to kernel. Returns -EFAULT on error.
@@ -144,6 +147,7 @@ int memcpy_fromiovec(unsigned char *kdata, struct iovec *iov, int len)
 
 	return 0;
 }
+EXPORT_SYMBOL(memcpy_fromiovec);
 
 /*
  *	Copy iovec from kernel. Returns -EFAULT on error.
@@ -172,6 +176,7 @@ int memcpy_fromiovecend(unsigned char *kdata, const struct iovec *iov,
 
 	return 0;
 }
+EXPORT_SYMBOL(memcpy_fromiovecend);
 
 /*
  *	And now for the all-in-one: copy and checksum from a user iovec
@@ -256,9 +261,4 @@ out_fault:
 	err = -EFAULT;
 	goto out;
 }
-
 EXPORT_SYMBOL(csum_partial_copy_fromiovecend);
-EXPORT_SYMBOL(memcpy_fromiovec);
-EXPORT_SYMBOL(memcpy_fromiovecend);
-EXPORT_SYMBOL(memcpy_toiovec);
-EXPORT_SYMBOL(memcpy_toiovecend);

@@ -261,14 +261,9 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
 	rcu_read_lock();
 	proto = __nf_nat_proto_find(orig_tuple->dst.protonum);
 
-	/* Change protocol info to have some randomization */
-	if (range->flags & IP_NAT_RANGE_PROTO_RANDOM) {
-		proto->unique_tuple(tuple, range, maniptype, ct);
-		goto out;
-	}
-
 	/* Only bother mapping if it's not already in range and unique */
-	if ((!(range->flags & IP_NAT_RANGE_PROTO_SPECIFIED) ||
+	if (!(range->flags & IP_NAT_RANGE_PROTO_RANDOM) &&
+	    (!(range->flags & IP_NAT_RANGE_PROTO_SPECIFIED) ||
 	     proto->in_range(tuple, maniptype, &range->min, &range->max)) &&
 	    !nf_nat_used_tuple(tuple, ct))
 		goto out;
@@ -738,7 +733,7 @@ static int __init nf_nat_init(void)
 	spin_unlock_bh(&nf_nat_lock);
 
 	/* Initialize fake conntrack so that NAT will skip it */
-	nf_conntrack_untracked.status |= IPS_NAT_DONE_MASK;
+	nf_ct_untracked_status_or(IPS_NAT_DONE_MASK);
 
 	l3proto = nf_ct_l3proto_find_get((u_int16_t)AF_INET);
 

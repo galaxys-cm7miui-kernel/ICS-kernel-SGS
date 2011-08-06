@@ -1156,7 +1156,7 @@ error:
 	return err;
 }
 
-void rfcomm_cleanup_sockets(void)
+void __exit rfcomm_cleanup_sockets(void)
 {
 	debugfs_remove(rfcomm_sock_debugfs);
 

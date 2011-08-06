@@ -4,8 +4,6 @@
  * Copyright 2006-2010		Johannes Berg <johannes@sipsolutions.net>
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/if.h>
 #include <linux/module.h>
 #include <linux/err.h>
@@ -218,7 +216,8 @@ int cfg80211_dev_rename(struct cfg80211_registered_device *rdev,
 			    rdev->wiphy.debugfsdir,
 			    rdev->wiphy.debugfsdir->d_parent,
 			    newname))
-		pr_err("failed to rename debugfs dir to %s!\n", newname);
+		printk(KERN_ERR "cfg80211: failed to rename debugfs dir to %s!\n",
+		       newname);
 
 	nl80211_notify_dev_rename(rdev);
 
@@ -254,16 +253,11 @@ int cfg80211_switch_netns(struct cfg80211_registered_device *rdev,
 			WARN_ON(err);
 			wdev->netdev->features |= NETIF_F_NETNS_LOCAL;
 		}
-
-		return err;
 	}
 
 	wiphy_net_set(&rdev->wiphy, net);
 
-	err = device_rename(&rdev->wiphy.dev, dev_name(&rdev->wiphy.dev));
-	WARN_ON(err);
-
-	return 0;
+	return err;
 }
 
 static void cfg80211_rfkill_poll(struct rfkill *rfkill, void *data)
@@ -332,7 +326,6 @@ struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 	WARN_ON(ops->add_virtual_intf && !ops->del_virtual_intf);
 	WARN_ON(ops->add_station && !ops->del_station);
 	WARN_ON(ops->add_mpath && !ops->del_mpath);
-	WARN_ON(ops->join_mesh && !ops->leave_mesh);
 
 	alloc_size = sizeof(*rdev) + sizeof_priv;
 
@@ -435,7 +428,7 @@ int wiphy_register(struct wiphy *wiphy)
 
 	/* sanity check ifmodes */
 	WARN_ON(!ifmodes);
-	ifmodes &= ((1 << NUM_NL80211_IFTYPES) - 1) & ~1;
+	ifmodes &= ((1 << __NL80211_IFTYPE_AFTER_LAST) - 1) & ~1;
 	if (WARN_ON(ifmodes != wiphy->interface_modes))
 		wiphy->interface_modes = ifmodes;
 
@@ -690,8 +683,8 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 		INIT_WORK(&wdev->cleanup_work, wdev_cleanup_work);
 		INIT_LIST_HEAD(&wdev->event_list);
 		spin_lock_init(&wdev->event_lock);
-		INIT_LIST_HEAD(&wdev->mgmt_registrations);
-		spin_lock_init(&wdev->mgmt_registrations_lock);
+		INIT_LIST_HEAD(&wdev->action_registrations);
+		spin_lock_init(&wdev->action_registrations_lock);
 
 		mutex_lock(&rdev->devlist_mtx);
 		list_add_rcu(&wdev->list, &rdev->netdev_list);
@@ -701,7 +694,8 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 
 		if (sysfs_create_link(&dev->dev.kobj, &rdev->wiphy.dev.kobj,
 				      "phy80211")) {
-			pr_err("failed to add phy80211 symlink to netdev!\n");
+			printk(KERN_ERR "wireless: failed to add phy80211 "
+				"symlink to netdev!\n");
 		}
 		wdev->netdev = dev;
 		wdev->sme_state = CFG80211_SME_IDLE;
@@ -730,7 +724,6 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 			dev->ethtool_ops = &cfg80211_ethtool_ops;
 
 		if ((wdev->iftype == NL80211_IFTYPE_STATION ||
-		     wdev->iftype == NL80211_IFTYPE_P2P_CLIENT ||
 		     wdev->iftype == NL80211_IFTYPE_ADHOC) && !wdev->use_4addr)
 			dev->priv_flags |= IFF_DONT_BRIDGE;
 		break;
@@ -739,7 +732,6 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 		case NL80211_IFTYPE_ADHOC:
 			cfg80211_leave_ibss(rdev, dev, true);
 			break;
-		case NL80211_IFTYPE_P2P_CLIENT:
 		case NL80211_IFTYPE_STATION:
 			wdev_lock(wdev);
 #ifdef CONFIG_CFG80211_WEXT
@@ -752,9 +744,6 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 					      WLAN_REASON_DEAUTH_LEAVING, true);
 			cfg80211_mlme_down(rdev, dev);
 			wdev_unlock(wdev);
-			break;
-		case NL80211_IFTYPE_MESH_POINT:
-			cfg80211_leave_mesh(rdev, dev);
 			break;
 		default:
 			break;
@@ -779,37 +768,20 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 		}
 		cfg80211_lock_rdev(rdev);
 		mutex_lock(&rdev->devlist_mtx);
+#ifdef CONFIG_CFG80211_WEXT
 		wdev_lock(wdev);
 		switch (wdev->iftype) {
-#ifdef CONFIG_CFG80211_WEXT
 		case NL80211_IFTYPE_ADHOC:
 			cfg80211_ibss_wext_join(rdev, wdev);
 			break;
 		case NL80211_IFTYPE_STATION:
 			cfg80211_mgd_wext_connect(rdev, wdev);
 			break;
-#endif
-#ifdef CONFIG_MAC80211_MESH
-		case NL80211_IFTYPE_MESH_POINT:
-			{
-				/* backward compat code... */
-				struct mesh_setup setup;
-				memcpy(&setup, &default_mesh_setup,
-						sizeof(setup));
-				 /* back compat only needed for mesh_id */
-				setup.mesh_id = wdev->ssid;
-				setup.mesh_id_len = wdev->mesh_id_up_len;
-				if (wdev->mesh_id_up_len)
-					__cfg80211_join_mesh(rdev, dev,
-							&setup,
-							&default_mesh_config);
-				break;
-			}
-#endif
 		default:
 			break;
 		}
 		wdev_unlock(wdev);
+#endif
 		rdev->opencount++;
 		mutex_unlock(&rdev->devlist_mtx);
 		cfg80211_unlock_rdev(rdev);
@@ -832,7 +804,7 @@ static int cfg80211_netdev_notifier_call(struct notifier_block * nb,
 			sysfs_remove_link(&dev->dev.kobj, "phy80211");
 			list_del_rcu(&wdev->list);
 			rdev->devlist_generation++;
-			cfg80211_mlme_purge_registrations(wdev);
+			cfg80211_mlme_purge_actions(wdev);
 #ifdef CONFIG_CFG80211_WEXT
 			kfree(wdev->wext.keys);
 #endif
@@ -938,3 +910,52 @@ static void __exit cfg80211_exit(void)
 	destroy_workqueue(cfg80211_wq);
 }
 module_exit(cfg80211_exit);
+
+static int ___wiphy_printk(const char *level, const struct wiphy *wiphy,
+			   struct va_format *vaf)
+{
+	if (!wiphy)
+		return printk("%s(NULL wiphy *): %pV", level, vaf);
+
+	return printk("%s%s: %pV", level, wiphy_name(wiphy), vaf);
+}
+
+int __wiphy_printk(const char *level, const struct wiphy *wiphy,
+		   const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+	int r;
+
+	va_start(args, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &args;
+
+	r = ___wiphy_printk(level, wiphy, &vaf);
+	va_end(args);
+
+	return r;
+}
+EXPORT_SYMBOL(__wiphy_printk);
+
+#define define_wiphy_printk_level(func, kern_level)		\
+int func(const struct wiphy *wiphy, const char *fmt, ...)	\
+{								\
+	struct va_format vaf;					\
+	va_list args;						\
+	int r;							\
+								\
+	va_start(args, fmt);					\
+								\
+	vaf.fmt = fmt;						\
+	vaf.va = &args;						\
+								\
+	r = ___wiphy_printk(kern_level, wiphy, &vaf);		\
+	va_end(args);						\
+								\
+	return r;						\
+}								\
+EXPORT_SYMBOL(func);
+
+define_wiphy_printk_level(wiphy_debug, KERN_DEBUG);
