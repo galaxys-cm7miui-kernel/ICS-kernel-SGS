@@ -748,8 +748,6 @@ extern void ip_vs_app_inc_put(struct ip_vs_app *inc);
 
 extern int ip_vs_app_pkt_out(struct ip_vs_conn *, struct sk_buff *skb);
 extern int ip_vs_app_pkt_in(struct ip_vs_conn *, struct sk_buff *skb);
-extern int ip_vs_skb_replace(struct sk_buff *skb, gfp_t pri,
-			     char *o_buf, int o_len, char *n_buf, int n_len);
 extern int ip_vs_app_init(void);
 extern void ip_vs_app_cleanup(void);
 
@@ -956,6 +954,9 @@ static inline __wsum ip_vs_check_diff2(__be16 old, __be16 new, __wsum oldsum)
 
 	return csum_partial(diff, sizeof(diff), oldsum);
 }
+
+extern void ip_vs_update_conntrack(struct sk_buff *skb, struct ip_vs_conn *cp,
+				   int outin);
 
 #endif /* __KERNEL__ */
 

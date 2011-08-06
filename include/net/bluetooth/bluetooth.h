@@ -64,6 +64,11 @@ struct bt_security {
 
 #define BT_DEFER_SETUP	7
 
+#define BT_POWER	8
+struct bt_power {
+	__u8 force_active;
+};
+
 #define BT_INFO(fmt, arg...) printk(KERN_INFO "Bluetooth: " fmt "\n" , ## arg)
 #define BT_ERR(fmt, arg...)  printk(KERN_ERR "%s: " fmt "\n" , __func__ , ## arg)
 #define BT_DBG(fmt, arg...)  pr_debug("%s: " fmt "\n" , __func__ , ## arg)
@@ -84,7 +89,7 @@ enum {
 /* BD Address */
 typedef struct {
 	__u8 b[6];
-} __attribute__((packed)) bdaddr_t;
+} __packed bdaddr_t;
 
 #define BDADDR_ANY   (&(bdaddr_t) {{0, 0, 0, 0, 0, 0}})
 #define BDADDR_LOCAL (&(bdaddr_t) {{0, 0, 0, 0xff, 0xff, 0xff}})
@@ -138,9 +143,11 @@ struct sock *bt_accept_dequeue(struct sock *parent, struct socket *newsock);
 struct bt_skb_cb {
 	__u8 pkt_type;
 	__u8 incoming;
+	__u16 expect;
 	__u8 tx_seq;
 	__u8 retries;
 	__u8 sar;
+	__u8 force_active;
 };
 #define bt_cb(skb) ((struct bt_skb_cb *)((skb)->cb))
 

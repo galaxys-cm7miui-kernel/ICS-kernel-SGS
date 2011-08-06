@@ -21,8 +21,8 @@ struct scm_fp_list {
 struct scm_cookie {
 	struct pid		*pid;		/* Skb credentials */
 	const struct cred	*cred;
-	struct ucred		creds;		/* Skb credentials	*/
 	struct scm_fp_list	*fp;		/* Passed files		*/
+	struct ucred		creds;		/* Skb credentials	*/
 #ifdef CONFIG_SECURITY_NETWORK
 	u32			secid;		/* Passed security ID 	*/
 #endif

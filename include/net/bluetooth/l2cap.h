@@ -1,6 +1,8 @@
 /* 
    BlueZ - Bluetooth protocol stack for Linux
    Copyright (C) 2000-2001 Qualcomm Incorporated
+   Copyright (C) 2009-2010 Gustavo F. Padovan <gustavo@padovan.org>
+   Copyright (C) 2010 Google Inc.
 
    Written 2000,2001 by Maxim Krasnyansky <maxk@qualcomm.com>
 
@@ -130,31 +132,31 @@ struct l2cap_conninfo {
 struct l2cap_hdr {
 	__le16     len;
 	__le16     cid;
-} __attribute__ ((packed));
+} __packed;
 #define L2CAP_HDR_SIZE		4
 
 struct l2cap_cmd_hdr {
 	__u8       code;
 	__u8       ident;
 	__le16     len;
-} __attribute__ ((packed));
+} __packed;
 #define L2CAP_CMD_HDR_SIZE	4
 
 struct l2cap_cmd_rej {
 	__le16     reason;
-} __attribute__ ((packed));
+} __packed;
 
 struct l2cap_conn_req {
 	__le16     psm;
 	__le16     scid;
-} __attribute__ ((packed));
+} __packed;
 
 struct l2cap_conn_rsp {
 	__le16     dcid;
 	__le16     scid;
 	__le16     result;
 	__le16     status;
-} __attribute__ ((packed));
+} __packed;
 
 /* channel indentifier */
 #define L2CAP_CID_SIGNALING	0x0001
@@ -178,14 +180,14 @@ struct l2cap_conf_req {
 	__le16     dcid;
 	__le16     flags;
 	__u8       data[0];
-} __attribute__ ((packed));
+} __packed;
 
 struct l2cap_conf_rsp {
 	__le16     scid;
 	__le16     flags;
 	__le16     result;
 	__u8       data[0];
-} __attribute__ ((packed));
+} __packed;
 
 #define L2CAP_CONF_SUCCESS	0x0000
 #define L2CAP_CONF_UNACCEPT	0x0001
@@ -196,7 +198,7 @@ struct l2cap_conf_opt {
 	__u8       type;
 	__u8       len;
 	__u8       val[0];
-} __attribute__ ((packed));
+} __packed;
 #define L2CAP_CONF_OPT_SIZE	2
 
 #define L2CAP_CONF_HINT		0x80
@@ -217,7 +219,7 @@ struct l2cap_conf_rfc {
 	__le16     retrans_timeout;
 	__le16     monitor_timeout;
 	__le16     max_pdu_size;
-} __attribute__ ((packed));
+} __packed;
 
 #define L2CAP_MODE_BASIC	0x00
 #define L2CAP_MODE_RETRANS	0x01
@@ -228,22 +230,22 @@ struct l2cap_conf_rfc {
 struct l2cap_disconn_req {
 	__le16     dcid;
 	__le16     scid;
-} __attribute__ ((packed));
+} __packed;
 
 struct l2cap_disconn_rsp {
 	__le16     dcid;
 	__le16     scid;
-} __attribute__ ((packed));
+} __packed;
 
 struct l2cap_info_req {
 	__le16      type;
-} __attribute__ ((packed));
+} __packed;
 
 struct l2cap_info_rsp {
 	__le16      type;
 	__le16      result;
 	__u8        data[0];
-} __attribute__ ((packed));
+} __packed;
 
 /* info type */
 #define L2CAP_IT_CL_MTU     0x0001
@@ -288,6 +290,11 @@ struct l2cap_conn {
 	struct l2cap_chan_list chan_list;
 };
 
+struct sock_del_list {
+	struct sock *sk;
+	struct list_head list;
+};
+
 #define L2CAP_INFO_CL_MTU_REQ_SENT	0x01
 #define L2CAP_INFO_FEAT_MASK_REQ_SENT	0x04
 #define L2CAP_INFO_FEAT_MASK_REQ_DONE	0x08
@@ -322,6 +329,7 @@ struct l2cap_pinfo {
 	__u8		role_switch;
 	__u8		force_reliable;
 	__u8		flushable;
+	__u8		force_active;
 
 	__u8		conf_req[64];
 	__u8		conf_len;
@@ -355,7 +363,6 @@ struct l2cap_pinfo {
 
 	__le16		sport;
 
-	spinlock_t		send_lock;
 	struct timer_list	retrans_timer;
 	struct timer_list	monitor_timer;
 	struct timer_list	ack_timer;
