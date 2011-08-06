@@ -1802,8 +1802,6 @@ netxen_post_rx_buffers(struct netxen_adapter *adapter, u32 ringid,
 	netxen_ctx_msg msg = 0;
 	struct list_head *head;
 
-	spin_lock(&rds_ring->lock);
-
 	producer = rds_ring->producer;
 
 	head = &rds_ring->free_list;
@@ -1850,8 +1848,6 @@ netxen_post_rx_buffers(struct netxen_adapter *adapter, u32 ringid,
 					NETXEN_RCV_PRODUCER_OFFSET), msg);
 		}
 	}
-
-	spin_unlock(&rds_ring->lock);
 }
 
 static void

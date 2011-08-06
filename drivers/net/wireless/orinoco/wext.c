@@ -128,7 +128,7 @@ static struct iw_statistics *orinoco_get_wireless_stats(struct net_device *dev)
 	} else {
 		struct {
 			__le16 qual, signal, noise, unused;
-		} __attribute__ ((packed)) cq;
+		} __packed cq;
 
 		err = HERMES_READ_RECORD(hw, USER_BAP,
 					 HERMES_RID_COMMSQUALITY, &cq);
@@ -904,10 +904,10 @@ static int orinoco_ioctl_set_auth(struct net_device *dev,
 		 */
 		if (param->value) {
 			priv->tkip_cm_active = 1;
-			ret = hermes_disable_port(hw, 0);
+			ret = hermes_enable_port(hw, 0);
 		} else {
 			priv->tkip_cm_active = 0;
-			ret = hermes_enable_port(hw, 0);
+			ret = hermes_disable_port(hw, 0);
 		}
 		break;
 
@@ -993,11 +993,9 @@ static int orinoco_ioctl_set_genie(struct net_device *dev,
 		return -EINVAL;
 
 	if (wrqu->data.length) {
-		buf = kmalloc(wrqu->data.length, GFP_KERNEL);
+		buf = kmemdup(extra, wrqu->data.length, GFP_KERNEL);
 		if (buf == NULL)
 			return -ENOMEM;
-
-		memcpy(buf, extra, wrqu->data.length);
 	} else
 		buf = NULL;
 

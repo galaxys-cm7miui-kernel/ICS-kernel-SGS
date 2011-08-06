@@ -35,7 +35,6 @@
 #include <bcmutils.h>
 #include <linux/delay.h>
 #include <pcicfg.h>
-#include <linux/mutex.h>
 
 #define PCI_CFG_RETRY 		10
 
@@ -47,7 +46,7 @@
 #define STATIC_BUF_SIZE	(PAGE_SIZE*2)
 #define STATIC_BUF_TOTAL_LEN (MAX_STATIC_BUF_NUM*STATIC_BUF_SIZE)
 typedef struct bcm_static_buf {
-	struct mutex static_sem;
+	struct semaphore static_sem;
 	unsigned char *buf_ptr;
 	unsigned char buf_use[MAX_STATIC_BUF_NUM];
 } bcm_static_buf_t;
@@ -58,7 +57,7 @@ static bcm_static_buf_t *bcm_static_buf = 0;
 typedef struct bcm_static_pkt {
 	struct sk_buff *skb_4k[MAX_STATIC_PKT_NUM];
 	struct sk_buff *skb_8k[MAX_STATIC_PKT_NUM];
-	struct mutex osl_pkt_sem;
+	struct semaphore osl_pkt_sem;
 	unsigned char pkt_use[MAX_STATIC_PKT_NUM*2];
 } bcm_static_pkt_t;
 static bcm_static_pkt_t *bcm_static_skb = 0;
@@ -155,9 +154,10 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 	gfp_t flags;
 
 	flags = (in_atomic()) ? GFP_ATOMIC : GFP_KERNEL;
-	osh = kzalloc(sizeof(osl_t), flags);
+	osh = kmalloc(sizeof(osl_t), flags);
 	ASSERT(osh);
 
+	bzero(osh, sizeof(osl_t));
 
 	
 	ASSERT(ABS(BCME_LAST) == (ARRAYSIZE(linuxbcmerrormap) - 1));
@@ -199,7 +199,7 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 			/* printk("alloc static buf at %x!\n", (unsigned int)bcm_static_buf); */
 		}
 		
-		mutex_init(&bcm_static_buf->static_sem);
+		init_MUTEX(&bcm_static_buf->static_sem);
 
 		
 		bcm_static_buf->buf_ptr = (unsigned char *)bcm_static_buf + STATIC_BUF_SIZE;
@@ -217,7 +217,7 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 		for (i = 0; i < MAX_STATIC_PKT_NUM*2; i++)
 			bcm_static_skb->pkt_use[i] = 0;
 
-		mutex_init(&bcm_static_skb->osl_pkt_sem);
+		init_MUTEX(&bcm_static_skb->osl_pkt_sem);
 	}
 #endif 
 	return osh;
@@ -306,7 +306,7 @@ osl_pktget_static(osl_t *osh, uint len)
 	}
 
 	
-	mutex_lock(&bcm_static_skb->osl_pkt_sem);
+	down(&bcm_static_skb->osl_pkt_sem);
 	if (len <= PAGE_SIZE)
 	{
 		
@@ -319,7 +319,7 @@ osl_pktget_static(osl_t *osh, uint len)
 		if (i != MAX_STATIC_PKT_NUM)
 		{
 			bcm_static_skb->pkt_use[i] = 1;
-			mutex_unlock(&bcm_static_skb->osl_pkt_sem);
+			up(&bcm_static_skb->osl_pkt_sem);
 
 			skb = bcm_static_skb->skb_4k[i];
 			skb->tail = skb->data + len;
@@ -339,7 +339,7 @@ osl_pktget_static(osl_t *osh, uint len)
 	if (i != MAX_STATIC_PKT_NUM)
 	{
 		bcm_static_skb->pkt_use[i+MAX_STATIC_PKT_NUM] = 1;
-		mutex_unlock(&bcm_static_skb->osl_pkt_sem);
+		up(&bcm_static_skb->osl_pkt_sem);
 		skb = bcm_static_skb->skb_8k[i];
 		skb->tail = skb->data + len;
 		skb->len = len;
@@ -349,7 +349,7 @@ osl_pktget_static(osl_t *osh, uint len)
 
 
 	
-	mutex_unlock(&bcm_static_skb->osl_pkt_sem);
+	up(&bcm_static_skb->osl_pkt_sem);
 	printk("all static pkt in use!\n");
 	return osl_pktget(osh, len);
 }
@@ -364,9 +364,9 @@ osl_pktfree_static(osl_t *osh, void *p, bool send)
 	{
 		if (p == bcm_static_skb->skb_4k[i])
 		{
-			mutex_lock(&bcm_static_skb->osl_pkt_sem);
+			down(&bcm_static_skb->osl_pkt_sem);
 			bcm_static_skb->pkt_use[i] = 0;
-			mutex_unlock(&bcm_static_skb->osl_pkt_sem);
+			up(&bcm_static_skb->osl_pkt_sem);
 
 			
 			return;
@@ -468,7 +468,7 @@ osl_malloc(osl_t *osh, uint size)
 		int i = 0;
 		if ((size >= PAGE_SIZE)&&(size <= STATIC_BUF_SIZE))
 		{
-			mutex_lock(&bcm_static_buf->static_sem);
+			down(&bcm_static_buf->static_sem);
 			
 			for (i = 0; i < MAX_STATIC_BUF_NUM; i++)
 			{
@@ -478,13 +478,13 @@ osl_malloc(osl_t *osh, uint size)
 			
 			if (i == MAX_STATIC_BUF_NUM)
 			{
-				mutex_unlock(&bcm_static_buf->static_sem);
+				up(&bcm_static_buf->static_sem);
 				printk("all static buff in use!\n");
 				goto original;
 			}
 			
 			bcm_static_buf->buf_use[i] = 1;
-			mutex_unlock(&bcm_static_buf->static_sem);
+			up(&bcm_static_buf->static_sem);
 
 			bzero(bcm_static_buf->buf_ptr+STATIC_BUF_SIZE*i, size);
 			if (osh)
@@ -520,9 +520,9 @@ osl_mfree(osl_t *osh, void *addr, uint size)
 			
 			buf_idx = ((unsigned char *)addr - bcm_static_buf->buf_ptr)/STATIC_BUF_SIZE;
 			
-			mutex_lock(&bcm_static_buf->static_sem);
+			down(&bcm_static_buf->static_sem);
 			bcm_static_buf->buf_use[buf_idx] = 0;
-			mutex_unlock(&bcm_static_buf->static_sem);
+			up(&bcm_static_buf->static_sem);
 
 			if (osh) {
 				ASSERT(osh->magic == OS_HANDLE_MAGIC);
