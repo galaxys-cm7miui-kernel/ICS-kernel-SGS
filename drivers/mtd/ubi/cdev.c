@@ -798,18 +798,18 @@ static int rename_volumes(struct ubi_device *ubi,
 			goto out_free;
 		}
 
-		re1 = kzalloc(sizeof(struct ubi_rename_entry), GFP_KERNEL);
-		if (!re1) {
+		re = kzalloc(sizeof(struct ubi_rename_entry), GFP_KERNEL);
+		if (!re) {
 			err = -ENOMEM;
 			ubi_close_volume(desc);
 			goto out_free;
 		}
 
-		re1->remove = 1;
-		re1->desc = desc;
-		list_add(&re1->list, &rename_list);
+		re->remove = 1;
+		re->desc = desc;
+		list_add(&re->list, &rename_list);
 		dbg_msg("will remove volume %d, name \"%s\"",
-			re1->desc->vol->vol_id, re1->desc->vol->name);
+			re->desc->vol->vol_id, re->desc->vol->name);
 	}
 
 	mutex_lock(&ubi->device_mutex);

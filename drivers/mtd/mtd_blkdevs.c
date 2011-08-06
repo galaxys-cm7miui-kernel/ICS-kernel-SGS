@@ -1,21 +1,7 @@
 /*
- * Interface to Linux block layer for MTD 'translation layers'.
+ * (C) 2003 David Woodhouse <dwmw2@infradead.org>
  *
- * Copyright © 2003-2010 David Woodhouse <dwmw2@infradead.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ * Interface to Linux 2.5 block layer for MTD 'translation layers'.
  *
  */
 
@@ -29,7 +15,6 @@
 #include <linux/blkdev.h>
 #include <linux/blkpg.h>
 #include <linux/spinlock.h>
-#include <linux/smp_lock.h>
 #include <linux/hdreg.h>
 #include <linux/init.h>
 #include <linux/mutex.h>
@@ -88,14 +73,14 @@ static int do_blktrans_request(struct mtd_blktrans_ops *tr,
 
 	buf = req->buffer;
 
-	if (req->cmd_type != REQ_TYPE_FS)
+	if (!blk_fs_request(req))
 		return -EIO;
 
 	if (blk_rq_pos(req) + blk_rq_cur_sectors(req) >
 	    get_capacity(req->rq_disk))
 		return -EIO;
 
-	if (req->cmd_flags & REQ_DISCARD)
+	if (blk_discard_rq(req))
 		return tr->discard(dev, block, nsect);
 
 	switch(rq_data_dir(req)) {
@@ -179,9 +164,8 @@ static int blktrans_open(struct block_device *bdev, fmode_t mode)
 	int ret;
 
 	if (!dev)
-		return -ERESTARTSYS; /* FIXME: busy loop! -arnd*/
+		return -ERESTARTSYS;
 
-	lock_kernel();
 	mutex_lock(&dev->lock);
 
 	if (!dev->mtd) {
@@ -198,7 +182,6 @@ static int blktrans_open(struct block_device *bdev, fmode_t mode)
 unlock:
 	mutex_unlock(&dev->lock);
 	blktrans_dev_put(dev);
-	unlock_kernel();
 	return ret;
 }
 
@@ -210,7 +193,6 @@ static int blktrans_release(struct gendisk *disk, fmode_t mode)
 	if (!dev)
 		return ret;
 
-	lock_kernel();
 	mutex_lock(&dev->lock);
 
 	/* Release one reference, we sure its not the last one here*/
@@ -223,7 +205,6 @@ static int blktrans_release(struct gendisk *disk, fmode_t mode)
 unlock:
 	mutex_unlock(&dev->lock);
 	blktrans_dev_put(dev);
-	unlock_kernel();
 	return ret;
 }
 
@@ -256,7 +237,6 @@ static int blktrans_ioctl(struct block_device *bdev, fmode_t mode,
 	if (!dev)
 		return ret;
 
-	lock_kernel();
 	mutex_lock(&dev->lock);
 
 	if (!dev->mtd)
@@ -271,7 +251,6 @@ static int blktrans_ioctl(struct block_device *bdev, fmode_t mode,
 	}
 unlock:
 	mutex_unlock(&dev->lock);
-	unlock_kernel();
 	blktrans_dev_put(dev);
 	return ret;
 }
@@ -280,7 +259,7 @@ static const struct block_device_operations mtd_blktrans_ops = {
 	.owner		= THIS_MODULE,
 	.open		= blktrans_open,
 	.release	= blktrans_release,
-	.ioctl		= blktrans_ioctl,
+	.locked_ioctl	= blktrans_ioctl,
 	.getgeo		= blktrans_getgeo,
 };
 
