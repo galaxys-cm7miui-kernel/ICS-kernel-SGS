@@ -620,44 +620,6 @@
 #define     MIN_MAX_BANK_7__MIN_VALUE			0x0003
 #define     MIN_MAX_BANK_7__MAX_VALUE			0x000c
 
-/* flash.h */
-struct device_info_tag {
-	uint16_t wDeviceMaker;
-	uint16_t wDeviceID;
-	uint8_t  bDeviceParam0;
-	uint8_t  bDeviceParam1;
-	uint8_t  bDeviceParam2;
-	uint32_t wDeviceType;
-	uint32_t wSpectraStartBlock;
-	uint32_t wSpectraEndBlock;
-	uint32_t wTotalBlocks;
-	uint16_t wPagesPerBlock;
-	uint16_t wPageSize;
-	uint16_t wPageDataSize;
-	uint16_t wPageSpareSize;
-	uint16_t wNumPageSpareFlag;
-	uint16_t wECCBytesPerSector;
-	uint32_t wBlockSize;
-	uint32_t wBlockDataSize;
-	uint32_t wDataBlockNum;
-	uint8_t bPlaneNum;
-	uint16_t wDeviceMainAreaSize;
-	uint16_t wDeviceSpareAreaSize;
-	uint16_t wDevicesConnected;
-	uint16_t wDeviceWidth;
-	uint16_t wHWRevision;
-	uint16_t wHWFeatures;
-	uint16_t wONFIDevFeatures;
-	uint16_t wONFIOptCommands;
-	uint16_t wONFITimingMode;
-	uint16_t wONFIPgmCacheTimingMode;
-	uint16_t MLCDevice;
-	uint16_t wSpareSkipBytes;
-	uint8_t nBitsInPageNumber;
-	uint8_t nBitsInPageDataSize;
-	uint8_t nBitsInBlockDataSize;
-};
-
 /* ffsdefs.h */
 #define CLEAR 0                 /*use this to clear a field instead of "fail"*/
 #define SET   1                 /*use this to set a field instead of "pass"*/
@@ -672,24 +634,6 @@ struct device_info_tag {
 
 #define CLK_X  5
 #define CLK_MULTI 4
-
-/* ffsport.h */
-#define VERBOSE    1
-
-#define NAND_DBG_WARN  1
-#define NAND_DBG_DEBUG 2
-#define NAND_DBG_TRACE 3
-
-#ifdef VERBOSE
-#define nand_dbg_print(level, args...)				\
-	do {							\
-			if (level <= nand_debug_level)		\
-				printk(KERN_ALERT args);	\
-	} while (0)
-#else
-#define nand_dbg_print(level, args...)
-#endif
-
 
 /* spectraswconfig.h */
 #define CMD_DMA 0
@@ -784,7 +728,6 @@ struct nand_buf {
 struct denali_nand_info {
 	struct mtd_info mtd;
 	struct nand_chip nand;
-	struct device_info_tag dev_info;
 	int flash_bank; /* currently selected chip */
 	int status;
 	int platform;
@@ -802,11 +745,12 @@ struct denali_nand_info {
 	uint32_t irq_status;
 	int irq_debug_array[32];
 	int idx;
-};
 
-static uint16_t NAND_Flash_Reset(struct denali_nand_info *denali);
-static uint16_t NAND_Read_Device_ID(struct denali_nand_info *denali);
-static void NAND_LLD_Enable_Disable_Interrupts(struct denali_nand_info *denali,
-						uint16_t INT_ENABLE);
+	uint32_t devnum;	/* represent how many nands connected */
+	uint32_t fwblks; /* represent how many blocks FW used */
+	uint32_t totalblks;
+	uint32_t blksperchip;
+	uint32_t bbtskipbytes;
+};
 
 #endif /*_LLD_NAND_*/
