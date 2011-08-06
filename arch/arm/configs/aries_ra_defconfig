@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35.13
-# Sat Aug  6 10:08:20 2011
+# Sat Aug  6 20:38:22 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -804,6 +804,7 @@ CONFIG_BT_RFCOMM_TTY=y
 CONFIG_BT_HCIUART=y
 CONFIG_BT_HCIUART_H4=y
 # CONFIG_BT_HCIUART_BCSP is not set
+# CONFIG_BT_HCIUART_ATH3K is not set
 # CONFIG_BT_HCIUART_LL is not set
 # CONFIG_BT_HCIVHCI is not set
 # CONFIG_BT_MRVL is not set
@@ -1051,6 +1052,7 @@ CONFIG_IFB=y
 # CONFIG_EQUALIZER is not set
 CONFIG_TUN=m
 # CONFIG_VETH is not set
+# CONFIG_PHYLIB is not set
 # CONFIG_NET_ETHERNET is not set
 CONFIG_NETDEV_1000=y
 CONFIG_NETDEV_10000=y
@@ -1058,13 +1060,16 @@ CONFIG_WLAN=y
 CONFIG_BCM4329=m
 CONFIG_BCM4329_FW_PATH="/vendor/firmware/fw_bcm4329.bin"
 CONFIG_BCM4329_NVRAM_PATH="/vendor/firmware/nvram_net.txt"
-# CONFIG_BCMDHD is not set
 # CONFIG_HOSTAP is not set
 
 #
 # Enable WiMAX (Networking options) to see the WiMAX drivers
 #
 # CONFIG_WAN is not set
+
+#
+# CAIF transport drivers
+#
 CONFIG_PPP=y
 # CONFIG_PPP_MULTILINK is not set
 # CONFIG_PPP_FILTER is not set
