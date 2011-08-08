@@ -274,6 +274,13 @@ static void complete_tx(struct s3c_udc *dev, u8 ep_num)
 		is_short, ep_tsr, xfer_size);
 
 	if (req->req.actual == req->req.length) {
+		/* send ZLP when req.zero is set for Non-ep0 */
+		if (ep_num > 0 && req->req.zero) {
+			req->req.zero = 0;
+			write_fifo_ep0(ep, req);
+			return;
+		}
+
 		done(ep, req, 0);
 
 		if (!list_empty(&ep->queue)) {
