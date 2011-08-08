@@ -865,7 +865,7 @@ static const struct file_operations bma023_fops = {
 	.owner = THIS_MODULE,
 	.open = bma023_open,
 	.release = bma023_close,
-	.ioctl = bma023_ioctl,
+	.unlocked_ioctl = bma023_ioctl,
 };
 
 static int bma023_probe(struct i2c_client *client,
