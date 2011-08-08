@@ -2929,7 +2929,7 @@ IMG_VOID OSFlushCPUCacheKM(IMG_VOID)
 #endif
 }
 
-#if (LINUX_VERSION_CODE == KERNEL_VERSION(2,6,35))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 static IMG_VOID _dmac_inv_range(const void *pvRangeAddrStart, const void *pvRangeAddrEnd)
 {
 	dmac_map_area(pvRangeAddrStart, (IMG_UINT32)pvRangeAddrEnd - (IMG_UINT32)pvRangeAddrStart, DMA_FROM_DEVICE);
@@ -2953,7 +2953,7 @@ IMG_BOOL OSCleanCPUCacheRangeKM(IMG_HANDLE hOSMemHandle,
 								IMG_UINT32 ui32Length)
 {
 	return CheckExecuteCacheOp(hOSMemHandle, pvRangeAddrStart, ui32Length,
-#if (LINUX_VERSION_CODE == KERNEL_VERSION(2,6,35))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 							_dmac_clean_range,
 #else
 							   dmac_clean_range, 
@@ -2966,7 +2966,7 @@ IMG_BOOL OSInvalidateCPUCacheRangeKM(IMG_HANDLE hOSMemHandle,
 									 IMG_UINT32 ui32Length)
 {
 	return CheckExecuteCacheOp(hOSMemHandle, pvRangeAddrStart, ui32Length,
-#if (LINUX_VERSION_CODE == KERNEL_VERSION(2,6,35))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 							_dmac_inv_range,
 #else
 							   dmac_inv_range, 
