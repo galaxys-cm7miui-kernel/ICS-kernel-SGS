@@ -63,7 +63,7 @@ static unsigned int suspended;
 * The minimum amount of time to spend at a frequency before we can ramp down,
 * default is 45ms.
 */
-#define DEFAULT_RAMP_DOWN_RATE_NS 70000;
+#define DEFAULT_RAMP_DOWN_RATE_NS 20000;
 static unsigned long ramp_down_rate_ns;
 
 /*
@@ -79,7 +79,7 @@ static unsigned int up_min_freq;
 * to minimize wakeup issues.
 * Set sleep_max_freq=0 to disable this behavior.
 */
-#define DEFAULT_SLEEP_MAX_FREQ (400*1000)
+#define DEFAULT_SLEEP_MAX_FREQ (200*1000)
 static unsigned int sleep_max_freq;
 
 /*
@@ -121,7 +121,7 @@ static
 struct cpufreq_governor cpufreq_gov_smartass = {
 .name = "smartass",
 .governor = cpufreq_governor_smartass,
-.max_transition_latency = 9000000,
+.max_transition_latency = 7000000,
 .owner = THIS_MODULE,
 };
 
@@ -351,7 +351,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input >= 1000 && input <= 100000000)
 ramp_down_rate_ns = input;
-return res;
+return count;
 }
 
 static struct freq_attr ramp_down_rate_ns_attr = __ATTR(ramp_down_rate_ns, 0644,
@@ -369,7 +369,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input >= 0)
 up_min_freq = input;
-return res;
+return count;
 }
 
 static struct freq_attr up_min_freq_attr = __ATTR(up_min_freq, 0644,
@@ -387,7 +387,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input >= 0)
 sleep_max_freq = input;
-return res;
+return count;
 }
 
 static struct freq_attr sleep_max_freq_attr = __ATTR(sleep_max_freq, 0644,
@@ -405,7 +405,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input > 0 && input <= 1000)
 sample_rate_jiffies = input;
-return res;
+return count;
 }
 
 static struct freq_attr sample_rate_jiffies_attr = __ATTR(sample_rate_jiffies, 0644,
@@ -423,7 +423,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input > 10000)
 max_ramp_up = input;
-return res;
+return count;
 }
 
 static struct freq_attr max_ramp_up_attr = __ATTR(max_ramp_up, 0644,
@@ -441,7 +441,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input > 0 && input <= 100)
 max_cpu_load = input;
-return res;
+return count;
 }
 
 static struct freq_attr max_cpu_load_attr = __ATTR(max_cpu_load, 0644,
@@ -459,7 +459,7 @@ unsigned long input;
 res = strict_strtoul(buf, 0, &input);
 if (res >= 0 && input > 0 && input < 100)
 min_cpu_load = input;
-return res;
+return count;
 }
 
 static struct freq_attr min_cpu_load_attr = __ATTR(min_cpu_load, 0644,
