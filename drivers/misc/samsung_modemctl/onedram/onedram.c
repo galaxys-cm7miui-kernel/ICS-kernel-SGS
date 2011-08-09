@@ -563,10 +563,10 @@ static int onedram_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
-static int onedram_ioctl(struct inode *inode, struct file *filp,
+static long onedram_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
-	struct cdev *cdev = inode->i_cdev;
+	struct cdev *cdev = filp->f_path.dentry->d_inode->i_cdev;
 	struct onedram *od = container_of(cdev, struct onedram, cdev);
 	int r;
 
@@ -598,7 +598,7 @@ static const struct file_operations onedram_fops = {
 	.open = onedram_open,
 	.release = onedram_release,
 	.mmap = onedram_mmap,
-	.ioctl = onedram_ioctl,
+	.unlocked_ioctl = onedram_ioctl,
 };
 
 static int _register_chrdev(struct onedram *od)
