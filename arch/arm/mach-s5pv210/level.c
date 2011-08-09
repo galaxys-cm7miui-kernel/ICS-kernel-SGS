@@ -91,7 +91,7 @@ static int level_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static int level_ioctl( struct file *filp, unsigned int cmd, unsigned long arg)
+static long level_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	unsigned int val;
 

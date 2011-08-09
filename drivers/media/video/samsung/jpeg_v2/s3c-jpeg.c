@@ -210,7 +210,7 @@ static ssize_t s3c_jpeg_read(struct file *file, char *buf,
 	return 0;
 }
 
-static int s3c_jpeg_ioctl(struct file *file,
+static long s3c_jpeg_ioctl(struct file *file,
 			  unsigned int cmd, unsigned long arg)
 {
 	struct s5pc110_jpg_ctx		*jpg_reg_ctx;

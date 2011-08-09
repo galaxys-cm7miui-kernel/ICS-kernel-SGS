@@ -189,7 +189,7 @@ out_release:
 	return ret;
 }
 
-static int mfc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long mfc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret, ex_ret;
 	struct mfc_inst_ctx *mfc_ctx = NULL;

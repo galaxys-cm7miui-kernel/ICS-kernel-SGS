@@ -835,7 +835,7 @@ static int bma023_close(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int bma023_ioctl(struct inode *inode, struct file *file,
+static long bma023_ioctl(struct inode *inode, struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
 	struct bma023_data *bma023 = file->private_data;

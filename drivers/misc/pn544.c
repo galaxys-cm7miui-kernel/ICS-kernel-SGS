@@ -171,7 +171,7 @@ static int pn544_dev_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static int pn544_dev_ioctl(struct file *filp,
+static long pn544_dev_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
 	struct pn544_dev *pn544_dev = filp->private_data;
@@ -202,7 +202,7 @@ static int pn544_dev_ioctl(struct file *filp,
 			gpio_set_value(pn544_dev->ven_gpio, 0);
 			msleep(10);
 		} else {
-			pr_err("%s bad arg %u\n", __func__, arg);
+			pr_err("%s bad arg %lu\n", __func__, arg);
 			return -EINVAL;
 		}
 		break;
