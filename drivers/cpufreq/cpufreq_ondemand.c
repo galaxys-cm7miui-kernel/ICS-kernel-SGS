@@ -28,7 +28,7 @@
  * It helps to keep variable names smaller, simpler
  */
 
-#define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(17)
+#define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(20)
 #define DEF_FREQUENCY_UP_THRESHOLD		(63)
 #define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(30)
 #define MICRO_FREQUENCY_UP_THRESHOLD		(65)
