@@ -87,7 +87,6 @@ static ssize_t lcd_write(struct file *file, const char *buf,
 struct imon_context {
 	struct device *dev;
 	struct ir_dev_props *props;
-	struct ir_input_dev *ir;
 	/* Newer devices have two interfaces */
 	struct usb_device *usbdev_intf0;
 	struct usb_device *usbdev_intf1;
@@ -407,7 +406,7 @@ static int display_close(struct inode *inode, struct file *file)
 	struct imon_context *ictx = NULL;
 	int retval = 0;
 
-	ictx = (struct imon_context *)file->private_data;
+	ictx = file->private_data;
 
 	if (!ictx) {
 		err("%s: no context for device", __func__);
@@ -812,7 +811,7 @@ static ssize_t vfd_write(struct file *file, const char *buf,
 	const unsigned char vfd_packet6[] = {
 		0x01, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF };
 
-	ictx = (struct imon_context *)file->private_data;
+	ictx = file->private_data;
 	if (!ictx) {
 		err("%s: no context for device", __func__);
 		return -ENODEV;
@@ -896,7 +895,7 @@ static ssize_t lcd_write(struct file *file, const char *buf,
 	int retval = 0;
 	struct imon_context *ictx;
 
-	ictx = (struct imon_context *)file->private_data;
+	ictx = file->private_data;
 	if (!ictx) {
 		err("%s: no context for device", __func__);
 		return -ENODEV;
@@ -1656,7 +1655,6 @@ static struct input_dev *imon_init_idev(struct imon_context *ictx)
 {
 	struct input_dev *idev;
 	struct ir_dev_props *props;
-	struct ir_input_dev *ir;
 	int ret, i;
 
 	idev = input_allocate_device();
@@ -1669,12 +1667,6 @@ static struct input_dev *imon_init_idev(struct imon_context *ictx)
 	if (!props) {
 		dev_err(ictx->dev, "remote ir dev props allocation failed\n");
 		goto props_alloc_failed;
-	}
-
-	ir = kzalloc(sizeof(struct ir_input_dev), GFP_KERNEL);
-	if (!ir) {
-		dev_err(ictx->dev, "remote ir input dev allocation failed\n");
-		goto ir_dev_alloc_failed;
 	}
 
 	snprintf(ictx->name_idev, sizeof(ictx->name_idev),
@@ -1706,13 +1698,8 @@ static struct input_dev *imon_init_idev(struct imon_context *ictx)
 	props->change_protocol = imon_ir_change_protocol;
 	ictx->props = props;
 
-	ictx->ir = ir;
-	memcpy(&ir->dev, ictx->dev, sizeof(struct device));
-
 	usb_to_input_id(ictx->usbdev_intf0, &idev->id);
 	idev->dev.parent = ictx->dev;
-
-	input_set_drvdata(idev, ir);
 
 	ret = ir_input_register(idev, RC_MAP_IMON_PAD, props, MOD_NAME);
 	if (ret < 0) {
@@ -1723,8 +1710,6 @@ static struct input_dev *imon_init_idev(struct imon_context *ictx)
 	return idev;
 
 idev_register_failed:
-	kfree(ir);
-ir_dev_alloc_failed:
 	kfree(props);
 props_alloc_failed:
 	input_free_device(idev);
@@ -1944,7 +1929,6 @@ static struct imon_context *imon_init_intf0(struct usb_interface *intf)
 
 urb_submit_failed:
 	ir_input_unregister(ictx->idev);
-	input_free_device(ictx->idev);
 idev_setup_failed:
 find_endpoint_failed:
 	mutex_unlock(&ictx->lock);
@@ -2014,10 +1998,8 @@ static struct imon_context *imon_init_intf1(struct usb_interface *intf,
 	return ictx;
 
 urb_submit_failed:
-	if (ictx->touch) {
+	if (ictx->touch)
 		input_unregister_device(ictx->touch);
-		input_free_device(ictx->touch);
-	}
 touch_setup_failed:
 find_endpoint_failed:
 	mutex_unlock(&ictx->lock);

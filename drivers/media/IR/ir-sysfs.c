@@ -67,13 +67,14 @@ static ssize_t show_protocols(struct device *d,
 	char *tmp = buf;
 	int i;
 
-	if (ir_dev->props->driver_type == RC_DRIVER_SCANCODE) {
+	if (ir_dev->props && ir_dev->props->driver_type == RC_DRIVER_SCANCODE) {
 		enabled = ir_dev->rc_tab.ir_type;
 		allowed = ir_dev->props->allowed_protos;
-	} else {
+	} else if (ir_dev->raw) {
 		enabled = ir_dev->raw->enabled_protocols;
 		allowed = ir_raw_get_allowed_protocols();
-	}
+	} else
+		return sprintf(tmp, "[builtin]\n");
 
 	IR_dprintk(1, "allowed - 0x%llx, enabled - 0x%llx\n",
 		   (long long)allowed,
@@ -121,10 +122,14 @@ static ssize_t store_protocols(struct device *d,
 	int rc, i, count = 0;
 	unsigned long flags;
 
-	if (ir_dev->props->driver_type == RC_DRIVER_SCANCODE)
+	if (ir_dev->props && ir_dev->props->driver_type == RC_DRIVER_SCANCODE)
 		type = ir_dev->rc_tab.ir_type;
-	else
+	else if (ir_dev->raw)
 		type = ir_dev->raw->enabled_protocols;
+	else {
+		IR_dprintk(1, "Protocol switching not supported\n");
+		return -EINVAL;
+	}
 
 	while ((tmp = strsep((char **) &data, " \n")) != NULL) {
 		if (!*tmp)
@@ -185,7 +190,7 @@ static ssize_t store_protocols(struct device *d,
 		}
 	}
 
-	if (ir_dev->props->driver_type == RC_DRIVER_SCANCODE) {
+	if (ir_dev->props && ir_dev->props->driver_type == RC_DRIVER_SCANCODE) {
 		spin_lock_irqsave(&ir_dev->rc_tab.lock, flags);
 		ir_dev->rc_tab.ir_type = type;
 		spin_unlock_irqrestore(&ir_dev->rc_tab.lock, flags);
@@ -325,6 +330,7 @@ static int __init ir_core_init(void)
 
 	/* Initialize/load the decoders/keymap code that will be used */
 	ir_raw_init();
+	ir_rcmap_init();
 
 	return 0;
 }
@@ -332,6 +338,7 @@ static int __init ir_core_init(void)
 static void __exit ir_core_exit(void)
 {
 	class_unregister(&ir_input_class);
+	ir_rcmap_cleanup();
 }
 
 module_init(ir_core_init);

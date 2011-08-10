@@ -56,7 +56,6 @@ struct sd {
 	u8 jpegqual;			/* webcam quality */
 
 	u8 reg18;
-	u8 flags;
 
 	s8 ag_cnt;
 #define AG_CNT_START 13
@@ -67,7 +66,11 @@ struct sd {
 #define BRIDGE_SN9C110 2
 #define BRIDGE_SN9C120 3
 	u8 sensor;			/* Type of image sensor chip */
-enum {
+	u8 i2c_addr;
+
+	u8 jpeg_hdr[JPEG_HDR_SZ];
+};
+enum sensors {
 	SENSOR_ADCM1700,
 	SENSOR_GC0307,
 	SENSOR_HV7131R,
@@ -82,14 +85,7 @@ enum {
 	SENSOR_PO2030N,
 	SENSOR_SOI768,
 	SENSOR_SP80708,
-} sensors;
-	u8 i2c_addr;
-
-	u8 jpeg_hdr[JPEG_HDR_SZ];
 };
-
-/* device flags */
-#define PDN_INV	1		/* inverse pin S_PWR_DN / sn_xxx tables */
 
 /* V4L2 controls supported by the driver */
 static int sd_setbrightness(struct gspca_dev *gspca_dev, __s32 val);
@@ -395,7 +391,7 @@ static const u8 sn_gc0307[0x1c] = {
 
 static const u8 sn_hv7131[0x1c] = {
 /*	reg0	reg1	reg2	reg3	reg4	reg5	reg6	reg7 */
-	0x00,	0x03,	0x64,	0x00,	0x1a,	0x20,	0x20,	0x20,
+	0x00,	0x03,	0x60,	0x00,	0x1a,	0x20,	0x20,	0x20,
 /*	reg8	reg9	rega	regb	regc	regd	rege	regf */
 	0x81,	0x11,	0x00,	0x00,	0x00,	0x00,	0x00,	0x00,
 /*	reg10	reg11	reg12	reg13	reg14	reg15	reg16	reg17 */
@@ -406,7 +402,7 @@ static const u8 sn_hv7131[0x1c] = {
 
 static const u8 sn_mi0360[0x1c] = {
 /*	reg0	reg1	reg2	reg3	reg4	reg5	reg6	reg7 */
-	0x00,	0x61,	0x44,	0x00,	0x1a,	0x20,	0x20,	0x20,
+	0x00,	0x61,	0x40,	0x00,	0x1a,	0x20,	0x20,	0x20,
 /*	reg8	reg9	rega	regb	regc	regd	rege	regf */
 	0x81,	0x5d,	0x00,	0x00,	0x00,	0x00,	0x00,	0x00,
 /*	reg10	reg11	reg12	reg13	reg14	reg15	reg16	reg17 */
@@ -1647,6 +1643,7 @@ static void bridge_init(struct gspca_dev *gspca_dev,
 			  const u8 *sn9c1xx)
 {
 	struct sd *sd = (struct sd *) gspca_dev;
+	u8 reg0102[2];
 	const u8 *reg9a;
 	static const u8 reg9a_def[] =
 		{0x00, 0x40, 0x20, 0x00, 0x00, 0x00};
@@ -1659,7 +1656,11 @@ static void bridge_init(struct gspca_dev *gspca_dev,
 	reg_w1(gspca_dev, 0x01, sn9c1xx[1]);
 
 	/* configure gpio */
-	reg_w(gspca_dev, 0x01, &sn9c1xx[1], 2);
+	reg0102[0] = sn9c1xx[1];
+	reg0102[1] = sn9c1xx[2];
+	if (gspca_dev->audio)
+		reg0102[1] |= 0x04;	/* keep the audio connection */
+	reg_w(gspca_dev, 0x01, reg0102, 2);
 	reg_w(gspca_dev, 0x08, &sn9c1xx[8], 2);
 	reg_w(gspca_dev, 0x17, &sn9c1xx[0x17], 5);
 	switch (sd->sensor) {
@@ -1740,13 +1741,12 @@ static void bridge_init(struct gspca_dev *gspca_dev,
 		reg_w1(gspca_dev, 0x01, 0x40);
 		break;
 	case SENSOR_PO2030N:
+	case SENSOR_OV7660:
 		reg_w1(gspca_dev, 0x01, 0x63);
 		reg_w1(gspca_dev, 0x17, 0x20);
 		reg_w1(gspca_dev, 0x01, 0x62);
 		reg_w1(gspca_dev, 0x01, 0x42);
 		break;
-	case SENSOR_OV7660:
-		/* fall thru */
 	case SENSOR_SP80708:
 		reg_w1(gspca_dev, 0x01, 0x63);
 		reg_w1(gspca_dev, 0x17, 0x20);
@@ -1777,8 +1777,7 @@ static int sd_config(struct gspca_dev *gspca_dev,
 	struct cam *cam;
 
 	sd->bridge = id->driver_info >> 16;
-	sd->sensor = id->driver_info >> 8;
-	sd->flags = id->driver_info;
+	sd->sensor = id->driver_info;
 
 	cam = &gspca_dev->cam;
 	if (sd->sensor == SENSOR_ADCM1700) {
@@ -1820,7 +1819,7 @@ static int sd_init(struct gspca_dev *gspca_dev)
 {
 	struct sd *sd = (struct sd *) gspca_dev;
 	const u8 *sn9c1xx;
-	u8 regGpio[] = { 0x29, 0x74 };
+	u8 regGpio[] = { 0x29, 0x74 };		/* with audio */
 	u8 regF1;
 
 	/* setup a selector by bridge */
@@ -1860,7 +1859,7 @@ static int sd_init(struct gspca_dev *gspca_dev)
 			po2030n_probe(gspca_dev);
 			break;
 		}
-		regGpio[1] = 0x70;
+		regGpio[1] = 0x70;		/* no audio */
 		reg_w(gspca_dev, 0x01, regGpio, 2);
 		break;
 	default:
@@ -2278,7 +2277,7 @@ static int sd_start(struct gspca_dev *gspca_dev)
 {
 	struct sd *sd = (struct sd *) gspca_dev;
 	int i;
-	u8 reg1, reg2, reg17;
+	u8 reg1, reg17;
 	const u8 *sn9c1xx;
 	const u8 (*init)[8];
 	int mode;
@@ -2307,23 +2306,6 @@ static int sd_start(struct gspca_dev *gspca_dev)
 
 	/* initialize the sensor */
 	i2c_w_seq(gspca_dev, sensor_init[sd->sensor]);
-
-	switch (sd->sensor) {
-	case SENSOR_ADCM1700:
-		reg2 = 0x60;
-		break;
-	case SENSOR_OM6802:
-		reg2 = 0x71;
-		break;
-	case SENSOR_SP80708:
-		reg2 = 0x62;
-		break;
-	default:
-		reg2 = 0x40;
-		break;
-	}
-	reg_w1(gspca_dev, 0x02, reg2);
-	reg_w1(gspca_dev, 0x02, reg2);
 
 	reg_w1(gspca_dev, 0x15, sn9c1xx[0x15]);
 	reg_w1(gspca_dev, 0x16, sn9c1xx[0x16]);
@@ -2492,7 +2474,8 @@ static int sd_start(struct gspca_dev *gspca_dev)
 		reg1 = 0x44;
 		reg17 = 0xa2;
 		break;
-	case SENSOR_SP80708:
+	default:
+/*	case SENSOR_SP80708: */
 		init = sp80708_sensor_param1;
 		if (mode) {
 /*??			reg1 = 0x04;	 * 320 clk 48Mhz */
@@ -3002,18 +2985,14 @@ static const struct sd_desc sd_desc = {
 /* -- module initialisation -- */
 #define BS(bridge, sensor) \
 	.driver_info = (BRIDGE_ ## bridge << 16) \
-			| (SENSOR_ ## sensor << 8)
-#define BSF(bridge, sensor, flags) \
-	.driver_info = (BRIDGE_ ## bridge << 16) \
-			| (SENSOR_ ## sensor << 8) \
-			| (flags)
+			| SENSOR_ ## sensor
 static const __devinitdata struct usb_device_id device_table[] = {
 #if !defined CONFIG_USB_SN9C102 && !defined CONFIG_USB_SN9C102_MODULE
 	{USB_DEVICE(0x0458, 0x7025), BS(SN9C120, MI0360)},
 	{USB_DEVICE(0x0458, 0x702e), BS(SN9C120, OV7660)},
 #endif
-	{USB_DEVICE(0x045e, 0x00f5), BSF(SN9C105, OV7660, PDN_INV)},
-	{USB_DEVICE(0x045e, 0x00f7), BSF(SN9C105, OV7660, PDN_INV)},
+	{USB_DEVICE(0x045e, 0x00f5), BS(SN9C105, OV7660)},
+	{USB_DEVICE(0x045e, 0x00f7), BS(SN9C105, OV7660)},
 	{USB_DEVICE(0x0471, 0x0327), BS(SN9C105, MI0360)},
 	{USB_DEVICE(0x0471, 0x0328), BS(SN9C105, MI0360)},
 	{USB_DEVICE(0x0471, 0x0330), BS(SN9C105, MI0360)},

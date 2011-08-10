@@ -120,6 +120,10 @@ static struct usb_device_id mceusb_dev_table[] = {
 	{ USB_DEVICE(VENDOR_PHILIPS, 0x0613) },
 	/* Philips eHome Infrared Transceiver */
 	{ USB_DEVICE(VENDOR_PHILIPS, 0x0815) },
+	/* Philips/Spinel plus IR transceiver for ASUS */
+	{ USB_DEVICE(VENDOR_PHILIPS, 0x206c) },
+	/* Philips/Spinel plus IR transceiver for ASUS */
+	{ USB_DEVICE(VENDOR_PHILIPS, 0x2088) },
 	/* Realtek MCE IR Receiver */
 	{ USB_DEVICE(VENDOR_REALTEK, 0x0161) },
 	/* SMK/Toshiba G83C0004D410 */
@@ -228,7 +232,6 @@ static struct usb_device_id std_tx_mask_list[] = {
 /* data structure for each usb transceiver */
 struct mceusb_dev {
 	/* ir-core bits */
-	struct ir_input_dev *irdev;
 	struct ir_dev_props *props;
 	struct ir_raw_event rawir;
 
@@ -428,7 +431,7 @@ static void mceusb_dev_printdata(struct mceusb_dev *ir, char *buf,
 	}
 }
 
-static void usb_async_callback(struct urb *urb, struct pt_regs *regs)
+static void mce_async_callback(struct urb *urb, struct pt_regs *regs)
 {
 	struct mceusb_dev *ir;
 	int len;
@@ -477,7 +480,7 @@ static void mce_request_packet(struct mceusb_dev *ir,
 		/* outbound data */
 		usb_fill_int_urb(async_urb, ir->usbdev,
 			usb_sndintpipe(ir->usbdev, ep->bEndpointAddress),
-			async_buf, size, (usb_complete_t) usb_async_callback,
+			async_buf, size, (usb_complete_t)mce_async_callback,
 			ir, ep->bInterval);
 		memcpy(async_buf, data, size);
 
@@ -739,7 +742,7 @@ static void mceusb_dev_recv(struct urb *urb, struct pt_regs *regs)
 
 	if (ir->send_flags == RECV_FLAG_IN_PROGRESS) {
 		ir->send_flags = SEND_FLAG_COMPLETE;
-		dev_dbg(&ir->irdev->dev, "setup answer received %d bytes\n",
+		dev_dbg(ir->dev, "setup answer received %d bytes\n",
 			buf_len);
 	}
 
@@ -861,7 +864,6 @@ static struct input_dev *mceusb_init_input_dev(struct mceusb_dev *ir)
 {
 	struct input_dev *idev;
 	struct ir_dev_props *props;
-	struct ir_input_dev *irdev;
 	struct device *dev = ir->dev;
 	int ret = -ENODEV;
 
@@ -876,12 +878,6 @@ static struct input_dev *mceusb_init_input_dev(struct mceusb_dev *ir)
 	if (!props) {
 		dev_err(dev, "remote ir dev props allocation failed\n");
 		goto props_alloc_failed;
-	}
-
-	irdev = kzalloc(sizeof(struct ir_input_dev), GFP_KERNEL);
-	if (!irdev) {
-		dev_err(dev, "remote ir input dev allocation failed\n");
-		goto ir_dev_alloc_failed;
 	}
 
 	snprintf(ir->name, sizeof(ir->name), "Media Center Ed. eHome "
@@ -902,9 +898,6 @@ static struct input_dev *mceusb_init_input_dev(struct mceusb_dev *ir)
 	props->tx_ir = mceusb_tx_ir;
 
 	ir->props = props;
-	ir->irdev = irdev;
-
-	input_set_drvdata(idev, irdev);
 
 	ret = ir_input_register(idev, RC_MAP_RC6_MCE, props, DRIVER_NAME);
 	if (ret < 0) {
@@ -915,8 +908,6 @@ static struct input_dev *mceusb_init_input_dev(struct mceusb_dev *ir)
 	return idev;
 
 irdev_failed:
-	kfree(irdev);
-ir_dev_alloc_failed:
 	kfree(props);
 props_alloc_failed:
 	input_free_device(idev);
@@ -932,7 +923,6 @@ static int __devinit mceusb_dev_probe(struct usb_interface *intf,
 	struct usb_endpoint_descriptor *ep = NULL;
 	struct usb_endpoint_descriptor *ep_in = NULL;
 	struct usb_endpoint_descriptor *ep_out = NULL;
-	struct usb_host_config *config;
 	struct mceusb_dev *ir = NULL;
 	int pipe, maxp, i;
 	char buf[63], name[128] = "";
@@ -942,7 +932,6 @@ static int __devinit mceusb_dev_probe(struct usb_interface *intf,
 
 	dev_dbg(&intf->dev, ": %s called\n", __func__);
 
-	config = dev->actconfig;
 	idesc  = intf->cur_altsetting;
 
 	is_gen3 = usb_match_id(intf, gen3_list) ? 1 : 0;

@@ -19,6 +19,7 @@ static struct ir_scancode rc6_mce[] = {
 
 	{ 0x800f0416, KEY_PLAY },
 	{ 0x800f0418, KEY_PAUSE },
+	{ 0x800f046e, KEY_PLAYPAUSE },
 	{ 0x800f0419, KEY_STOP },
 	{ 0x800f0417, KEY_RECORD },
 
@@ -37,6 +38,8 @@ static struct ir_scancode rc6_mce[] = {
 	{ 0x800f0411, KEY_VOLUMEDOWN },
 	{ 0x800f0412, KEY_CHANNELUP },
 	{ 0x800f0413, KEY_CHANNELDOWN },
+	{ 0x800f043a, KEY_BRIGHTNESSUP },
+	{ 0x800f0480, KEY_BRIGHTNESSDOWN },
 
 	{ 0x800f0401, KEY_NUMERIC_1 },
 	{ 0x800f0402, KEY_NUMERIC_2 },
@@ -73,6 +76,8 @@ static struct ir_scancode rc6_mce[] = {
 	{ 0x800f0426, KEY_EPG }, /* Guide */
 	{ 0x800f045a, KEY_SUBTITLE }, /* Caption/Teletext */
 	{ 0x800f044d, KEY_TITLE },
+
+       { 0x800f044e, KEY_PRINT }, /* Print - HP OEM version of remote */
 
 	{ 0x800f040c, KEY_POWER },
 	{ 0x800f040d, KEY_PROG1 }, /* Windows MCE button */

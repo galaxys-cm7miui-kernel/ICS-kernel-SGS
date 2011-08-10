@@ -13,10 +13,6 @@ int dvb_usb_dib0700_debug;
 module_param_named(debug,dvb_usb_dib0700_debug, int, 0644);
 MODULE_PARM_DESC(debug, "set debugging level (1=info,2=fw,4=fwdata,8=data (or-able))." DVB_USB_DEBUG_STATUS);
 
-int dvb_usb_dib0700_ir_proto = 1;
-module_param(dvb_usb_dib0700_ir_proto, int, 0644);
-MODULE_PARM_DESC(dvb_usb_dib0700_ir_proto, "set ir protocol (0=NEC, 1=RC5 (default), 2=RC6).");
-
 static int nb_packet_buffer_size = 21;
 module_param(nb_packet_buffer_size, int, 0644);
 MODULE_PARM_DESC(nb_packet_buffer_size,
@@ -475,6 +471,39 @@ int dib0700_streaming_ctrl(struct dvb_usb_adapter *adap, int onoff)
 	return dib0700_ctrl_wr(adap->dev, b, 4);
 }
 
+int dib0700_change_protocol(void *priv, u64 ir_type)
+{
+	struct dvb_usb_device *d = priv;
+	struct dib0700_state *st = d->priv;
+	u8 rc_setup[3] = { REQUEST_SET_RC, 0, 0 };
+	int new_proto, ret;
+
+	/* Set the IR mode */
+	if (ir_type == IR_TYPE_RC5)
+		new_proto = 1;
+	else if (ir_type == IR_TYPE_NEC)
+		new_proto = 0;
+	else if (ir_type == IR_TYPE_RC6) {
+		if (st->fw_version < 0x10200)
+			return -EINVAL;
+
+		new_proto = 2;
+	} else
+		return -EINVAL;
+
+	rc_setup[1] = new_proto;
+
+	ret = dib0700_ctrl_wr(d, rc_setup, sizeof(rc_setup));
+	if (ret < 0) {
+		err("ir protocol setup failed");
+		return ret;
+	}
+
+	d->props.rc.core.protocol = ir_type;
+
+	return ret;
+}
+
 /* Number of keypresses to ignore before start repeating */
 #define RC_REPEAT_DELAY_V1_20 10
 
@@ -482,7 +511,13 @@ int dib0700_streaming_ctrl(struct dvb_usb_adapter *adap, int onoff)
 struct dib0700_rc_response {
 	u8 report_id;
 	u8 data_state;
-	u16 system;
+	union {
+		u16 system16;
+		struct {
+			u8 system;
+			u8 not_system;
+		};
+	};
 	u8 data;
 	u8 not_data;
 };
@@ -491,14 +526,10 @@ struct dib0700_rc_response {
 static void dib0700_rc_urb_completion(struct urb *purb)
 {
 	struct dvb_usb_device *d = purb->context;
-	struct dvb_usb_rc_key *keymap;
 	struct dib0700_state *st;
-	struct dib0700_rc_response poll_reply;
-	u8 *buf;
-	int found = 0;
-	u32 event;
-	int state;
-	int i;
+	struct dib0700_rc_response *poll_reply;
+	u32 uninitialized_var(keycode);
+	u8 toggle;
 
 	deb_info("%s()\n", __func__);
 	if (d == NULL)
@@ -510,9 +541,8 @@ static void dib0700_rc_urb_completion(struct urb *purb)
 		return;
 	}
 
-	keymap = d->props.rc_key_map;
 	st = d->priv;
-	buf = (u8 *)purb->transfer_buffer;
+	poll_reply = purb->transfer_buffer;
 
 	if (purb->status < 0) {
 		deb_info("discontinuing polling\n");
@@ -525,104 +555,52 @@ static void dib0700_rc_urb_completion(struct urb *purb)
 		goto resubmit;
 	}
 
-	/* Set initial results in case we exit the function early */
-	event = 0;
-	state = REMOTE_NO_KEY_PRESSED;
+	deb_data("IR ID = %02X state = %02X System = %02X %02X Cmd = %02X %02X (len %d)\n",
+		 poll_reply->report_id, poll_reply->data_state,
+		 poll_reply->system, poll_reply->not_system,
+		 poll_reply->data, poll_reply->not_data,
+		 purb->actual_length);
 
-	deb_data("IR raw %02X %02X %02X %02X %02X %02X (len %d)\n", buf[0],
-		 buf[1], buf[2], buf[3], buf[4], buf[5], purb->actual_length);
-
-	switch (dvb_usb_dib0700_ir_proto) {
-	case 0:
-		/* NEC Protocol */
-		poll_reply.report_id  = 0;
-		poll_reply.data_state = 1;
-		poll_reply.system     = buf[2];
-		poll_reply.data       = buf[4];
-		poll_reply.not_data   = buf[5];
+	switch (d->props.rc.core.protocol) {
+	case IR_TYPE_NEC:
+		toggle = 0;
 
 		/* NEC protocol sends repeat code as 0 0 0 FF */
-		if ((poll_reply.system == 0x00) && (poll_reply.data == 0x00)
-		    && (poll_reply.not_data == 0xff)) {
-			poll_reply.data_state = 2;
+		if ((poll_reply->system == 0x00) && (poll_reply->data == 0x00)
+		    && (poll_reply->not_data == 0xff)) {
+			poll_reply->data_state = 2;
 			break;
 		}
+
+		if ((poll_reply->system ^ poll_reply->not_system) != 0xff) {
+			deb_data("NEC extended protocol\n");
+			/* NEC extended code - 24 bits */
+			keycode = poll_reply->system16 << 8 | poll_reply->data;
+		} else {
+			deb_data("NEC normal protocol\n");
+			/* normal NEC code - 16 bits */
+			keycode = poll_reply->system << 8 | poll_reply->data;
+		}
+
 		break;
 	default:
+		deb_data("RC5 protocol\n");
 		/* RC5 Protocol */
-		poll_reply.report_id  = buf[0];
-		poll_reply.data_state = buf[1];
-		poll_reply.system     = (buf[2] << 8) | buf[3];
-		poll_reply.data       = buf[4];
-		poll_reply.not_data   = buf[5];
+		toggle = poll_reply->report_id;
+		keycode = poll_reply->system16 << 8 | poll_reply->data;
+
 		break;
 	}
 
-	if ((poll_reply.data + poll_reply.not_data) != 0xff) {
+	if ((poll_reply->data + poll_reply->not_data) != 0xff) {
 		/* Key failed integrity check */
 		err("key failed integrity check: %04x %02x %02x",
-		    poll_reply.system,
-		    poll_reply.data, poll_reply.not_data);
+		    poll_reply->system,
+		    poll_reply->data, poll_reply->not_data);
 		goto resubmit;
 	}
 
-	deb_data("rid=%02x ds=%02x sm=%04x d=%02x nd=%02x\n",
-		 poll_reply.report_id, poll_reply.data_state,
-		 poll_reply.system, poll_reply.data, poll_reply.not_data);
-
-	/* Find the key in the map */
-	for (i = 0; i < d->props.rc_key_map_size; i++) {
-		if (rc5_custom(&keymap[i]) == (poll_reply.system & 0xff) &&
-		    rc5_data(&keymap[i]) == poll_reply.data) {
-			event = keymap[i].event;
-			found = 1;
-			break;
-		}
-	}
-
-	if (found == 0) {
-		err("Unknown remote controller key: %04x %02x %02x",
-		    poll_reply.system, poll_reply.data, poll_reply.not_data);
-		d->last_event = 0;
-		goto resubmit;
-	}
-
-	if (poll_reply.data_state == 1) {
-		/* New key hit */
-		st->rc_counter = 0;
-		event = keymap[i].event;
-		state = REMOTE_KEY_PRESSED;
-		d->last_event = keymap[i].event;
-	} else if (poll_reply.data_state == 2) {
-		/* Key repeated */
-		st->rc_counter++;
-
-		/* prevents unwanted double hits */
-		if (st->rc_counter > RC_REPEAT_DELAY_V1_20) {
-			event = d->last_event;
-			state = REMOTE_KEY_PRESSED;
-			st->rc_counter = RC_REPEAT_DELAY_V1_20;
-		}
-	} else {
-		err("Unknown data state [%d]", poll_reply.data_state);
-	}
-
-	switch (state) {
-	case REMOTE_NO_KEY_PRESSED:
-		break;
-	case REMOTE_KEY_PRESSED:
-		deb_info("key pressed\n");
-		d->last_event = event;
-	case REMOTE_KEY_REPEAT:
-		deb_info("key repeated\n");
-		input_event(d->rc_input_dev, EV_KEY, event, 1);
-		input_sync(d->rc_input_dev);
-		input_event(d->rc_input_dev, EV_KEY, d->last_event, 0);
-		input_sync(d->rc_input_dev);
-		break;
-	default:
-		break;
-	}
+	ir_keydown(d->rc_input_dev, keycode, toggle);
 
 resubmit:
 	/* Clean the buffer before we requeue */
@@ -635,21 +613,10 @@ resubmit:
 int dib0700_rc_setup(struct dvb_usb_device *d)
 {
 	struct dib0700_state *st = d->priv;
-	u8 rc_setup[3] = { REQUEST_SET_RC, dvb_usb_dib0700_ir_proto, 0 };
 	struct urb *purb;
 	int ret;
-	int i;
 
-	if (d->props.rc_key_map == NULL)
-		return 0;
-
-	/* Set the IR mode */
-	i = dib0700_ctrl_wr(d, rc_setup, sizeof(rc_setup));
-	if (i < 0) {
-		err("ir protocol setup failed");
-		return i;
-	}
-
+	/* Poll-based. Don't initialize bulk mode */
 	if (st->fw_version < 0x10200)
 		return 0;
 
@@ -699,6 +666,12 @@ static int dib0700_probe(struct usb_interface *intf,
 
 			st->fw_version = fw_version;
 			st->nb_packet_buffer_size = (u32)nb_packet_buffer_size;
+
+			/* Disable polling mode on newer firmwares */
+			if (st->fw_version >= 0x10200)
+				dev->props.rc.core.bulk_mode = true;
+			else
+				dev->props.rc.core.bulk_mode = false;
 
 			dib0700_rc_setup(dev);
 

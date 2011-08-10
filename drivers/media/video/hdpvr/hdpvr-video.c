@@ -157,7 +157,6 @@ int hdpvr_alloc_buffers(struct hdpvr_device *dev, uint count)
 				  mem, dev->bulk_in_size,
 				  hdpvr_read_bulk_callback, buf);
 
-		buf->urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 		buf->status = BUFSTAT_AVAILABLE;
 		list_add_tail(&buf->buff_list, &dev->free_buff_list);
 	}
@@ -395,7 +394,7 @@ err:
 
 static int hdpvr_release(struct file *file)
 {
-	struct hdpvr_fh		*fh  = (struct hdpvr_fh *)file->private_data;
+	struct hdpvr_fh		*fh  = file->private_data;
 	struct hdpvr_device	*dev = fh->dev;
 
 	if (!dev)
@@ -519,7 +518,7 @@ err:
 static unsigned int hdpvr_poll(struct file *filp, poll_table *wait)
 {
 	struct hdpvr_buffer *buf = NULL;
-	struct hdpvr_fh *fh = (struct hdpvr_fh *)filp->private_data;
+	struct hdpvr_fh *fh = filp->private_data;
 	struct hdpvr_device *dev = fh->dev;
 	unsigned int mask = 0;
 
