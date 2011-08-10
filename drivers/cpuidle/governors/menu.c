@@ -80,7 +80,7 @@
  * Limiting Performance Impact
  * ---------------------------
  * C states, especially those with large exit latencies, can have a real
- * noticable impact on workloads, which is not acceptable for most sysadmins,
+ * noticeable impact on workloads, which is not acceptable for most sysadmins,
  * and in addition, less performance has a power price of its own.
  *
  * As a general rule of thumb, menu assumes that the following heuristic
@@ -237,7 +237,6 @@ static int menu_select(struct cpuidle_device *dev)
 	unsigned int power_usage = -1;
 	int i;
 	int multiplier;
-        struct timespec t;
 
 	if (data->needs_update) {
 		menu_update(dev);
@@ -252,9 +251,8 @@ static int menu_select(struct cpuidle_device *dev)
 		return 0;
 
 	/* determine the expected residency time, round up */
-        t = ktime_to_timespec(tick_nohz_get_sleep_length());
 	data->expected_us =
-	    t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
+	    DIV_ROUND_UP((u32)ktime_to_ns(tick_nohz_get_sleep_length()), 1000);
 
 
 	data->bucket = which_bucket(data->expected_us);
