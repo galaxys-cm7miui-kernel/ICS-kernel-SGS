@@ -100,11 +100,6 @@ config REGULATOR_MAX8925
 	help
 	  Say y here to support the voltage regulaltor of Maxim MAX8925 PMIC.
 
-config REGULATOR_MAX8893
-	tristate "Maxim MAX8893 Power Management IC"
-	help
-	  This driver controls a Maxim 8893 PMIC.
-
 config REGULATOR_MAX8998
 	tristate "Maxim 8998 voltage regulator"
 	depends on MFD_MAX8998
@@ -213,6 +208,32 @@ config REGULATOR_88PM8607
 	depends on MFD_88PM860X=y
 	help
 	  This driver supports 88PM8607 voltage regulator chips.
+
+config REGULATOR_ISL6271A
+	tristate "Intersil ISL6271A Power regulator"
+	depends on I2C
+	help
+	  This driver supports ISL6271A voltage regulator chip.
+
+config REGULATOR_AD5398
+	tristate "Analog Devices AD5398/AD5821 regulators"
+	depends on I2C
+	help
+	  This driver supports AD5398 and AD5821 current regulator chips.
+	  If building into module, its name is ad5398.ko.
+
+config REGULATOR_AB8500
+	bool "ST-Ericsson AB8500 Power Regulators"
+	depends on AB8500_CORE
+	help
+	  This driver supports the regulators found on the ST-Ericsson mixed
+	  signal AB8500 PMIC
+
+config REGULATOR_TPS6586X
+	tristate "TI TPS6586X Power regulators"
+	depends on MFD_TPS6586X
+	help
+	  This driver supports TPS6586X voltage regulator chips.
 
 endif
 
