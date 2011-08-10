@@ -1015,7 +1015,7 @@ config SCx200_GPIO
 
 config PC8736x_GPIO
 	tristate "NatSemi PC8736x GPIO Support"
-	depends on X86
+	depends on X86_32
 	default SCx200_GPIO	# mostly N
 	select NSC_GPIO		# needed for support routines
 	help
@@ -1150,6 +1150,7 @@ config S3C_MEM
 	bool "Support for /dev/s3c-mem"
 	default y
 	help
-	  you do say Y here, you can allocate physically linear memory
+	 you do say Y here, you can allocate physically linear memory
+
 endmenu
 

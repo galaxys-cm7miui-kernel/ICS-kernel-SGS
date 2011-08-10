@@ -270,6 +270,7 @@ struct s3c2410_uartcfg {
 #else
         unsigned long	   uart_flags;      /* default uart flags */
 #endif
+	unsigned int       has_fracval;
 
 	unsigned long	   ucon;	 /* value of ucon for port */
 	unsigned long	   ulcon;	 /* value of ulcon for port */
