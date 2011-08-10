@@ -16,7 +16,7 @@ config GYRO_K3G
 	tristate "K3G driver for s5pc11x"
 	default n
 	help
-	  This option enables gyro sensors using K3G driver
+	 This option enables gyro sensors using K3G driver
 
 config INPUT_88PM860X_ONKEY
 	tristate "88PM860x ONKEY support"
@@ -59,8 +59,8 @@ config INPUT_AD714X_SPI
 	  module will be called ad714x-spi.
 
 config INPUT_BMA023
-	tristate "Bosch Sensortec BMA023 Acceleration Sensor"
-	depends on I2C
+       tristate "Bosch Sensortec BMA023 Acceleration Sensor"
+       depends on I2C
 
 config INPUT_KR3DH
         depends on I2C
@@ -70,27 +70,28 @@ config INPUT_KR3DH
           It is optimized for s5pc11x.
 
 config INPUT_YAS529
-	tristate "Yamaha YAS529 Geomagnetic Sensor"
-	depends on I2C
+       tristate "Yamaha YAS529 Geomagnetic Sensor"
+       depends on I2C
 
 config INPUT_YAS529_POSITION
-	int "YAS529 Mounting Position on Board"
-	depends on INPUT_YAS529
-	default "1"
-	help
-	  Chip mounting position (pin 1).
-	    0: top, upper-left
-	    1: top, upper-right
-	    2: top, lower-right
-	    3: top, lower-left
-	    4: bottom, upper-left
-	    5: bottom, upper-right
-	    6: bottom, lower-right
-	    7: bottom, lower-left
+       int "YAS529 Mounting Position on Board"
+       depends on INPUT_YAS529
+       default "1"
+       help
+         Chip mounting position (pin 1).
+           0: top, upper-left
+           1: top, upper-right
+           2: top, lower-right
+           3: top, lower-left
+           4: bottom, upper-left
+           5: bottom, upper-right
+           6: bottom, lower-right
+           7: bottom, lower-left
 
 config INPUT_ORIENTATION
-	tristate "Yamaha Orientation Sensor"
-	depends on I2C
+       tristate "Yamaha Orientation Sensor"
+       depends on I2C
+
 
 config INPUT_PCSPKR
 	tristate "PC Speaker support"
@@ -383,6 +384,17 @@ config INPUT_PCF8574
 	  To compile this driver as a module, choose M here: the
 	  module will be called pcf8574_keypad.
 
+config INPUT_PWM_BEEPER
+	tristate "PWM beeper support"
+	depends on HAVE_PWM
+	help
+	  Say Y here to get support for PWM based beeper devices.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called pwm-beeper.
+
 config INPUT_GPIO_ROTARY_ENCODER
 	tristate "Rotary encoders connected to GPIO pins"
 	depends on GPIOLIB && GENERIC_GPIO
@@ -447,11 +459,47 @@ config INPUT_PCAP
 	  module will be called pcap_keys.
 
 config OPTICAL_GP2A
-	depends on I2C && GENERIC_GPIO
-	tristate "GP2A ambient light and proximity input device"
+       depends on I2C && GENERIC_GPIO
+       tristate "GP2A ambient light and proximity input device"
+        default n
+        help
+         This option enables proximity & light sensors using gp2a driver.
+
+config INPUT_ADXL34X
+	tristate "Analog Devices ADXL34x Three-Axis Digital Accelerometer"
 	default n
 	help
-	  This option enables proximity & light sensors using gp2a driver.
+	  Say Y here if you have a Accelerometer interface using the
+	  ADXL345/6 controller, and your board-specific initialization
+	  code includes that in its table of devices.
 
+	  This driver can use either I2C or SPI communication to the
+	  ADXL345/6 controller.  Select the appropriate method for
+	  your system.
+
+	  If unsure, say N (but it's safe to say "Y").
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called adxl34x.
+
+config INPUT_ADXL34X_I2C
+	tristate "support I2C bus connection"
+	depends on INPUT_ADXL34X && I2C
+	default y
+	help
+	  Say Y here if you have ADXL345/6 hooked to an I2C bus.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called adxl34x-i2c.
+
+config INPUT_ADXL34X_SPI
+	tristate "support SPI bus connection"
+	depends on INPUT_ADXL34X && SPI
+	default y
+	help
+	  Say Y here if you have ADXL345/6 hooked to a SPI bus.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called adxl34x-spi.
 
 endif
