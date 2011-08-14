@@ -14,7 +14,7 @@ RELVER=$2
 [[ "$RELVER" == '' ]] && RELVER="0"
 
 #REL=CM7_${TYPE}_$(date +%Y%m%d-%H)_platypus.zip
-REL=CM7_${TYPE}_$(date +%Y%m%d)_NEO_16.zip
+REL=CM7_${TYPE}_$(date +%Y%m%d)_NEO_17.zip
 
 rm -r release/system 2> /dev/null
 mkdir  -p release/system/lib/modules || exit 1
