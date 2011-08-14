@@ -173,6 +173,7 @@ static ssize_t s3c_bat_store_attrs(struct device *dev, struct device_attribute *
 
 #define SEC_BATTERY_ATTR(_name)						\
 {									\
+	.attr = {.name = #_name, .mode = 0664, .owner = THIS_MODULE },	\
 	.show = s3c_bat_show_attrs,					\
 	.store = s3c_bat_store_attrs,					\
 }
