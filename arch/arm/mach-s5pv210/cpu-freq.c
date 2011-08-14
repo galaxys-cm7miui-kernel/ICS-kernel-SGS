@@ -182,7 +182,7 @@ static u32 clkdiv_val[11][11] = {
 
 //And even more clocks
 static struct s3c_freq clk_info[] = {
-	[L0] = {        /* L0: 1.54GHz */
+	[L0] = {        /* L0: 1.6GHz */
                 .fclk       = 1600000,
                 .armclk     = 1600000,
                 .hclk_tns   = 0,
@@ -193,7 +193,7 @@ static struct s3c_freq clk_info[] = {
                 .hclk_dsys  = 166750,
                 .pclk_dsys  = 83375
          },
-	[L1] = {        /* L0: 1.5GHz */
+	[L1] = {        /* L1: 1.5GHz */
                 .fclk       = 1500000,
                 .armclk     = 1500000,
                 .hclk_tns   = 0,
@@ -204,7 +204,7 @@ static struct s3c_freq clk_info[] = {
                 .hclk_dsys  = 166750,
                 .pclk_dsys  = 83375
          },
-	 [L2] = {        /* L1: 1.44GHz */
+	 [L2] = {        /* L2: 1.44GHz */
                 .fclk       = 1440000,
                 .armclk     = 1440000,
                 .hclk_tns   = 0,
@@ -215,7 +215,7 @@ static struct s3c_freq clk_info[] = {
                 .hclk_dsys  = 166750,
                 .pclk_dsys  = 83375
          },
-	 [L3] = {        /* L2: 1.4GHz */
+	 [L3] = {        /* L3: 1.4GHz */
                 .fclk       = 1400000,
                 .armclk     = 1400000,
                 .hclk_tns   = 0,
@@ -226,7 +226,7 @@ static struct s3c_freq clk_info[] = {
                 .hclk_dsys  = 166750,
                 .pclk_dsys  = 83375
         },
-	[L4] = {	/* L3: 1.3GHz */
+	[L4] = {	/* L4: 1.3GHz */
 		.fclk       = 1300000,
 		.armclk     = 1300000,
 		.hclk_tns   = 0,
@@ -237,7 +237,7 @@ static struct s3c_freq clk_info[] = {
 		.hclk_dsys  = 166750,
 		.pclk_dsys  = 83375,
 	},
-	[L5] = {	/* L4: 1.2GHz */
+	[L5] = {	/* L5: 1.2GHz */
 		.fclk       = 1200000,
 		.armclk     = 1200000,
 		.hclk_tns   = 0,
@@ -249,7 +249,7 @@ static struct s3c_freq clk_info[] = {
 		.pclk_dsys  = 83375,
 	},
 		
-	[L6] = {	/* L5: 1GHz */
+	[L6] = {	/* L6: 1GHz */
 		.fclk       = 1000000,
 		.armclk     = 1000000,
 		.hclk_tns   = 0,
@@ -260,7 +260,7 @@ static struct s3c_freq clk_info[] = {
 		.hclk_dsys  = 166750,
 		.pclk_dsys  = 83375,
 	},
-	[L7] = {	/* L6: 800MHz */
+	[L7] = {	/* L7: 800MHz */
 		.fclk       = 800000,
 		.armclk     = 800000,
 		.hclk_tns   = 0,
@@ -612,30 +612,72 @@ static int s5pv210_cpufreq_target(struct cpufreq_policy *policy,
 		ret = -EINVAL;
 		goto out;
 	}
+	/* steps for the 1.3 GHz OC functionality */
 	/*    SGS2  SGS1 
 	 * L0 1200  1300
 	 * L1 1000  1200
 	 * L2  800  1000
 	 * L3  500   800
 	 */
-	/* No direct jump to 1.3Ghz */
+
+	/* steps for the 1.6 GHz OC functionality - yes, that's right - we go up to 1.6 GHz ! */
+	/*
+	 * L0 1.600
+	 * L1 1.500
+	 * L2 1.440
+	 * L3 1.400
+	 * L4 1.300
+	 * L5 1.200
+	 * L6 1.000
+	 * L7    800
+	 */
+
+	/* No direct jump to 1.6Ghz */
 	if (index == L0) {
 		if (old_index > L1)
 			index = L1;
 		if (old_index > L2)
 			index = L2;
 	}
-	/* No direct jump to 1.2Ghz */
+	/* No direct jump to 1.5Ghz */
 	if (index == L1) {
 		if (old_index > L2)
 			index = L2;
 		if (old_index > L3)
 			index = L3;
 	}
-	/* No direct jump to 1Ghz, but don't be so harsh this time */
+	/* No direct jump to 1.44Ghz */
 	if (index == L2) {
-		if (old_index > L2)
-			index = L2;
+		if (old_index > L3)
+			index = L3;
+		if (old_index > L4)
+			index = L4;
+	}
+	/* No direct jump to 1.4Ghz */
+	if (index == L3) {
+		if (old_index > L4)
+			index = L4;
+		if (old_index > L5)
+			index = L5;
+	}
+	/* No direct jump to 1.3Ghz */
+	if (index == L4) {
+		if (old_index > L5)
+			index = L5;
+		if (old_index > L6)
+			index = L6;
+	}
+	/* No direct jump to 1.2Ghz */
+	if (index == L5) {
+		if (old_index > L6)
+			index = L6;
+		if (old_index > L7)
+			index = L7;
+	}
+	/* No direct jump to 1Ghz, but don't be so harsh this time */
+	if (index == L6) {
+		if (old_index > L6)
+			index = L6;
 	}
 #endif
 
