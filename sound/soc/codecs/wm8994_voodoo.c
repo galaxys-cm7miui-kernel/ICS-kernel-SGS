@@ -1,5 +1,5 @@
 /*
- * wm8994_extensions.c  --  WM8994 ALSA Soc Audio driver related extensions
+ * voodoo_sound.c  --  WM8994 ALSA Soc Audio driver related
  *
  *  Copyright (C) 2010/11 François SIMOND / twitter & XDA-developers @supercurio
  *
@@ -14,40 +14,57 @@
 #include <linux/delay.h>
 #include <linux/miscdevice.h>
 #include <linux/version.h>
-#include "wm8994_extensions.h"
+#include "wm8994_voodoo.h"
 
 #ifndef MODULE
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35) && !defined(GALAXY_TAB)
 #include "wm8994_samsung.h"
 #else
 #include "wm8994.h"
 #endif
 #else
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35) && !defined(GALAXY_TAB)
 #include "../wm8994_samsung.h"
 #else
 #include "../wm8994.h"
 #endif
 #endif
 
-#define SUBJECT "wm8994_extensions.c"
+#define SUBJECT "wm8994_voodoo.c"
 
-bool bypass_write_extension = false;
+#ifdef MODULE
+#include "tegrak_voodoo_sound.h"
+
+// wm8994_write -> tegrak_wm8994_write for dynamic link
+#ifdef wm8994_write
+#undef wm8994_write
+#endif
+
+// wm8994_read -> tegrak_wm8994_read for dynamic link
+#ifdef wm8994_read
+#undef wm8994_read
+#endif
+
+#define wm8994_write(codec, reg, value) tegrak_wm8994_write(codec, reg, value)
+#define wm8994_read(codec, reg) tegrak_wm8994_read(codec, reg)
+#endif
+
+bool bypass_write_hook = false;
 
 short unsigned int debug_log_level = LOG_OFF;
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
-unsigned short hp_level[2] = { CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL,
-			       CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL };;
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
+unsigned short hp_level[2] = { CONFIG_SND_VOODOO_HP_LEVEL,
+			       CONFIG_SND_VOODOO_HP_LEVEL };
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
+#ifdef CONFIG_SND_VOODOO_FM
 bool fm_radio_headset_restore_bass = true;
 bool fm_radio_headset_restore_highs = true;
 bool fm_radio_headset_normalize_gain = true;
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_RECORD_PRESETS
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
 unsigned short recording_preset = 1;
 unsigned short origin_recgain;
 unsigned short origin_recgain_mixer;
@@ -62,7 +79,9 @@ bool enable = false;
 
 bool dac_osr128 = true;
 bool adc_osr128 = false;
+#ifndef GALAXY_TAB_TEGRA
 bool fll_tuning = true;
+#endif
 bool dac_direct = true;
 bool mono_downmix = false;
 
@@ -91,6 +110,53 @@ short unsigned int stereo_expansion_gain = 16;
 // keep here a pointer to the codec structure
 struct snd_soc_codec *codec;
 
+#define DECLARE_BOOL_SHOW(name) 					       \
+static ssize_t name##_show(struct device *dev,				       \
+struct device_attribute *attr, char *buf)				       \
+{									       \
+	return sprintf(buf,"%u\n",(name ? 1 : 0));			       \
+}
+
+#define DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(name, updater, with_mute)	       \
+static ssize_t name##_store(struct device *dev, struct device_attribute *attr, \
+	const char *buf, size_t size)					       \
+{									       \
+	unsigned short state;						       \
+	if (sscanf(buf, "%hu", &state) == 1) {				       \
+		name = state == 0 ? false : true;			       \
+		if (debug_log(LOG_INFOS))				       \
+			printk("Voodoo sound: %s: %u\n", #updater, state);     \
+		updater(with_mute);					       \
+	}								       \
+	return size;							       \
+}
+
+#define DECLARE_EQ_GAIN_SHOW(band)					       \
+static ssize_t headphone_eq_b##band##_gain_show(struct device *dev,	       \
+					 struct device_attribute *attr,	       \
+					 char *buf)			       \
+{									       \
+	return sprintf(buf, "%d\n", eq_gains[band - 1]);		       \
+}
+
+#define DECLARE_EQ_GAIN_STORE(band)					       \
+static ssize_t headphone_eq_b##band##_gain_store(struct device *dev,	       \
+					  struct device_attribute *attr,       \
+					  const char *buf, size_t size)	       \
+{									       \
+	short new_gain;							       \
+	if (sscanf(buf, "%hd", &new_gain) == 1) {			       \
+		if (new_gain >= -12 && new_gain <= 12) {		       \
+			smooth_apply_eq_band_gain(band - 1,		       \
+						  eq_gains[band - 1],	       \
+						  new_gain,		       \
+						  headphone_eq);	       \
+			eq_gains[band - 1] = new_gain;			       \
+		}							       \
+	}								       \
+	return size;							       \
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
 #define DECLARE_WM8994(codec) struct wm8994_priv *wm8994 = codec->drvdata;
 #else
@@ -105,7 +171,7 @@ bool debug_log(short unsigned int level)
 	return false;
 }
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 int hpvol(int channel)
 {
 	int vol;
@@ -145,7 +211,7 @@ void update_hpvol(bool with_fade)
 	unsigned short val;
 	unsigned short i;
 	short steps;
-	unsigned short hp_level_old[2];
+	int hp_level_old[2];
 	unsigned short hp_level_registers[2] = { WM8994_LEFT_OUTPUT_VOLUME,
 						 WM8994_RIGHT_OUTPUT_VOLUME };
 
@@ -157,11 +223,11 @@ void update_hpvol(bool with_fade)
 	    || (wm8994->codec_state & CALL_ACTIVE))
 		return;
 
-	bypass_write_extension = true;
 
 	if (!with_fade) {
+		bypass_write_hook = true;
 		write_hpvol(hpvol(0), hpvol(1));
-		bypass_write_extension = false;
+		bypass_write_hook = false;
 		return;
 	}
 
@@ -173,15 +239,18 @@ void update_hpvol(bool with_fade)
 		val &= ~(WM8994_HPOUT1L_MUTE_N_MASK);
 		hp_level_old[i] = val + (digital_gain / 1000);
 
+		if (hp_level_old[i] < 0)
+			hp_level_old[i] = 0;
+
 		if (debug_log(LOG_INFOS))
-			printk("wm8994_extensions: previous hp_level[%hu]: %hu\n",
-				i, val);
+			printk("Voodoo sound: previous hp_level[%hu]: %d\n",
+			       i, hp_level_old[i]);
 	}
 
 	// calculate number of steps for volume fade
 	steps = hp_level[0] - hp_level_old[0];
 	if (debug_log(LOG_INFOS))
-		printk("wm8994_extensions: volume change steps: %hd "
+		printk("Voodoo sound: volume change steps: %hd "
 		       "start: %hu, end: %hu\n",
 		       steps,
 		       hp_level_old[0],
@@ -194,26 +263,27 @@ void update_hpvol(bool with_fade)
 			steps--;
 
 		if (debug_log(LOG_INFOS))
-			printk("wm8994_extensions: volume: %hu\n",
+			printk("Voodoo sound: volume: %hu\n",
 			       (hpvol(0) - steps));
 
+		bypass_write_hook = true;
 		write_hpvol(hpvol(0) - steps, hpvol(1) - steps);
+		bypass_write_hook = false;
 
 		if (steps != 0)
 			udelay(1000);
 	}
 
-	bypass_write_extension = false;
 }
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
+#ifdef CONFIG_SND_VOODOO_FM
 void update_fm_radio_headset_restore_freqs(bool with_mute)
 {
 	unsigned short val;
 	DECLARE_WM8994(codec);
 
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	// apply only when FM radio is active
 	if (wm8994->fmradio_path == FMR_OFF)
 		return;
@@ -256,14 +326,14 @@ void update_fm_radio_headset_restore_freqs(bool with_mute)
 		val &= ~(WM8994_AIF2DAC_MUTE_MASK);
 		wm8994_write(codec, WM8994_AIF2_DAC_FILTERS_1, val);
 	}
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
 
 void update_fm_radio_headset_normalize_gain(bool with_mute)
 {
 	DECLARE_WM8994(codec);
 
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	// apply only when FM radio is active
 	if (wm8994->fmradio_path == FMR_OFF)
 		return;
@@ -287,11 +357,11 @@ void update_fm_radio_headset_normalize_gain(bool with_mute)
 		wm8994_write(codec, WM8994_AIF2_DRC_5, 0x0000);
 		wm8994_write(codec, WM8994_AIF2_DRC_1, 0x019C);
 	}
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_RECORD_PRESETS
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
 void update_recording_preset(bool with_mute)
 {
 	if (!is_path(MAIN_MICROPHONE))
@@ -419,12 +489,21 @@ bool is_path(int unified_path)
 			|| wm8994->cur_path == HP_NO_MIC);
 #else
 #ifdef GALAXY_TAB
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+		return (wm8994->cur_path == HP
+			|| wm8994->cur_path == HP_NO_MIC);
+#else
 		return (wm8994->cur_path == HP3P
 			|| wm8994->cur_path == HP4P
 			|| wm8994->fmradio_path == FMR_HP);
+#endif
 #else
 #ifdef M110S
 		return (wm8994->cur_path == HP);
+#else
+#ifdef GALAXY_TAB_TEGRA
+		return (wm8994->cur_path == HP
+			|| wm8994->cur_path == HP_NO_MIC);
 #else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
 		return (wm8994->cur_path == HP
@@ -440,6 +519,7 @@ bool is_path(int unified_path)
 #endif
 #endif
 #endif
+#endif
 
 	// FM Radio on headphones
 	case RADIO_HEADPHONES:
@@ -449,12 +529,15 @@ bool is_path(int unified_path)
 #ifdef M110S
 		return false;
 #else
+#ifdef GALAXY_TAB_TEGRA
+		return false;
+#else
 #ifdef GALAXY_TAB
-		return (wm8994->codec_state & FMRADIO_ACTIVE)
-		    && (wm8994->fmradio_path == FMR_HP);
+		return false;
 #else
 		return (wm8994->codec_state & FMRADIO_ACTIVE)
 		    && (wm8994->fmradio_path == FMR_HP);
+#endif
 #endif
 #endif
 #endif
@@ -470,7 +553,8 @@ bool is_path(int unified_path)
 	return false;
 }
 
-bool is_path_media_or_fm_no_call_no_record() {
+bool is_path_media_or_fm_no_call_no_record()
+{
 
 	DECLARE_WM8994(codec);
 
@@ -561,13 +645,6 @@ unsigned short osr128_get_value(unsigned short val)
 	else
 		val &= ~WM8994_ADC_OSR128;
 
-    if (debug_log(LOG_INFOS))
-        printk("wm8994_extensions: %s %s %d\n", 
-               __func__,
-               dac_osr128 ? "dac_osr128" : "", 
-               adc_osr128 ? "adc_osr128" : "", 
-               val);
-
 	return val;
 }
 
@@ -575,11 +652,12 @@ void update_osr128(bool with_mute)
 {
 	unsigned short val;
 	val = osr128_get_value(wm8994_read(codec, WM8994_OVERSAMPLING));
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	wm8994_write(codec, WM8994_OVERSAMPLING, val);
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
 
+#ifndef GALAXY_TAB_TEGRA
 unsigned short fll_tuning_get_value(unsigned short val)
 {
 	val = (val >> WM8994_FLL1_GAIN_WIDTH << WM8994_FLL1_GAIN_WIDTH);
@@ -593,10 +671,11 @@ void update_fll_tuning(bool with_mute)
 {
 	unsigned short val;
 	val = fll_tuning_get_value(wm8994_read(codec, WM8994_FLL1_CONTROL_4));
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	wm8994_write(codec, WM8994_FLL1_CONTROL_4, val);
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
+#endif
 
 unsigned short mono_downmix_get_value(unsigned short val, bool can_reverse)
 {
@@ -628,11 +707,11 @@ void update_mono_downmix(bool with_mute)
 				      (codec, WM8994_AIF2_DAC_FILTERS_1),
 				      true);
 
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	wm8994_write(codec, WM8994_AIF1_DAC1_FILTERS_1, val1);
 	wm8994_write(codec, WM8994_AIF1_DAC2_FILTERS_1, val2);
 	wm8994_write(codec, WM8994_AIF2_DAC_FILTERS_1, val3);
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
 
 unsigned short dac_direct_get_value(unsigned short val, bool can_reverse)
@@ -643,8 +722,7 @@ unsigned short dac_direct_get_value(unsigned short val, bool can_reverse)
 			if (val == WM8994_DAC1L_TO_MIXOUTL)
 				return WM8994_DAC1L_TO_HPOUT1L;
 		} else {
-			if (val == WM8994_DAC1L_TO_HPOUT1L
-			    && can_reverse)
+			if (val == WM8994_DAC1L_TO_HPOUT1L && can_reverse)
 				return WM8994_DAC1L_TO_MIXOUTL;
 		}
 	}
@@ -660,10 +738,10 @@ void update_dac_direct(bool with_mute)
 	val2 = dac_direct_get_value(wm8994_read(codec,
 						WM8994_OUTPUT_MIXER_2), true);
 
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	wm8994_write(codec, WM8994_OUTPUT_MIXER_1, val1);
 	wm8994_write(codec, WM8994_OUTPUT_MIXER_2, val2);
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
 
 unsigned short digital_gain_get_value(unsigned short val)
@@ -685,9 +763,10 @@ unsigned short digital_gain_get_value(unsigned short val)
 			val |= aif_gain;
 
 			if (debug_log(LOG_INFOS))
-				printk("wm8994_extensions: digital gain: %d mdB, "
-				       "steps: %d, real AIF gain: %d mdB\n",
-				digital_gain, i, i * step);
+				printk("Voodoo sound: digital gain: %d mdB, "
+				       "%d mdB steps: %d, "
+				       "real AIF gain: %d mdB\n",
+				       digital_gain, step, i, i * step);
 		}
 	}
 
@@ -702,22 +781,18 @@ void update_digital_gain(bool with_mute)
 	val2 = digital_gain_get_value(wm8994_read(codec,
 						WM8994_AIF1_DAC1_RIGHT_VOLUME));
 
-	bypass_write_extension = true;
+	bypass_write_hook = true;
 	wm8994_write(codec, WM8994_AIF1_DAC1_LEFT_VOLUME,
 		     WM8994_DAC1_VU | val1);
 	wm8994_write(codec, WM8994_AIF1_DAC1_RIGHT_VOLUME,
 		     WM8994_DAC1_VU | val2);
-	bypass_write_extension = false;
+	bypass_write_hook = false;
 }
 
-void update_headphone_eq(bool with_mute)
+void update_headphone_eq(bool update_bands)
 {
 	int gains_1;
 	int gains_2;
-	int i;
-	int j;
-	int k = 0;
-	int first_reg = WM8994_AIF1_DAC1_EQ_BAND_1_A;
 
 	if (!is_path_media_or_fm_no_call_no_record()) {
 		// don't apply the EQ
@@ -725,9 +800,9 @@ void update_headphone_eq(bool with_mute)
 	}
 
 	if (debug_log(LOG_INFOS))
-		printk("wm8994_extensions: EQ gains (dB): %hd, %hd, %hd, %hd, %hd\n",
-		        eq_gains[0], eq_gains[1], eq_gains[2],
-		        eq_gains[3], eq_gains[4]);
+		printk("Voodoo sound: EQ gains (dB): %hd, %hd, %hd, %hd, %hd\n",
+		       eq_gains[0], eq_gains[1], eq_gains[2],
+		       eq_gains[3], eq_gains[4]);
 
 	gains_1 =
 	    ((eq_gains[0] + 12) << WM8994_AIF1DAC1_EQ_B1_GAIN_SHIFT) |
@@ -746,15 +821,54 @@ void update_headphone_eq(bool with_mute)
 	if (!headphone_eq)
 		return;
 
+	if (update_bands)
+		update_headphone_eq_bands();
+}
+
+void update_headphone_eq_bands()
+{
+	int i;
+	int j;
+	int k = 0;
+	int first_reg = WM8994_AIF1_DAC1_EQ_BAND_1_A;
+
 	for (i = 0; i < ARRAY_SIZE(eq_band_values); i++) {
 		if (debug_log(LOG_INFOS))
-			printk("wm8994_extensions: send EQ Band %d\n", i + 1);
+			printk("Voodoo sound: send EQ Band %d\n", i + 1);
 
 		for (j = 0; j < eq_bands[i]; j++) {
 			wm8994_write(codec,
 				     first_reg + k, eq_band_values[i][j]);
 			k++;
 		}
+	}
+}
+
+void smooth_apply_eq_band_gain(int band, int start, int end, bool current_state)
+{
+	if (debug_log(LOG_INFOS))
+		printk("Voodoo sound: EQ smooth transition for Band %d "
+		       "from %d to %d\n", band + 1, start, end);
+
+	if (start == end) {
+		if (end != 0)
+			update_headphone_eq(true);
+		else
+			update_headphone_eq(false);
+		return;
+	}
+
+	if (current_state)
+		update_headphone_eq_bands();
+
+	while (start != end) {
+		if (start < end)
+			start++;
+		else
+			start--;
+
+		eq_gains[band] = start;
+		update_headphone_eq(false);
 	}
 }
 
@@ -808,6 +922,9 @@ void apply_saturation_prevention_drc()
 	      || digital_gain >= 0))
 		return;
 
+	if (debug_log(LOG_INFOS))
+		printk("Voodoo sound: apply saturation prevention DRC\n");
+
 	// configure the DRC to avoid saturation: not actually compress signal
 	// gain is unmodified. Should affect only what's higher than 0 dBFS
 
@@ -850,9 +967,9 @@ void apply_saturation_prevention_drc()
 		val |= (drc_gain << WM8994_AIF1DRC1_KNEE_IP_SHIFT);
 
 		if (debug_log(LOG_INFOS))
-			printk("wm8994_extensions: digital gain: %d mdB, "
-			       "steps: %d, real DRC gain: %d mdB\n",
-			digital_gain, i, i * step);
+			printk("Voodoo sound: digital gain: %d mdB, "
+			       "%d mdB steps: %d, real DRC gain: %d mdB\n",
+			       digital_gain, step, i, i * step);
 
 	}
 	wm8994_write(codec, WM8994_AIF1_DRC1_4, val);
@@ -878,7 +995,7 @@ static ssize_t debug_log_store(struct device *dev,
 	return size;
 }
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 static ssize_t headphone_amplifier_level_show(struct device *dev,
 					      struct device_attribute *attr,
 					      char *buf)
@@ -908,27 +1025,6 @@ static ssize_t headphone_amplifier_level_store(struct device *dev,
 }
 #endif
 
-#define DECLARE_BOOL_SHOW(name) 					       \
-static ssize_t name##_show(struct device *dev,				       \
-struct device_attribute *attr, char *buf)				       \
-{									       \
-	return sprintf(buf,"%u\n",(name ? 1 : 0));			       \
-}
-
-#define DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(name, updater, with_mute)	       \
-static ssize_t name##_store(struct device *dev, struct device_attribute *attr, \
-	const char *buf, size_t size)					       \
-{									       \
-	unsigned short state;						       \
-	if (sscanf(buf, "%hu", &state) == 1) {				       \
-		name = state == 0 ? false : true;			       \
-		if (debug_log(LOG_INFOS))				       \
-			printk("wm8994_extensions: %s: %u\n", #updater, state);     \
-		updater(with_mute);					       \
-	}								       \
-	return size;							       \
-}
-
 #ifdef NEXUS_S
 DECLARE_BOOL_SHOW(speaker_tuning);
 DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(speaker_tuning,
@@ -936,7 +1032,7 @@ DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(speaker_tuning,
 				    false);
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
+#ifdef CONFIG_SND_VOODOO_FM
 DECLARE_BOOL_SHOW(fm_radio_headset_restore_bass);
 DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(fm_radio_headset_restore_bass,
 				    update_fm_radio_headset_restore_freqs,
@@ -953,7 +1049,7 @@ DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(fm_radio_headset_normalize_gain,
 				    false);
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_RECORD_PRESETS
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
 static ssize_t recording_preset_show(struct device *dev,
 				     struct device_attribute *attr, char *buf)
 {
@@ -983,10 +1079,12 @@ DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(adc_osr128,
 				    update_osr128,
 				    false);
 
+#ifndef GALAXY_TAB_TEGRA
 DECLARE_BOOL_SHOW(fll_tuning);
 DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(fll_tuning,
 				    update_fll_tuning,
 				    false);
+#endif
 
 DECLARE_BOOL_SHOW(mono_downmix);
 DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(mono_downmix,
@@ -1014,7 +1112,7 @@ static ssize_t digital_gain_store(struct device *dev,
 			if (new_digital_gain > digital_gain) {
 				// reduce analog volume first
 				digital_gain = new_digital_gain;
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 				update_hpvol(false);
 #endif
 				update_digital_gain(false);
@@ -1022,7 +1120,7 @@ static ssize_t digital_gain_store(struct device *dev,
 				// reduce digital volume first
 				digital_gain = new_digital_gain;
 				update_digital_gain(false);
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 				update_hpvol(false);
 #endif
 			}
@@ -1033,31 +1131,40 @@ static ssize_t digital_gain_store(struct device *dev,
 }
 
 DECLARE_BOOL_SHOW(headphone_eq);
-DECLARE_BOOL_STORE_UPDATE_WITH_MUTE(headphone_eq,
-				    update_headphone_eq,
-				    false);
+static ssize_t headphone_eq_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t size)
+{
+	unsigned short state;
+	bool current_state;
+	int i;
+	short eq_gains_copy[ARRAY_SIZE(eq_gains)];
 
-#define DECLARE_EQ_GAIN_SHOW(band)					       \
-static ssize_t headphone_eq_b##band##_gain_show(struct device *dev,	       \
-					 struct device_attribute *attr,	       \
-					 char *buf)			       \
-{									       \
-	return sprintf(buf, "%d\n", eq_gains[band-1]);			       \
-}
+	if (sscanf(buf, "%hu", &state) == 1) {
+		current_state = state == 0 ? false : true;
+		if (debug_log(LOG_INFOS))
+			printk("Voodoo sound: EQ activation: %u\n", state);
 
-#define DECLARE_EQ_GAIN_STORE(band)					       \
-static ssize_t headphone_eq_b##band##_gain_store(struct device *dev,	       \
-					  struct device_attribute *attr,       \
-					  const char *buf, size_t size)	       \
-{									       \
-	short new_gain;							       \
-	if (sscanf(buf, "%hd", &new_gain) == 1) {			       \
-		if (new_gain >= -12 && new_gain <= 12) {		       \
-			eq_gains[band-1] = new_gain;			       \
-			update_headphone_eq(false);			       \
-		}							       \
-	}								       \
-	return size;							       \
+		if (current_state) {
+			// fade from 0dB each EQ band
+			headphone_eq = current_state;
+			for (i = 0; i < ARRAY_SIZE(eq_bands); i++)
+				smooth_apply_eq_band_gain(i, 0, eq_gains[i],
+							  current_state);
+		} else {
+			// fade to 0dB each EQ band
+			for (i = 0; i < ARRAY_SIZE(eq_bands); i++) {
+				eq_gains_copy[i] = eq_gains[i];
+				smooth_apply_eq_band_gain(i, eq_gains[i], 0,
+							  current_state);
+			}
+			// restore original gains in driver memory not codec
+			for (i = 0; i < ARRAY_SIZE(eq_bands); i++)
+				eq_gains[i] = eq_gains_copy[i];
+			headphone_eq = current_state;
+		}
+	}
+	return size;
 }
 
 DECLARE_EQ_GAIN_SHOW(1);
@@ -1121,15 +1228,15 @@ static ssize_t headphone_eq_bands_values_store(struct device *dev,
 		for (i = 0; i < ARRAY_SIZE(eq_band_coef_names); i++) {
 			// loop through band coefficient letters
 			if (strncmp(eq_band_coef_names[i], coef_name, 2) == 0) {
-				if (eq_bands[band-1] == 3 && i == 3)
+				if (eq_bands[band - 1] == 3 && i == 3)
 					// deal with high and low shelves
-					eq_band_values[band-1][2] = val;
+					eq_band_values[band - 1][2] = val;
 				else
 					// parametric bands
-					eq_band_values[band-1][i] = val;
+					eq_band_values[band - 1][i] = val;
 
 				if (debug_log(LOG_INFOS))
-					printk("wm8994_extensions: read EQ from "
+					printk("Voodoo sound: read EQ from "
 					       "sysfs: EQ Band %hd %s: 0x%04X\n"
 					       , band, coef_name, val);
 				break;
@@ -1167,7 +1274,7 @@ static ssize_t stereo_expansion_gain_store(struct device *dev,
 	return size;
 }
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_DEVELOPMENT
+#ifdef CONFIG_SND_VOODOO_DEVELOPMENT
 static ssize_t show_wm8994_register_dump(struct device *dev,
 					 struct device_attribute *attr,
 					 char *buf)
@@ -1259,24 +1366,25 @@ static ssize_t store_wm8994_write(struct device *dev,
 
 	while (sscanf(buf, "%hx %hx%n", &reg, &val, &bytes_read) == 2) {
 		buf += bytes_read;
-		if (debug_log(LOG_INFOS));
-			printk("wm8994_extensions: read from sysfs: %X, %X\n",
+		if (debug_log(LOG_INFOS))
+			printk("Voodoo sound: read from sysfs: %X, %X\n",
 			       reg, val);
 
-		bypass_write_extension = true;
+		bypass_write_hook = true;
 		wm8994_write(codec, reg, val);
-		bypass_write_extension = false;
+		bypass_write_hook = false;
 	}
 	return size;
 }
 #endif
 
-static ssize_t wm8994_extensions_version(struct device *dev,
+static ssize_t voodoo_sound_version(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%u\n", WM8994_EXTENSIONS_VERSION);
+	return sprintf(buf, "%u\n", VOODOO_SOUND_VERSION);
 }
 
+#ifndef MODULE
 DECLARE_BOOL_SHOW(enable);
 static ssize_t enable_store(struct device *dev,
 			    struct device_attribute *attr, const char *buf,
@@ -1293,12 +1401,13 @@ static ssize_t enable_store(struct device *dev,
 	}
 	return size;
 }
+#endif
 
 static DEVICE_ATTR(debug_log, S_IRUGO | S_IWUGO,
 		   debug_log_show,
 		   debug_log_store);
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 static DEVICE_ATTR(headphone_amplifier_level, S_IRUGO | S_IWUGO,
 		   headphone_amplifier_level_show,
 		   headphone_amplifier_level_store);
@@ -1310,7 +1419,7 @@ static DEVICE_ATTR(speaker_tuning, S_IRUGO | S_IWUGO,
 		   speaker_tuning_store);
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
+#ifdef CONFIG_SND_VOODOO_FM
 static DEVICE_ATTR(fm_radio_headset_restore_bass, S_IRUGO | S_IWUGO,
 		   fm_radio_headset_restore_bass_show,
 		   fm_radio_headset_restore_bass_store);
@@ -1324,7 +1433,7 @@ static DEVICE_ATTR(fm_radio_headset_normalize_gain, S_IRUGO | S_IWUGO,
 		   fm_radio_headset_normalize_gain_store);
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_RECORD_PRESETS
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
 static DEVICE_ATTR(recording_preset, S_IRUGO | S_IWUGO,
 		   recording_preset_show,
 		   recording_preset_store);
@@ -1338,9 +1447,11 @@ static DEVICE_ATTR(adc_osr128, S_IRUGO | S_IWUGO,
 		   adc_osr128_show,
 		   adc_osr128_store);
 
+#ifndef GALAXY_TAB_TEGRA
 static DEVICE_ATTR(fll_tuning, S_IRUGO | S_IWUGO,
 		   fll_tuning_show,
 		   fll_tuning_store);
+#endif
 
 static DEVICE_ATTR(dac_direct, S_IRUGO | S_IWUGO,
 		   dac_direct_show,
@@ -1390,7 +1501,7 @@ static DEVICE_ATTR(mono_downmix, S_IRUGO | S_IWUGO,
 		   mono_downmix_show,
 		   mono_downmix_store);
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_DEVELOPMENT
+#ifdef CONFIG_SND_VOODOO_DEVELOPMENT
 static DEVICE_ATTR(wm8994_register_dump, S_IRUGO,
 		   show_wm8994_register_dump,
 		   NULL);
@@ -1401,32 +1512,42 @@ static DEVICE_ATTR(wm8994_write, S_IWUSR,
 #endif
 
 static DEVICE_ATTR(version, S_IRUGO,
-		   wm8994_extensions_version,
+		   voodoo_sound_version,
 		   NULL);
 
+#ifndef MODULE
 static DEVICE_ATTR(enable, S_IRUGO | S_IWUGO,
 		   enable_show,
 		   enable_store);
+#endif
 
-static struct attribute *wm8994_extensions_attributes[] = {
+#ifdef MODULE
+static DEVICE_ATTR(module, 0,
+		   NULL,
+		   NULL);
+#endif
+
+static struct attribute *voodoo_sound_attributes[] = {
 	&dev_attr_debug_log.attr,
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 	&dev_attr_headphone_amplifier_level.attr,
 #endif
 #ifdef NEXUS_S
 	&dev_attr_speaker_tuning.attr,
 #endif
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
+#ifdef CONFIG_SND_VOODOO_FM
 	&dev_attr_fm_radio_headset_restore_bass.attr,
 	&dev_attr_fm_radio_headset_restore_highs.attr,
 	&dev_attr_fm_radio_headset_normalize_gain.attr,
 #endif
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_RECORD_PRESETS
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
 	&dev_attr_recording_preset.attr,
 #endif
 	&dev_attr_dac_osr128.attr,
 	&dev_attr_adc_osr128.attr,
+#ifndef GALAXY_TAB_TEGRA
 	&dev_attr_fll_tuning.attr,
+#endif
 	&dev_attr_dac_direct.attr,
 	&dev_attr_digital_gain.attr,
 	&dev_attr_headphone_eq.attr,
@@ -1439,66 +1560,73 @@ static struct attribute *wm8994_extensions_attributes[] = {
 	&dev_attr_stereo_expansion.attr,
 	&dev_attr_stereo_expansion_gain.attr,
 	&dev_attr_mono_downmix.attr,
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_DEVELOPMENT
+#ifdef CONFIG_SND_VOODOO_DEVELOPMENT
 	&dev_attr_wm8994_register_dump.attr,
 	&dev_attr_wm8994_write.attr,
+#endif
+#ifdef MODULE
+	&dev_attr_module.attr,
 #endif
 	&dev_attr_version.attr,
 	NULL
 };
 
-static struct attribute *wm8994_extensions_control_attributes[] = {
+#ifndef MODULE
+static struct attribute *voodoo_sound_control_attributes[] = {
 	&dev_attr_enable.attr,
 	NULL
 };
+#endif
 
-static struct attribute_group wm8994_extensions_group = {
-	.attrs = wm8994_extensions_attributes,
+static struct attribute_group voodoo_sound_group = {
+	.attrs = voodoo_sound_attributes,
 };
 
-static struct attribute_group wm8994_extensions_control_group = {
-	.attrs = wm8994_extensions_control_attributes,
+#ifndef MODULE
+static struct attribute_group voodoo_sound_control_group = {
+	.attrs = voodoo_sound_control_attributes,
 };
+#endif
 
-static struct miscdevice wm8994_extensions_device = {
+static struct miscdevice voodoo_sound_device = {
 	.minor = MISC_DYNAMIC_MINOR,
-//	.name = "wm8994_extensions",
 	.name = "voodoo_sound",
 };
 
-static struct miscdevice wm8994_extensions_control_device = {
+#ifndef MODULE
+static struct miscdevice voodoo_sound_control_device = {
 	.minor = MISC_DYNAMIC_MINOR,
-//	.name = "wm8994_extensions_control",
 	.name = "voodoo_sound_control",
 };
+#endif
 
-void wm8994_extensions_pcm_remove()
+void voodoo_hook_wm8994_pcm_remove()
 {
-	printk("wm8994_extensions: removing driver v%d\n", WM8994_EXTENSIONS_VERSION);
-	sysfs_remove_group(&wm8994_extensions_device.this_device->kobj,
-			   &wm8994_extensions_group);
-	misc_deregister(&wm8994_extensions_device);
+	printk("Voodoo sound: removing driver v%d\n", VOODOO_SOUND_VERSION);
+	sysfs_remove_group(&voodoo_sound_device.this_device->kobj,
+			   &voodoo_sound_group);
+	misc_deregister(&voodoo_sound_device);
 }
 
 void update_enable()
 {
 	if (enable) {
-		printk("wm8994_extensions: initializing driver v%d\n",
-		       WM8994_EXTENSIONS_VERSION);
+		printk("Voodoo sound: initializing driver v%d\n",
+		       VOODOO_SOUND_VERSION);
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_DEVELOPMENT
-		printk("wm8994_extensions: codec development tools enabled\n");
+#ifdef CONFIG_SND_VOODOO_DEVELOPMENT
+		printk("Voodoo sound: codec development tools enabled\n");
 #endif
 
-		misc_register(&wm8994_extensions_device);
-		if (sysfs_create_group(&wm8994_extensions_device.this_device->kobj,
-				       &wm8994_extensions_group) < 0) {
+		misc_register(&voodoo_sound_device);
+		if (sysfs_create_group(&voodoo_sound_device.this_device->kobj,
+				       &voodoo_sound_group) < 0) {
 			printk("%s sysfs_create_group fail\n", __FUNCTION__);
 			pr_err("Failed to create sysfs group for (%s)!\n",
-			       wm8994_extensions_device.name);
+			       voodoo_sound_device.name);
 		}
 	} else
-		wm8994_extensions_pcm_remove();
+		voodoo_hook_wm8994_pcm_remove();
 }
 
 /*
@@ -1507,8 +1635,8 @@ void update_enable()
  *
  */
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
-void wm8994_extensions_fmradio_headset()
+#ifdef CONFIG_SND_VOODOO_FM
+void voodoo_hook_fmradio_headset()
 {
 	// global kill switch
 	if (!enable)
@@ -1524,8 +1652,8 @@ void wm8994_extensions_fmradio_headset()
 }
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_RECORD_PRESETS
-void wm8994_extensions_record_main_mic()
+#ifdef CONFIG_SND_VOODOO_RECORD_PRESETS
+void voodoo_hook_record_main_mic()
 {
 	// global kill switch
 	if (!enable)
@@ -1541,7 +1669,7 @@ void wm8994_extensions_record_main_mic()
 #endif
 
 #ifdef NEXUS_S
-void wm8994_extensions_playback_speaker()
+void voodoo_hook_playback_speaker()
 {
 	// global kill switch
 	if (!enable)
@@ -1553,7 +1681,7 @@ void wm8994_extensions_playback_speaker()
 }
 #endif
 
-unsigned int wm8994_extensions_write(struct snd_soc_codec *codec_,
+unsigned int voodoo_hook_wm8994_write(struct snd_soc_codec *codec_,
 				      unsigned int reg, unsigned int value)
 {
 	DECLARE_WM8994(codec_);
@@ -1566,9 +1694,9 @@ unsigned int wm8994_extensions_write(struct snd_soc_codec *codec_,
 	// be sure our pointer to codec is up to date
 	codec = codec_;
 
-	if (!bypass_write_extension) {
+	if (!bypass_write_hook) {
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_HP_LEVEL_CONTROL
+#ifdef CONFIG_SND_VOODOO_HP_LEVEL_CONTROL
 		if (is_path(HEADPHONES)
 		    && !(wm8994->codec_state & CALL_ACTIVE)) {
 
@@ -1586,13 +1714,13 @@ unsigned int wm8994_extensions_write(struct snd_soc_codec *codec_,
 		}
 #endif
 
-#ifdef CONFIG_SND_WM8994_EXTENSIONS_FM
+#ifdef CONFIG_SND_VOODOO_FM
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
 		// FM tuning virtual hook for Gingerbread
 		if (is_path(RADIO_HEADPHONES)) {
 			if (reg == WM8994_AIF2_DRC_1
 			    || reg == WM8994_AIF2_DAC_FILTERS_1)
-				wm8994_extensions_fmradio_headset();
+				voodoo_hook_fmradio_headset();
 		}
 #else
 		// FM tuning virtual hook for Froyo
@@ -1600,7 +1728,7 @@ unsigned int wm8994_extensions_write(struct snd_soc_codec *codec_,
 			if (reg == WM8994_INPUT_MIXER_2
 			    || reg == WM8994_AIF2_DRC_1
 			    || reg == WM8994_ANALOGUE_HP_1)
-				wm8994_extensions_fmradio_headset();
+				voodoo_hook_fmradio_headset();
 		}
 #endif
 #endif
@@ -1608,9 +1736,11 @@ unsigned int wm8994_extensions_write(struct snd_soc_codec *codec_,
 		if (reg == WM8994_OVERSAMPLING)
 			value = osr128_get_value(value);
 
+#ifndef GALAXY_TAB_TEGRA
 		// global Anti-Jitter tuning
 		if (reg == WM8994_FLL1_CONTROL_4)
 			value = fll_tuning_get_value(value);
+#endif
 
 		// global Mono downmix tuning
 		if (reg == WM8994_AIF1_DAC1_FILTERS_1
@@ -1632,100 +1762,104 @@ unsigned int wm8994_extensions_write(struct snd_soc_codec *codec_,
 		if (reg == WM8994_AIF1_DAC1_FILTERS_1
 		    || reg == WM8994_AIF1_DAC2_FILTERS_1
 		    || reg == WM8994_AIF2_DAC_FILTERS_1) {
-			bypass_write_extension = true;
+			bypass_write_hook = true;
 			apply_saturation_prevention_drc();
-			update_headphone_eq(false);
+			update_headphone_eq(true);
 			update_stereo_expansion(false);
-			bypass_write_extension = false;
+			bypass_write_hook = false;
 		}
 
 	}
 	if (debug_log(LOG_VERBOSE))
-		// log every write to dmesg
+	// log every write to dmesg
 #ifdef NEXUS_S
-		printk("wm8994_extensions: wm8994_write 0x%03X 0x%04X "
-			   "codec_state=%u, stream_state=%u, "
-			   "cur_path=%i, rec_path=%i, "
-			   "power_state=%i\n",
-			   reg, value,
-			   wm8994->codec_state, wm8994->stream_state,
-			   wm8994->cur_path, wm8994->rec_path,
-			   wm8994->power_state);
+		printk("Voodoo sound: codec_state=%u, stream_state=%u, "
+		       "cur_path=%i, rec_path=%i, "
+		       "power_state=%i\n",
+		       wm8994->codec_state, wm8994->stream_state,
+		       wm8994->cur_path, wm8994->rec_path,
+		       wm8994->power_state);
 #else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
-		printk("wm8994_extensions: wm8994_write 0x%03X 0x%04X "
-               "codec_state=%u, stream_state=%u, "
-               "cur_path=%i, rec_path=%i, "
-#ifndef M110S
-               "fmradio_path=%i, fmr_mix_path=%i, "
+		printk("Voodoo sound: wm8994_write 0x%03X 0x%04X "
+		       "codec_state=%u, stream_state=%u, "
+		       "cur_path=%i, rec_path=%i, "
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA)
+		       "fmradio_path=%i, fmr_mix_path=%i, "
 #endif
-               "input_source=%i, "
-#ifndef M110S
-               "output_source=%i, "
+#ifndef GALAXY_TAB
+		       "input_source=%i, "
 #endif
-               "power_state=%i\n",
-               reg, value,
-               wm8994->codec_state, wm8994->stream_state,
-#ifndef M110S
-               wm8994->fmradio_path, wm8994->fmr_mix_path,
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA) && !defined(GALAXY_TAB)
+		       "output_source=%i, "
 #endif
-               wm8994->cur_path, wm8994->rec_path,
-               wm8994->input_source,
-#ifndef M110S
-               wm8994->output_source,
+		       "power_state=%i\n",
+		       reg, value,
+		       wm8994->codec_state, wm8994->stream_state,
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA)
+		       wm8994->fmradio_path, wm8994->fmr_mix_path,
 #endif
-               wm8994->power_state);
+		       wm8994->cur_path, wm8994->rec_path,
+#ifndef GALAXY_TAB
+		       wm8994->input_source,
+#endif
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA) && !defined(GALAXY_TAB)
+		       wm8994->output_source,
+#endif
+		       wm8994->power_state);
 #else
-		printk("wm8994_extensions: wm8994_write 0x%03X 0x%04X "
-               "codec_state=%u, stream_state=%u, "
-               "cur_path=%i, rec_path=%i, "
-#ifndef M110S
-               "fmradio_path=%i, fmr_mix_path=%i, "
+		printk("Voodoo sound: wm8994_write 0x%03X 0x%04X "
+		       "codec_state=%u, stream_state=%u, "
+		       "cur_path=%i, rec_path=%i, "
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA)
+		       "fmradio_path=%i, fmr_mix_path=%i, "
 #endif
 #ifdef CONFIG_S5PC110_KEPLER_BOARD
-               "call_record_path=%i, call_record_ch=%i, "
-               "AUDIENCE_state=%i, "
-               "Fac_SUB_MIC_state=%i, TTY_state=%i, "
+		       "call_record_path=%i, call_record_ch=%i, "
+		       "AUDIENCE_state=%i, "
+		       "Fac_SUB_MIC_state=%i, TTY_state=%i, "
 #endif
-               "power_state=%i, "
-#ifndef M110S
-               "recognition_active=%i, ringtone_active=%i"
+		       "power_state=%i, "
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA)
+		       "recognition_active=%i, ringtone_active=%i"
 #endif
-               "\n",
-               reg, value,
-               wm8994->codec_state, wm8994->stream_state,
-               wm8994->cur_path, wm8994->rec_path,
-#ifndef M110S
-               wm8994->fmradio_path, wm8994->fmr_mix_path,
+		       "\n",
+		       reg, value,
+		       wm8994->codec_state, wm8994->stream_state,
+		       wm8994->cur_path, wm8994->rec_path,
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA)
+		       wm8994->fmradio_path, wm8994->fmr_mix_path,
 #endif
 #ifdef CONFIG_S5PC110_KEPLER_BOARD
-               wm8994->call_record_path, wm8994->call_record_ch,
-               wm8994->AUDIENCE_state,
-               wm8994->Fac_SUB_MIC_state, wm8994->TTY_state,
+		       wm8994->call_record_path, wm8994->call_record_ch,
+		       wm8994->AUDIENCE_state,
+		       wm8994->Fac_SUB_MIC_state, wm8994->TTY_state,
 #endif
-               wm8994->power_state
-#ifndef M110S
-               ,wm8994->recognition_active,
-               wm8994->ringtone_active
+		       wm8994->power_state
+#if !defined(M110S) && !defined(GALAXY_TAB_TEGRA)
+		       ,wm8994->recognition_active,
+		       wm8994->ringtone_active
 #endif
-               );
+		);
 #endif
 #endif
-        return value;
+	return value;
 }
 
-void wm8994_extensions_pcm_probe(struct snd_soc_codec *codec_)
+void voodoo_hook_wm8994_pcm_probe(struct snd_soc_codec *codec_)
 {
 	enable = true;
 	update_enable();
 
-	misc_register(&wm8994_extensions_control_device);
-	if (sysfs_create_group(&wm8994_extensions_control_device.this_device->kobj,
-			       &wm8994_extensions_control_group) < 0) {
+#ifndef MODULE
+	misc_register(&voodoo_sound_control_device);
+	if (sysfs_create_group(&voodoo_sound_control_device.this_device->kobj,
+			       &voodoo_sound_control_group) < 0) {
 		printk("%s sysfs_create_group fail\n", __FUNCTION__);
 		pr_err("Failed to create sysfs group for device (%s)!\n",
-		       wm8994_extensions_control_device.name);
+		       voodoo_sound_control_device.name);
 	}
+#endif
 
 	// make a copy of the codec pointer
 	codec = codec_;
