@@ -127,6 +127,11 @@ struct scan_control {
 int vm_swappiness;
 long vm_total_pages;	/* The total number of pages which the VM controls */
 
+/*
+ * Only start shrinking active file list when inactive is below this percentage.
+ */
+int inactive_file_ratio = 20;
+
 static LIST_HEAD(shrinker_list);
 static DECLARE_RWSEM(shrinker_rwsem);
 
@@ -588,6 +593,17 @@ static enum page_references page_check_references(struct page *page,
 	if (referenced_ptes) {
 		if (PageAnon(page))
 			return PAGEREF_ACTIVATE;
+
+		/*
+		 * Identify referenced, file-backed active pages and move them
+		 * to the active list. We know that this page has been
+		 * referenced since being put on the inactive list. VM_EXEC
+		 * pages are only moved to the inactive list when they have not
+		 * been referenced between scans (see shrink_active_list).
+		 */
+		if ((vm_flags & VM_EXEC) && page_is_file_cache(page))
+			return PAGEREF_ACTIVATE;
+
 		/*
 		 * All mapped pages start out with page table
 		 * references from the instantiating fault, so we need
@@ -603,8 +619,15 @@ static enum page_references page_check_references(struct page *page,
 		 * quickly recovered.
 		 */
 		SetPageReferenced(page);
-
-		if (referenced_page)
+		/*
+		 * Identify pte referenced and file-backed pages and give them
+		 * one trip around the active list. So that executable code get
+		 * better chances to stay in memory under moderate memory
+		 * pressure. JVM can create lots of anon VM_EXEC pages, so we
+		 * ignore them here.
+		 */
+		if (referenced_page || ((vm_flags & VM_EXEC) &&
+		    page_is_file_cache(page)))
 			return PAGEREF_ACTIVATE;
 
 		return PAGEREF_KEEP;
@@ -1108,6 +1131,13 @@ static int too_many_isolated(struct zone *zone, int file,
 		isolated = zone_page_state(zone, NR_ISOLATED_ANON);
 	}
 
+	/*
+	 * GFP_NOIO/GFP_NOFS callers are allowed to isolate more pages, so that
+	 * they won't get blocked by normal ones and form circular deadlock.
+	 */
+	if ((sc->gfp_mask & GFP_IOFS) == GFP_IOFS)
+		inactive >>= 3;
+
 	return isolated > inactive;
 }
 
@@ -1500,7 +1530,7 @@ static int inactive_file_is_low_global(struct zone *zone)
 	active = zone_page_state(zone, NR_ACTIVE_FILE);
 	inactive = zone_page_state(zone, NR_INACTIVE_FILE);
 
-	return (active > inactive);
+	return ((inactive * 100)/(inactive + active) < inactive_file_ratio);
 }
 
 /**
@@ -2135,7 +2165,7 @@ loop_again:
 			 * Do some background aging of the anon list, to give
 			 * pages a chance to be referenced before reclaiming.
 			 */
-			if (inactive_anon_is_low(zone, &sc))
+			if (total_swap_pages > 0 && inactive_anon_is_low(zone, &sc))
 				shrink_active_list(SWAP_CLUSTER_MAX, zone,
 							&sc, priority, 0);
 
