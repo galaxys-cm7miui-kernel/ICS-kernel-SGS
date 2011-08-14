@@ -546,7 +546,7 @@ static int s5pv210_cpufreq_target(struct cpufreq_policy *policy,
 	static bool first_run = true;
 	int ret = 0;
 	unsigned long arm_clk;
-	unsigned int index, old_index, reg, arm_volt, int_volt;
+	unsigned int index, reg, arm_volt, int_volt;
 	unsigned int pll_changing = 0;
 	unsigned int bus_speed_changing = 0;
 
@@ -605,32 +605,6 @@ static int s5pv210_cpufreq_target(struct cpufreq_policy *policy,
 	if (s3c_freqs.freqs.new == s3c_freqs.freqs.old && !first_run)
 		goto out;
 
-#define SMOOTH_STEPS 1 /* So what ;-) */
-#ifdef SMOOTH_STEPS
-  if (cpufreq_frequency_table_target(policy, freq_table,
-  s3c_freqs.freqs.old, relation, &old_index)) {
-         ret = -EINVAL;
-         goto out;
-
-     }
-
-/* No direct jump to low freq (under 1Ghz) and go _real_ smooth
-* this time [STEP_DN] */
-  if (index < L4) {
-	if (old_index == L0)
-          index = L1;
-	else if (old_index == L1)
-          index = L2;
-	else if (old_index == L2)
-          index = L3;
-	else if (old_index == L3)
-          index = L4;
-	else if (old_index == L4)
-          index = L5;
-	else if (old_index == L5)
-          index = L6;
-     }
-#endif
 //Subtract the voltage in the undervolt table before supplying it to the cpu
 //Got to multiply by 1000 to account for the conversion between SGS and NS
 	arm_volt = (dvs_conf[index].arm_volt - (exp_UV_mV[index]*1000));
