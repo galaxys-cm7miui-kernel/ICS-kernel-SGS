@@ -41,7 +41,6 @@
 
 #ifdef CONFIG_MACH_ARIES
 #include "logo_rgb24_wvga_portrait.h"
-#include <mach/regs-clock.h>
 #endif
 
 struct s3c_platform_fb *to_fb_plat(struct device *dev)
@@ -107,10 +106,9 @@ static int s3cfb_draw_logo(struct fb_info *fb)
 		iounmap(logo_virt_buf);
 	}
 #else /*CONFIG_SAMSUNG_GALAXYS*/
-	if (readl(S5P_INFORM5)) //LPM_CHARGING mode
-		memcpy(fb->screen_base, charging, fb->var.yres * fb->fix.line_length);
-	else
-		memcpy(fb->screen_base, LOGO_RGB24, fb->var.yres * fb->fix.line_length);
+
+	memcpy(fb->screen_base, LOGO_RGB24,
+				fb->var.yres * fb->fix.line_length);
 #endif
 	return 0;
 }
