@@ -857,7 +857,7 @@ typedef struct wl_ioctl {
 #define PM_MAX	1
 #define PM_FAST 2
 
-#define LISTEN_INTERVAL			20
+#define LISTEN_INTERVAL			10
 
 #define	INTERFERE_NONE	0	
 #define	NON_WLAN	1	
@@ -1342,12 +1342,6 @@ typedef struct wl_pfn {
 	int32			auth;			
 	uint32			wpa_auth;		
 	int32			wsec;			
-#ifdef WLPFN_AUTO_CONNECT
-	union {
-		wl_wsec_key_t	sec_key;		
-		wsec_pmk_t	wpa_sec_key;		
-	} pfn_security;
-#endif 
 } wl_pfn_t;
 
 #define PNO_SCAN_MAX_FW		508*1000
