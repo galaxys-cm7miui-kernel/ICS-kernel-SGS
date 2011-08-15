@@ -78,3 +78,8 @@ GTAGS
 *.orig
 *~
 \#*#
+
+release/SGS/*.zip
+release/VIBRANT/*.zip
+release/CAPPY/*.zip
+release/boot.img
