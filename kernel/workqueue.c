@@ -1813,7 +1813,6 @@ EXPORT_SYMBOL(schedule_delayed_work_on);
 int schedule_on_each_cpu(work_func_t func)
 {
 	int cpu;
-	int orig = -1;
 	struct work_struct *works;
 
 	works = alloc_percpu(struct work_struct);
@@ -1822,23 +1821,12 @@ int schedule_on_each_cpu(work_func_t func)
 
 	get_online_cpus();
 
-	/*
-	 * When running in keventd don't schedule a work item on
-	 * itself.  Can just call directly because the work queue is
-	 * already bound.  This also is faster.
-	 */
-	if (current_is_keventd())
-		orig = raw_smp_processor_id();
-
 	for_each_online_cpu(cpu) {
 		struct work_struct *work = per_cpu_ptr(works, cpu);
 
 		INIT_WORK(work, func);
-		if (cpu != orig)
-			schedule_work_on(cpu, work);
+		schedule_work_on(cpu, work);
 	}
-	if (orig >= 0)
-		func(per_cpu_ptr(works, orig));
 
 	for_each_online_cpu(cpu)
 		flush_work(per_cpu_ptr(works, cpu));
@@ -1909,41 +1897,6 @@ int keventd_up(void)
 	return keventd_wq != NULL;
 }
 
-int current_is_keventd(void)
-{
-	bool found = false;
-	unsigned int cpu;
-
-	/*
-	 * There no longer is one-to-one relation between worker and
-	 * work queue and a worker task might be unbound from its cpu
-	 * if the cpu was offlined.  Match all busy workers.  This
-	 * function will go away once dynamic pool is implemented.
-	 */
-	for_each_possible_cpu(cpu) {
-		struct global_cwq *gcwq = get_gcwq(cpu);
-		struct worker *worker;
-		struct hlist_node *pos;
-		unsigned long flags;
-		int i;
-
-		spin_lock_irqsave(&gcwq->lock, flags);
-
-		for_each_busy_worker(worker, i, pos, gcwq) {
-			if (worker->task == current) {
-				found = true;
-				break;
-			}
-		}
-
-		spin_unlock_irqrestore(&gcwq->lock, flags);
-		if (found)
-			break;
-	}
-
-	return found;
-}
-
 static struct cpu_workqueue_struct *alloc_cwqs(void)
 {
 	/*
@@ -1991,6 +1944,16 @@ static void free_cwqs(struct cpu_workqueue_struct *cwqs)
 #endif
 }
 
+static int wq_clamp_max_active(int max_active, const char *name)
+{
+	if (max_active < 1 || max_active > WQ_MAX_ACTIVE)
+		printk(KERN_WARNING "workqueue: max_active %d requested for %s "
+		       "is out of range, clamping between %d and %d\n",
+		       max_active, name, 1, WQ_MAX_ACTIVE);
+
+	return clamp_val(max_active, 1, WQ_MAX_ACTIVE);
+}
+
 struct workqueue_struct *__create_workqueue_key(const char *name,
 						unsigned int flags,
 						int max_active,
@@ -2001,7 +1964,7 @@ struct workqueue_struct *__create_workqueue_key(const char *name,
 	bool failed = false;
 	unsigned int cpu;
 
-	max_active = clamp_val(max_active, 1, INT_MAX);
+	max_active = wq_clamp_max_active(max_active, name);
 
 	wq = kzalloc(sizeof(*wq), GFP_KERNEL);
 	if (!wq)
@@ -2594,6 +2557,18 @@ void __init init_workqueues(void)
 		init_waitqueue_head(&gcwq->trustee_wait);
 	}
 
-	keventd_wq = create_workqueue("events");
+	/* create the initial worker */
+	for_each_online_cpu(cpu) {
+		struct global_cwq *gcwq = get_gcwq(cpu);
+		struct worker *worker;
+
+		worker = create_worker(gcwq, true);
+		BUG_ON(!worker);
+		spin_lock_irq(&gcwq->lock);
+		start_worker(worker);
+		spin_unlock_irq(&gcwq->lock);
+	}
+
+	keventd_wq = __create_workqueue("events", 0, WQ_DFL_ACTIVE);
 	BUG_ON(!keventd_wq);
 }
