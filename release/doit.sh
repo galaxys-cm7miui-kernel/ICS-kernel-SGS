@@ -25,6 +25,7 @@ find . -name "*.ko" -exec cp {} release/system/lib/modules/ \; 2>/dev/null || ex
 
 cd release && {
 	cp 91logger system/etc/init.d/ || exit 1
+	cp S98system_tweak system/etc/init.d/ || exit 1
 	cp lights.aries.so system/lib/hw/ || exit 1
 #        cp lights.aries.so.BLN system/lib/hw/lights.aries.so || exit 1
 	mkdir -p system/bin

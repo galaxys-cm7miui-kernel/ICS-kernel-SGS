@@ -9,7 +9,7 @@ run_program("/sbin/mount", "/cache");
 run_program("/sbin/mount", "/dev/block/mmcblk0p2", "/data");
 
 #cleaning script
-ui_print("Cleaning /system/etc/init.d...");
+ui_print("Cleaning /system/etc/init.d... from known scripts");
 delete("/system/etc/init.d/91logger");
 delete("/system/etc/init.d/logcat_module");
 delete("/system/etc/init.d/S_volt_scheduler");
@@ -31,13 +31,13 @@ delete("/system/etc/init.d/02firstboot");
 delete("/system/etc/init.d/S90scheduler");
 delete("/system/etc/init.d/S99finish");
 ui_print("");
-ui_print("Removing OC/UV script");
+ui_print("Removing OC/UV script [2nd time - just in case]");
 delete("/system/etc/init.d/S_volt_scheduler");
 ui_print("");
-ui_print("Delete cache partition...");
+ui_print("Format cache partition...");
 delete_recursive("/cache");
 ui_print("");
-ui_print("Delete dalvik-cache... Next boot = 2-10 min");
+ui_print("Wipe dalvik-cache... Next boot = 2-10 min");
 delete_recursive("/data/dalvik-cache");
 ui_print("");
 ui_print("Delete old modules");
