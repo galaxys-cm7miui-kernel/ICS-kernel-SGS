@@ -1,6 +1,6 @@
 /*
    Copyright (C) 2002 Richard Henderson
-   Copyright (C) 2001 Rusty Russell, 2002, 2010 Rusty Russell IBM.
+   Copyright (C) 2001 Rusty Russell, 2002 Rusty Russell IBM.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -110,20 +110,6 @@ int unregister_module_notifier(struct notifier_block * nb)
 }
 EXPORT_SYMBOL(unregister_module_notifier);
 
-struct load_info {
-	Elf_Ehdr *hdr;
-	unsigned long len;
-	Elf_Shdr *sechdrs;
-	char *secstrings, *strtab;
-	unsigned long *strmap;
-	unsigned long symoffs, stroffs;
-	struct _ddebug *debug;
-	unsigned int num_debug;
-	struct {
-		unsigned int sym, str, mod, vers, info, pcpu;
-	} index;
-};
-
 /* We require a truly strong try_module_get(): 0 means failure due to
    ongoing or failed initialization etc. */
 static inline int strong_try_module_get(struct module *mod)
@@ -154,38 +140,42 @@ void __module_put_and_exit(struct module *mod, long code)
 EXPORT_SYMBOL(__module_put_and_exit);
 
 /* Find a module section: 0 means not found. */
-static unsigned int find_sec(const struct load_info *info, const char *name)
+static unsigned int find_sec(Elf_Ehdr *hdr,
+			     Elf_Shdr *sechdrs,
+			     const char *secstrings,
+			     const char *name)
 {
 	unsigned int i;
 
-	for (i = 1; i < info->hdr->e_shnum; i++) {
-		Elf_Shdr *shdr = &info->sechdrs[i];
+	for (i = 1; i < hdr->e_shnum; i++)
 		/* Alloc bit cleared means "ignore it." */
-		if ((shdr->sh_flags & SHF_ALLOC)
-		    && strcmp(info->secstrings + shdr->sh_name, name) == 0)
+		if ((sechdrs[i].sh_flags & SHF_ALLOC)
+		    && strcmp(secstrings+sechdrs[i].sh_name, name) == 0)
 			return i;
-	}
 	return 0;
 }
 
 /* Find a module section, or NULL. */
-static void *section_addr(const struct load_info *info, const char *name)
+static void *section_addr(Elf_Ehdr *hdr, Elf_Shdr *shdrs,
+			  const char *secstrings, const char *name)
 {
 	/* Section 0 has sh_addr 0. */
-	return (void *)info->sechdrs[find_sec(info, name)].sh_addr;
+	return (void *)shdrs[find_sec(hdr, shdrs, secstrings, name)].sh_addr;
 }
 
 /* Find a module section, or NULL.  Fill in number of "objects" in section. */
-static void *section_objs(const struct load_info *info,
+static void *section_objs(Elf_Ehdr *hdr,
+			  Elf_Shdr *sechdrs,
+			  const char *secstrings,
 			  const char *name,
 			  size_t object_size,
 			  unsigned int *num)
 {
-	unsigned int sec = find_sec(info, name);
+	unsigned int sec = find_sec(hdr, sechdrs, secstrings, name);
 
 	/* Section 0 has sh_addr 0 and sh_size 0. */
-	*num = info->sechdrs[sec].sh_size / object_size;
-	return (void *)info->sechdrs[sec].sh_addr;
+	*num = sechdrs[sec].sh_size / object_size;
+	return (void *)sechdrs[sec].sh_addr;
 }
 
 /* Provided by the linker */
@@ -237,7 +227,7 @@ bool each_symbol(bool (*fn)(const struct symsearch *arr, struct module *owner,
 			    unsigned int symnum, void *data), void *data)
 {
 	struct module *mod;
-	static const struct symsearch arr[] = {
+	const struct symsearch arr[] = {
 		{ __start___ksymtab, __stop___ksymtab, __start___kcrctab,
 		  NOT_GPL_ONLY, false },
 		{ __start___ksymtab_gpl, __stop___ksymtab_gpl,
@@ -402,8 +392,7 @@ static int percpu_modalloc(struct module *mod,
 	mod->percpu = __alloc_reserved_percpu(size, align);
 	if (!mod->percpu) {
 		printk(KERN_WARNING
-		       "%s: Could not allocate %lu bytes percpu data\n",
-		       mod->name, size);
+		       "Could not allocate %lu bytes percpu data\n", size);
 		return -ENOMEM;
 	}
 	mod->percpu_size = size;
@@ -415,9 +404,11 @@ static void percpu_modfree(struct module *mod)
 	free_percpu(mod->percpu);
 }
 
-static unsigned int find_pcpusec(struct load_info *info)
+static unsigned int find_pcpusec(Elf_Ehdr *hdr,
+				 Elf_Shdr *sechdrs,
+				 const char *secstrings)
 {
-	return find_sec(info, ".data..percpu");
+	return find_sec(hdr, sechdrs, secstrings, ".data..percpu");
 }
 
 static void percpu_modcopy(struct module *mod,
@@ -477,7 +468,9 @@ static inline int percpu_modalloc(struct module *mod,
 static inline void percpu_modfree(struct module *mod)
 {
 }
-static unsigned int find_pcpusec(struct load_info *info)
+static inline unsigned int find_pcpusec(Elf_Ehdr *hdr,
+					Elf_Shdr *sechdrs,
+					const char *secstrings)
 {
 	return 0;
 }
@@ -531,21 +524,21 @@ static char last_unloaded_module[MODULE_NAME_LEN+1];
 EXPORT_TRACEPOINT_SYMBOL(module_get);
 
 /* Init the unload section of the module. */
-static int module_unload_init(struct module *mod)
+static void module_unload_init(struct module *mod)
 {
-	mod->refptr = alloc_percpu(struct module_ref);
-	if (!mod->refptr)
-		return -ENOMEM;
+	int cpu;
 
 	INIT_LIST_HEAD(&mod->source_list);
 	INIT_LIST_HEAD(&mod->target_list);
+	for_each_possible_cpu(cpu) {
+		per_cpu_ptr(mod->refptr, cpu)->incs = 0;
+		per_cpu_ptr(mod->refptr, cpu)->decs = 0;
+	}
 
 	/* Hold reference count during initialization. */
 	__this_cpu_write(mod->refptr->incs, 1);
 	/* Backwards compatibility macros put refcount during init. */
 	mod->waiter = current;
-
-	return 0;
 }
 
 /* Does a already use b? */
@@ -625,8 +618,6 @@ static void module_unload_free(struct module *mod)
 		kfree(use);
 	}
 	mutex_unlock(&module_mutex);
-
-	free_percpu(mod->refptr);
 }
 
 #ifdef CONFIG_MODULE_FORCE_UNLOAD
@@ -796,6 +787,7 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 
 	/* Store the name of the last unloaded module for diagnostic purposes */
 	strlcpy(last_unloaded_module, mod->name, sizeof(last_unloaded_module));
+	ddebug_remove_module(mod->name);
 
 	free_module(mod);
 	return 0;
@@ -900,9 +892,8 @@ int ref_module(struct module *a, struct module *b)
 }
 EXPORT_SYMBOL_GPL(ref_module);
 
-static inline int module_unload_init(struct module *mod)
+static inline void module_unload_init(struct module *mod)
 {
-	return 0;
 }
 #endif /* CONFIG_MODULE_UNLOAD */
 
@@ -1061,9 +1052,10 @@ static inline int same_magic(const char *amagic, const char *bmagic,
 #endif /* CONFIG_MODVERSIONS */
 
 /* Resolve a symbol for this module.  I.e. if we find one, record usage. */
-static const struct kernel_symbol *resolve_symbol(struct module *mod,
-						  const struct load_info *info,
+static const struct kernel_symbol *resolve_symbol(Elf_Shdr *sechdrs,
+						  unsigned int versindex,
 						  const char *name,
+						  struct module *mod,
 						  char ownername[])
 {
 	struct module *owner;
@@ -1077,8 +1069,7 @@ static const struct kernel_symbol *resolve_symbol(struct module *mod,
 	if (!sym)
 		goto unlock;
 
-	if (!check_version(info->sechdrs, info->index.vers, name, mod, crc,
-			   owner)) {
+	if (!check_version(sechdrs, versindex, name, mod, crc, owner)) {
 		sym = ERR_PTR(-EINVAL);
 		goto getname;
 	}
@@ -1097,20 +1088,21 @@ unlock:
 	return sym;
 }
 
-static const struct kernel_symbol *
-resolve_symbol_wait(struct module *mod,
-		    const struct load_info *info,
-		    const char *name)
+static const struct kernel_symbol *resolve_symbol_wait(Elf_Shdr *sechdrs,
+						       unsigned int versindex,
+						       const char *name,
+						       struct module *mod)
 {
 	const struct kernel_symbol *ksym;
-	char owner[MODULE_NAME_LEN];
+	char ownername[MODULE_NAME_LEN];
 
 	if (wait_event_interruptible_timeout(module_wq,
-			!IS_ERR(ksym = resolve_symbol(mod, info, name, owner))
-			|| PTR_ERR(ksym) != -EBUSY,
+			!IS_ERR(ksym = resolve_symbol(sechdrs, versindex, name,
+						      mod, ownername)) ||
+			PTR_ERR(ksym) != -EBUSY,
 					     30 * HZ) <= 0) {
 		printk(KERN_WARNING "%s: gave up waiting for init of module %s.\n",
-		       mod->name, owner);
+		       mod->name, ownername);
 	}
 	return ksym;
 }
@@ -1119,9 +1111,8 @@ resolve_symbol_wait(struct module *mod,
  * /sys/module/foo/sections stuff
  * J. Corbet <corbet@lwn.net>
  */
-#ifdef CONFIG_SYSFS
+#if defined(CONFIG_KALLSYMS) && defined(CONFIG_SYSFS)
 
-#ifdef CONFIG_KALLSYMS
 static inline bool sect_empty(const Elf_Shdr *sect)
 {
 	return !(sect->sh_flags & SHF_ALLOC) || sect->sh_size == 0;
@@ -1158,7 +1149,8 @@ static void free_sect_attrs(struct module_sect_attrs *sect_attrs)
 	kfree(sect_attrs);
 }
 
-static void add_sect_attrs(struct module *mod, const struct load_info *info)
+static void add_sect_attrs(struct module *mod, unsigned int nsect,
+		char *secstrings, Elf_Shdr *sechdrs)
 {
 	unsigned int nloaded = 0, i, size[2];
 	struct module_sect_attrs *sect_attrs;
@@ -1166,8 +1158,8 @@ static void add_sect_attrs(struct module *mod, const struct load_info *info)
 	struct attribute **gattr;
 
 	/* Count loaded sections and allocate structures */
-	for (i = 0; i < info->hdr->e_shnum; i++)
-		if (!sect_empty(&info->sechdrs[i]))
+	for (i = 0; i < nsect; i++)
+		if (!sect_empty(&sechdrs[i]))
 			nloaded++;
 	size[0] = ALIGN(sizeof(*sect_attrs)
 			+ nloaded * sizeof(sect_attrs->attrs[0]),
@@ -1184,12 +1176,11 @@ static void add_sect_attrs(struct module *mod, const struct load_info *info)
 	sect_attrs->nsections = 0;
 	sattr = &sect_attrs->attrs[0];
 	gattr = &sect_attrs->grp.attrs[0];
-	for (i = 0; i < info->hdr->e_shnum; i++) {
-		Elf_Shdr *sec = &info->sechdrs[i];
-		if (sect_empty(sec))
+	for (i = 0; i < nsect; i++) {
+		if (sect_empty(&sechdrs[i]))
 			continue;
-		sattr->address = sec->sh_addr;
-		sattr->name = kstrdup(info->secstrings + sec->sh_name,
+		sattr->address = sechdrs[i].sh_addr;
+		sattr->name = kstrdup(secstrings + sechdrs[i].sh_name,
 					GFP_KERNEL);
 		if (sattr->name == NULL)
 			goto out;
@@ -1257,7 +1248,8 @@ static void free_notes_attrs(struct module_notes_attrs *notes_attrs,
 	kfree(notes_attrs);
 }
 
-static void add_notes_attrs(struct module *mod, const struct load_info *info)
+static void add_notes_attrs(struct module *mod, unsigned int nsect,
+			    char *secstrings, Elf_Shdr *sechdrs)
 {
 	unsigned int notes, loaded, i;
 	struct module_notes_attrs *notes_attrs;
@@ -1269,9 +1261,9 @@ static void add_notes_attrs(struct module *mod, const struct load_info *info)
 
 	/* Count notes sections and allocate structures.  */
 	notes = 0;
-	for (i = 0; i < info->hdr->e_shnum; i++)
-		if (!sect_empty(&info->sechdrs[i]) &&
-		    (info->sechdrs[i].sh_type == SHT_NOTE))
+	for (i = 0; i < nsect; i++)
+		if (!sect_empty(&sechdrs[i]) &&
+		    (sechdrs[i].sh_type == SHT_NOTE))
 			++notes;
 
 	if (notes == 0)
@@ -1285,15 +1277,15 @@ static void add_notes_attrs(struct module *mod, const struct load_info *info)
 
 	notes_attrs->notes = notes;
 	nattr = &notes_attrs->attrs[0];
-	for (loaded = i = 0; i < info->hdr->e_shnum; ++i) {
-		if (sect_empty(&info->sechdrs[i]))
+	for (loaded = i = 0; i < nsect; ++i) {
+		if (sect_empty(&sechdrs[i]))
 			continue;
-		if (info->sechdrs[i].sh_type == SHT_NOTE) {
+		if (sechdrs[i].sh_type == SHT_NOTE) {
 			sysfs_bin_attr_init(nattr);
 			nattr->attr.name = mod->sect_attrs->attrs[loaded].name;
 			nattr->attr.mode = S_IRUGO;
-			nattr->size = info->sechdrs[i].sh_size;
-			nattr->private = (void *) info->sechdrs[i].sh_addr;
+			nattr->size = sechdrs[i].sh_size;
+			nattr->private = (void *) sechdrs[i].sh_addr;
 			nattr->read = module_notes_read;
 			++nattr;
 		}
@@ -1324,8 +1316,8 @@ static void remove_notes_attrs(struct module *mod)
 
 #else
 
-static inline void add_sect_attrs(struct module *mod,
-				  const struct load_info *info)
+static inline void add_sect_attrs(struct module *mod, unsigned int nsect,
+		char *sectstrings, Elf_Shdr *sechdrs)
 {
 }
 
@@ -1333,16 +1325,17 @@ static inline void remove_sect_attrs(struct module *mod)
 {
 }
 
-static inline void add_notes_attrs(struct module *mod,
-				   const struct load_info *info)
+static inline void add_notes_attrs(struct module *mod, unsigned int nsect,
+				   char *sectstrings, Elf_Shdr *sechdrs)
 {
 }
 
 static inline void remove_notes_attrs(struct module *mod)
 {
 }
-#endif /* CONFIG_KALLSYMS */
+#endif
 
+#ifdef CONFIG_SYSFS
 static void add_usage_links(struct module *mod)
 {
 #ifdef CONFIG_MODULE_UNLOAD
@@ -1447,7 +1440,6 @@ out:
 }
 
 static int mod_sysfs_setup(struct module *mod,
-			   const struct load_info *info,
 			   struct kernel_param *kparam,
 			   unsigned int num_params)
 {
@@ -1472,8 +1464,6 @@ static int mod_sysfs_setup(struct module *mod,
 		goto out_unreg_param;
 
 	add_usage_links(mod);
-	add_sect_attrs(mod, info);
-	add_notes_attrs(mod, info);
 
 	kobject_uevent(&mod->mkobj.kobj, KOBJ_ADD);
 	return 0;
@@ -1490,26 +1480,33 @@ out:
 
 static void mod_sysfs_fini(struct module *mod)
 {
-	remove_notes_attrs(mod);
-	remove_sect_attrs(mod);
 	kobject_put(&mod->mkobj.kobj);
 }
 
-#else /* !CONFIG_SYSFS */
+#else /* CONFIG_SYSFS */
 
-static int mod_sysfs_setup(struct module *mod,
-			   const struct load_info *info,
+static inline int mod_sysfs_init(struct module *mod)
+{
+	return 0;
+}
+
+static inline int mod_sysfs_setup(struct module *mod,
 			   struct kernel_param *kparam,
 			   unsigned int num_params)
 {
 	return 0;
 }
 
-static void mod_sysfs_fini(struct module *mod)
+static inline int module_add_modinfo_attrs(struct module *mod)
+{
+	return 0;
+}
+
+static inline void module_remove_modinfo_attrs(struct module *mod)
 {
 }
 
-static void module_remove_modinfo_attrs(struct module *mod)
+static void mod_sysfs_fini(struct module *mod)
 {
 }
 
@@ -1519,7 +1516,7 @@ static void del_usage_links(struct module *mod)
 
 #endif /* CONFIG_SYSFS */
 
-static void mod_sysfs_teardown(struct module *mod)
+static void mod_kobject_remove(struct module *mod)
 {
 	del_usage_links(mod);
 	module_remove_modinfo_attrs(mod);
@@ -1537,7 +1534,6 @@ static int __unlink_module(void *_mod)
 {
 	struct module *mod = _mod;
 	list_del(&mod->list);
-	module_bug_cleanup(mod);
 	return 0;
 }
 
@@ -1550,10 +1546,9 @@ static void free_module(struct module *mod)
 	mutex_lock(&module_mutex);
 	stop_machine(__unlink_module, mod, NULL);
 	mutex_unlock(&module_mutex);
-	mod_sysfs_teardown(mod);
-
-	/* Remove dynamic debug info */
-	ddebug_remove_module(mod->name);
+	remove_notes_attrs(mod);
+	remove_sect_attrs(mod);
+	mod_kobject_remove(mod);
 
 	/* Arch-specific cleanup. */
 	module_arch_cleanup(mod);
@@ -1568,7 +1563,10 @@ static void free_module(struct module *mod)
 	module_free(mod, mod->module_init);
 	kfree(mod->args);
 	percpu_modfree(mod);
-
+#if defined(CONFIG_MODULE_UNLOAD)
+	if (mod->refptr)
+		free_percpu(mod->refptr);
+#endif
 	/* Free lock-classes: */
 	lockdep_free_key_range(mod->module_core, mod->core_size);
 
@@ -1634,23 +1632,25 @@ static int verify_export_symbols(struct module *mod)
 }
 
 /* Change all symbols so that st_value encodes the pointer directly. */
-static int simplify_symbols(struct module *mod, const struct load_info *info)
+static int simplify_symbols(Elf_Shdr *sechdrs,
+			    unsigned int symindex,
+			    const char *strtab,
+			    unsigned int versindex,
+			    unsigned int pcpuindex,
+			    struct module *mod)
 {
-	Elf_Shdr *symsec = &info->sechdrs[info->index.sym];
-	Elf_Sym *sym = (void *)symsec->sh_addr;
+	Elf_Sym *sym = (void *)sechdrs[symindex].sh_addr;
 	unsigned long secbase;
-	unsigned int i;
+	unsigned int i, n = sechdrs[symindex].sh_size / sizeof(Elf_Sym);
 	int ret = 0;
 	const struct kernel_symbol *ksym;
 
-	for (i = 1; i < symsec->sh_size / sizeof(Elf_Sym); i++) {
-		const char *name = info->strtab + sym[i].st_name;
-
+	for (i = 1; i < n; i++) {
 		switch (sym[i].st_shndx) {
 		case SHN_COMMON:
 			/* We compiled with -fno-common.  These are not
 			   supposed to happen.  */
-			DEBUGP("Common symbol: %s\n", name);
+			DEBUGP("Common symbol: %s\n", strtab + sym[i].st_name);
 			printk("%s: please compile with -fno-common\n",
 			       mod->name);
 			ret = -ENOEXEC;
@@ -1663,7 +1663,9 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 			break;
 
 		case SHN_UNDEF:
-			ksym = resolve_symbol_wait(mod, info, name);
+			ksym = resolve_symbol_wait(sechdrs, versindex,
+						   strtab + sym[i].st_name,
+						   mod);
 			/* Ok if resolved.  */
 			if (ksym && !IS_ERR(ksym)) {
 				sym[i].st_value = ksym->value;
@@ -1675,51 +1677,23 @@ static int simplify_symbols(struct module *mod, const struct load_info *info)
 				break;
 
 			printk(KERN_WARNING "%s: Unknown symbol %s (err %li)\n",
-			       mod->name, name, PTR_ERR(ksym));
+			       mod->name, strtab + sym[i].st_name,
+			       PTR_ERR(ksym));
 			ret = PTR_ERR(ksym) ?: -ENOENT;
 			break;
 
 		default:
 			/* Divert to percpu allocation if a percpu var. */
-			if (sym[i].st_shndx == info->index.pcpu)
+			if (sym[i].st_shndx == pcpuindex)
 				secbase = (unsigned long)mod_percpu(mod);
 			else
-				secbase = info->sechdrs[sym[i].st_shndx].sh_addr;
+				secbase = sechdrs[sym[i].st_shndx].sh_addr;
 			sym[i].st_value += secbase;
 			break;
 		}
 	}
 
 	return ret;
-}
-
-static int apply_relocations(struct module *mod, const struct load_info *info)
-{
-	unsigned int i;
-	int err = 0;
-
-	/* Now do relocations. */
-	for (i = 1; i < info->hdr->e_shnum; i++) {
-		unsigned int infosec = info->sechdrs[i].sh_info;
-
-		/* Not a valid relocation section? */
-		if (infosec >= info->hdr->e_shnum)
-			continue;
-
-		/* Don't bother with non-allocated sections */
-		if (!(info->sechdrs[infosec].sh_flags & SHF_ALLOC))
-			continue;
-
-		if (info->sechdrs[i].sh_type == SHT_REL)
-			err = apply_relocate(info->sechdrs, info->strtab,
-					     info->index.sym, i, mod);
-		else if (info->sechdrs[i].sh_type == SHT_RELA)
-			err = apply_relocate_add(info->sechdrs, info->strtab,
-						 info->index.sym, i, mod);
-		if (err < 0)
-			break;
-	}
-	return err;
 }
 
 /* Additional bytes needed by arch in front of individual sections */
@@ -1746,7 +1720,10 @@ static long get_offset(struct module *mod, unsigned int *size,
    might -- code, read-only data, read-write data, small data.  Tally
    sizes, and place the offsets into sh_entsize fields: high bit means it
    belongs in init. */
-static void layout_sections(struct module *mod, struct load_info *info)
+static void layout_sections(struct module *mod,
+			    const Elf_Ehdr *hdr,
+			    Elf_Shdr *sechdrs,
+			    const char *secstrings)
 {
 	static unsigned long const masks[][2] = {
 		/* NOTE: all executable code must be the first section
@@ -1759,22 +1736,21 @@ static void layout_sections(struct module *mod, struct load_info *info)
 	};
 	unsigned int m, i;
 
-	for (i = 0; i < info->hdr->e_shnum; i++)
-		info->sechdrs[i].sh_entsize = ~0UL;
+	for (i = 0; i < hdr->e_shnum; i++)
+		sechdrs[i].sh_entsize = ~0UL;
 
 	DEBUGP("Core section allocation order:\n");
 	for (m = 0; m < ARRAY_SIZE(masks); ++m) {
-		for (i = 0; i < info->hdr->e_shnum; ++i) {
-			Elf_Shdr *s = &info->sechdrs[i];
-			const char *sname = info->secstrings + s->sh_name;
+		for (i = 0; i < hdr->e_shnum; ++i) {
+			Elf_Shdr *s = &sechdrs[i];
 
 			if ((s->sh_flags & masks[m][0]) != masks[m][0]
 			    || (s->sh_flags & masks[m][1])
 			    || s->sh_entsize != ~0UL
-			    || strstarts(sname, ".init"))
+			    || strstarts(secstrings + s->sh_name, ".init"))
 				continue;
 			s->sh_entsize = get_offset(mod, &mod->core_size, s, i);
-			DEBUGP("\t%s\n", name);
+			DEBUGP("\t%s\n", secstrings + s->sh_name);
 		}
 		if (m == 0)
 			mod->core_text_size = mod->core_size;
@@ -1782,18 +1758,17 @@ static void layout_sections(struct module *mod, struct load_info *info)
 
 	DEBUGP("Init section allocation order:\n");
 	for (m = 0; m < ARRAY_SIZE(masks); ++m) {
-		for (i = 0; i < info->hdr->e_shnum; ++i) {
-			Elf_Shdr *s = &info->sechdrs[i];
-			const char *sname = info->secstrings + s->sh_name;
+		for (i = 0; i < hdr->e_shnum; ++i) {
+			Elf_Shdr *s = &sechdrs[i];
 
 			if ((s->sh_flags & masks[m][0]) != masks[m][0]
 			    || (s->sh_flags & masks[m][1])
 			    || s->sh_entsize != ~0UL
-			    || !strstarts(sname, ".init"))
+			    || !strstarts(secstrings + s->sh_name, ".init"))
 				continue;
 			s->sh_entsize = (get_offset(mod, &mod->init_size, s, i)
 					 | INIT_OFFSET_MASK);
-			DEBUGP("\t%s\n", sname);
+			DEBUGP("\t%s\n", secstrings + s->sh_name);
 		}
 		if (m == 0)
 			mod->init_text_size = mod->init_size;
@@ -1832,28 +1807,33 @@ static char *next_string(char *string, unsigned long *secsize)
 	return string;
 }
 
-static char *get_modinfo(struct load_info *info, const char *tag)
+static char *get_modinfo(Elf_Shdr *sechdrs,
+			 unsigned int info,
+			 const char *tag)
 {
 	char *p;
 	unsigned int taglen = strlen(tag);
-	Elf_Shdr *infosec = &info->sechdrs[info->index.info];
-	unsigned long size = infosec->sh_size;
+	unsigned long size = sechdrs[info].sh_size;
 
-	for (p = (char *)infosec->sh_addr; p; p = next_string(p, &size)) {
+	for (p = (char *)sechdrs[info].sh_addr; p; p = next_string(p, &size)) {
 		if (strncmp(p, tag, taglen) == 0 && p[taglen] == '=')
 			return p + taglen + 1;
 	}
 	return NULL;
 }
 
-static void setup_modinfo(struct module *mod, struct load_info *info)
+static void setup_modinfo(struct module *mod, Elf_Shdr *sechdrs,
+			  unsigned int infoindex)
 {
 	struct module_attribute *attr;
 	int i;
 
 	for (i = 0; (attr = modinfo_attrs[i]); i++) {
 		if (attr->setup)
-			attr->setup(mod, get_modinfo(info, attr->attr.name));
+			attr->setup(mod,
+				    get_modinfo(sechdrs,
+						infoindex,
+						attr->attr.name));
 	}
 }
 
@@ -1894,10 +1874,11 @@ static int is_exported(const char *name, unsigned long value,
 }
 
 /* As per nm */
-static char elf_type(const Elf_Sym *sym, const struct load_info *info)
+static char elf_type(const Elf_Sym *sym,
+		     Elf_Shdr *sechdrs,
+		     const char *secstrings,
+		     struct module *mod)
 {
-	const Elf_Shdr *sechdrs = info->sechdrs;
-
 	if (ELF_ST_BIND(sym->st_info) == STB_WEAK) {
 		if (ELF_ST_TYPE(sym->st_info) == STT_OBJECT)
 			return 'v';
@@ -1927,10 +1908,8 @@ static char elf_type(const Elf_Sym *sym, const struct load_info *info)
 		else
 			return 'b';
 	}
-	if (strstarts(info->secstrings + sechdrs[sym->st_shndx].sh_name,
-		      ".debug")) {
+	if (strstarts(secstrings + sechdrs[sym->st_shndx].sh_name, ".debug"))
 		return 'n';
-	}
 	return '?';
 }
 
@@ -1955,107 +1934,132 @@ static bool is_core_symbol(const Elf_Sym *src, const Elf_Shdr *sechdrs,
 	return true;
 }
 
-static void layout_symtab(struct module *mod, struct load_info *info)
+static unsigned long layout_symtab(struct module *mod,
+				   Elf_Shdr *sechdrs,
+				   unsigned int symindex,
+				   unsigned int strindex,
+				   const Elf_Ehdr *hdr,
+				   const char *secstrings,
+				   unsigned long *pstroffs,
+				   unsigned long *strmap)
 {
-	Elf_Shdr *symsect = info->sechdrs + info->index.sym;
-	Elf_Shdr *strsect = info->sechdrs + info->index.str;
+	unsigned long symoffs;
+	Elf_Shdr *symsect = sechdrs + symindex;
+	Elf_Shdr *strsect = sechdrs + strindex;
 	const Elf_Sym *src;
+	const char *strtab;
 	unsigned int i, nsrc, ndst;
 
 	/* Put symbol section at end of init part of module. */
 	symsect->sh_flags |= SHF_ALLOC;
 	symsect->sh_entsize = get_offset(mod, &mod->init_size, symsect,
-					 info->index.sym) | INIT_OFFSET_MASK;
-	DEBUGP("\t%s\n", info->secstrings + symsect->sh_name);
+					 symindex) | INIT_OFFSET_MASK;
+	DEBUGP("\t%s\n", secstrings + symsect->sh_name);
 
-	src = (void *)info->hdr + symsect->sh_offset;
+	src = (void *)hdr + symsect->sh_offset;
 	nsrc = symsect->sh_size / sizeof(*src);
+	strtab = (void *)hdr + strsect->sh_offset;
 	for (ndst = i = 1; i < nsrc; ++i, ++src)
-		if (is_core_symbol(src, info->sechdrs, info->hdr->e_shnum)) {
+		if (is_core_symbol(src, sechdrs, hdr->e_shnum)) {
 			unsigned int j = src->st_name;
 
-			while (!__test_and_set_bit(j, info->strmap)
-			       && info->strtab[j])
+			while(!__test_and_set_bit(j, strmap) && strtab[j])
 				++j;
 			++ndst;
 		}
 
 	/* Append room for core symbols at end of core part. */
-	info->symoffs = ALIGN(mod->core_size, symsect->sh_addralign ?: 1);
-	mod->core_size = info->symoffs + ndst * sizeof(Elf_Sym);
+	symoffs = ALIGN(mod->core_size, symsect->sh_addralign ?: 1);
+	mod->core_size = symoffs + ndst * sizeof(Elf_Sym);
 
 	/* Put string table section at end of init part of module. */
 	strsect->sh_flags |= SHF_ALLOC;
 	strsect->sh_entsize = get_offset(mod, &mod->init_size, strsect,
-					 info->index.str) | INIT_OFFSET_MASK;
-	DEBUGP("\t%s\n", info->secstrings + strsect->sh_name);
+					 strindex) | INIT_OFFSET_MASK;
+	DEBUGP("\t%s\n", secstrings + strsect->sh_name);
 
 	/* Append room for core symbols' strings at end of core part. */
-	info->stroffs = mod->core_size;
-	__set_bit(0, info->strmap);
-	mod->core_size += bitmap_weight(info->strmap, strsect->sh_size);
+	*pstroffs = mod->core_size;
+	__set_bit(0, strmap);
+	mod->core_size += bitmap_weight(strmap, strsect->sh_size);
+
+	return symoffs;
 }
 
-static void add_kallsyms(struct module *mod, const struct load_info *info)
+static void add_kallsyms(struct module *mod,
+			 Elf_Shdr *sechdrs,
+			 unsigned int shnum,
+			 unsigned int symindex,
+			 unsigned int strindex,
+			 unsigned long symoffs,
+			 unsigned long stroffs,
+			 const char *secstrings,
+			 unsigned long *strmap)
 {
 	unsigned int i, ndst;
 	const Elf_Sym *src;
 	Elf_Sym *dst;
 	char *s;
-	Elf_Shdr *symsec = &info->sechdrs[info->index.sym];
 
-	mod->symtab = (void *)symsec->sh_addr;
-	mod->num_symtab = symsec->sh_size / sizeof(Elf_Sym);
-	/* Make sure we get permanent strtab: don't use info->strtab. */
-	mod->strtab = (void *)info->sechdrs[info->index.str].sh_addr;
+	mod->symtab = (void *)sechdrs[symindex].sh_addr;
+	mod->num_symtab = sechdrs[symindex].sh_size / sizeof(Elf_Sym);
+	mod->strtab = (void *)sechdrs[strindex].sh_addr;
 
 	/* Set types up while we still have access to sections. */
 	for (i = 0; i < mod->num_symtab; i++)
-		mod->symtab[i].st_info = elf_type(&mod->symtab[i], info);
+		mod->symtab[i].st_info
+			= elf_type(&mod->symtab[i], sechdrs, secstrings, mod);
 
-	mod->core_symtab = dst = mod->module_core + info->symoffs;
+	mod->core_symtab = dst = mod->module_core + symoffs;
 	src = mod->symtab;
 	*dst = *src;
 	for (ndst = i = 1; i < mod->num_symtab; ++i, ++src) {
-		if (!is_core_symbol(src, info->sechdrs, info->hdr->e_shnum))
+		if (!is_core_symbol(src, sechdrs, shnum))
 			continue;
 		dst[ndst] = *src;
-		dst[ndst].st_name = bitmap_weight(info->strmap,
-						  dst[ndst].st_name);
+		dst[ndst].st_name = bitmap_weight(strmap, dst[ndst].st_name);
 		++ndst;
 	}
 	mod->core_num_syms = ndst;
 
-	mod->core_strtab = s = mod->module_core + info->stroffs;
-	for (*s = 0, i = 1; i < info->sechdrs[info->index.str].sh_size; ++i)
-		if (test_bit(i, info->strmap))
+	mod->core_strtab = s = mod->module_core + stroffs;
+	for (*s = 0, i = 1; i < sechdrs[strindex].sh_size; ++i)
+		if (test_bit(i, strmap))
 			*++s = mod->strtab[i];
 }
 #else
-static inline void layout_symtab(struct module *mod, struct load_info *info)
+static inline unsigned long layout_symtab(struct module *mod,
+					  Elf_Shdr *sechdrs,
+					  unsigned int symindex,
+					  unsigned int strindex,
+					  const Elf_Ehdr *hdr,
+					  const char *secstrings,
+					  unsigned long *pstroffs,
+					  unsigned long *strmap)
 {
+	return 0;
 }
 
-static void add_kallsyms(struct module *mod, struct load_info *info)
+static inline void add_kallsyms(struct module *mod,
+				Elf_Shdr *sechdrs,
+				unsigned int shnum,
+				unsigned int symindex,
+				unsigned int strindex,
+				unsigned long symoffs,
+				unsigned long stroffs,
+				const char *secstrings,
+				const unsigned long *strmap)
 {
 }
 #endif /* CONFIG_KALLSYMS */
 
 static void dynamic_debug_setup(struct _ddebug *debug, unsigned int num)
 {
-	if (!debug)
-		return;
 #ifdef CONFIG_DYNAMIC_DEBUG
 	if (ddebug_add_module(debug, num, debug->modname))
 		printk(KERN_ERR "dynamic debug error adding module: %s\n",
 					debug->modname);
 #endif
-}
-
-static void dynamic_debug_remove(struct _ddebug *debug)
-{
-	if (debug)
-		ddebug_remove_module(debug->modname);
 }
 
 static void *module_alloc_update_bounds(unsigned long size)
@@ -2075,47 +2079,63 @@ static void *module_alloc_update_bounds(unsigned long size)
 }
 
 #ifdef CONFIG_DEBUG_KMEMLEAK
-static void kmemleak_load_module(const struct module *mod,
-				 const struct load_info *info)
+static void kmemleak_load_module(struct module *mod, Elf_Ehdr *hdr,
+				 Elf_Shdr *sechdrs, char *secstrings)
 {
 	unsigned int i;
 
 	/* only scan the sections containing data */
 	kmemleak_scan_area(mod, sizeof(struct module), GFP_KERNEL);
 
-	for (i = 1; i < info->hdr->e_shnum; i++) {
-		const char *name = info->secstrings + info->sechdrs[i].sh_name;
-		if (!(info->sechdrs[i].sh_flags & SHF_ALLOC))
+	for (i = 1; i < hdr->e_shnum; i++) {
+		if (!(sechdrs[i].sh_flags & SHF_ALLOC))
 			continue;
-		if (!strstarts(name, ".data") && !strstarts(name, ".bss"))
+		if (strncmp(secstrings + sechdrs[i].sh_name, ".data", 5) != 0
+		    && strncmp(secstrings + sechdrs[i].sh_name, ".bss", 4) != 0)
 			continue;
 
-		kmemleak_scan_area((void *)info->sechdrs[i].sh_addr,
-				   info->sechdrs[i].sh_size, GFP_KERNEL);
+		kmemleak_scan_area((void *)sechdrs[i].sh_addr,
+				   sechdrs[i].sh_size, GFP_KERNEL);
 	}
 }
 #else
-static inline void kmemleak_load_module(const struct module *mod,
-					const struct load_info *info)
+static inline void kmemleak_load_module(struct module *mod, Elf_Ehdr *hdr,
+					Elf_Shdr *sechdrs, char *secstrings)
 {
 }
 #endif
 
-/* Sets info->hdr and info->len. */
-static int copy_and_check(struct load_info *info,
-			  const void __user *umod, unsigned long len,
-			  const char __user *uargs)
+/* Allocate and load the module: note that size of section 0 is always
+   zero, and we rely on this for optional sections. */
+static noinline struct module *load_module(void __user *umod,
+				  unsigned long len,
+				  const char __user *uargs)
 {
-	int err;
 	Elf_Ehdr *hdr;
+	Elf_Shdr *sechdrs;
+	char *secstrings, *args, *modmagic, *strtab = NULL;
+	char *staging;
+	unsigned int i;
+	unsigned int symindex = 0;
+	unsigned int strindex = 0;
+	unsigned int modindex, versindex, infoindex, pcpuindex;
+	struct module *mod;
+	long err = 0;
+	void *ptr = NULL; /* Stops spurious gcc warning */
+	unsigned long symoffs, stroffs, *strmap;
+	void __percpu *percpu;
 
+	mm_segment_t old_fs;
+
+	DEBUGP("load_module: umod=%p, len=%lu, uargs=%p\n",
+	       umod, len, uargs);
 	if (len < sizeof(*hdr))
-		return -ENOEXEC;
+		return ERR_PTR(-ENOEXEC);
 
 	/* Suck in entire file: we'll want most of it. */
 	/* vmalloc barfs on "unusual" numbers.  Check here */
 	if (len > 64 * 1024 * 1024 || (hdr = vmalloc(len)) == NULL)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	if (copy_from_user(hdr, umod, len) != 0) {
 		err = -EFAULT;
@@ -2123,225 +2143,135 @@ static int copy_and_check(struct load_info *info,
 	}
 
 	/* Sanity checks against insmoding binaries or wrong arch,
-	   weird elf version */
+           weird elf version */
 	if (memcmp(hdr->e_ident, ELFMAG, SELFMAG) != 0
 	    || hdr->e_type != ET_REL
 	    || !elf_check_arch(hdr)
-	    || hdr->e_shentsize != sizeof(Elf_Shdr)) {
+	    || hdr->e_shentsize != sizeof(*sechdrs)) {
 		err = -ENOEXEC;
 		goto free_hdr;
 	}
 
-	if (len < hdr->e_shoff + hdr->e_shnum * sizeof(Elf_Shdr)) {
-		err = -ENOEXEC;
-		goto free_hdr;
-	}
+	if (len < hdr->e_shoff + hdr->e_shnum * sizeof(Elf_Shdr))
+		goto truncated;
 
-	info->hdr = hdr;
-	info->len = len;
-	return 0;
+	/* Convenience variables */
+	sechdrs = (void *)hdr + hdr->e_shoff;
+	secstrings = (void *)hdr + sechdrs[hdr->e_shstrndx].sh_offset;
+	sechdrs[0].sh_addr = 0;
 
-free_hdr:
-	vfree(hdr);
-	return err;
-}
-
-static void free_copy(struct load_info *info)
-{
-	vfree(info->hdr);
-}
-
-static int rewrite_section_headers(struct load_info *info)
-{
-	unsigned int i;
-
-	/* This should always be true, but let's be sure. */
-	info->sechdrs[0].sh_addr = 0;
-
-	for (i = 1; i < info->hdr->e_shnum; i++) {
-		Elf_Shdr *shdr = &info->sechdrs[i];
-		if (shdr->sh_type != SHT_NOBITS
-		    && info->len < shdr->sh_offset + shdr->sh_size) {
-			printk(KERN_ERR "Module len %lu truncated\n",
-			       info->len);
-			return -ENOEXEC;
-		}
+	for (i = 1; i < hdr->e_shnum; i++) {
+		if (sechdrs[i].sh_type != SHT_NOBITS
+		    && len < sechdrs[i].sh_offset + sechdrs[i].sh_size)
+			goto truncated;
 
 		/* Mark all sections sh_addr with their address in the
 		   temporary image. */
-		shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
+		sechdrs[i].sh_addr = (size_t)hdr + sechdrs[i].sh_offset;
 
+		/* Internal symbols and strings. */
+		if (sechdrs[i].sh_type == SHT_SYMTAB) {
+			symindex = i;
+			strindex = sechdrs[i].sh_link;
+			strtab = (char *)hdr + sechdrs[strindex].sh_offset;
+		}
 #ifndef CONFIG_MODULE_UNLOAD
 		/* Don't load .exit sections */
-		if (strstarts(info->secstrings+shdr->sh_name, ".exit"))
-			shdr->sh_flags &= ~(unsigned long)SHF_ALLOC;
+		if (strstarts(secstrings+sechdrs[i].sh_name, ".exit"))
+			sechdrs[i].sh_flags &= ~(unsigned long)SHF_ALLOC;
 #endif
 	}
 
-	/* Track but don't keep modinfo and version sections. */
-	info->index.vers = find_sec(info, "__versions");
-	info->index.info = find_sec(info, ".modinfo");
-	info->sechdrs[info->index.info].sh_flags &= ~(unsigned long)SHF_ALLOC;
-	info->sechdrs[info->index.vers].sh_flags &= ~(unsigned long)SHF_ALLOC;
-	return 0;
-}
-
-/*
- * Set up our basic convenience variables (pointers to section headers,
- * search for module section index etc), and do some basic section
- * verification.
- *
- * Return the temporary module pointer (we'll replace it with the final
- * one when we move the module sections around).
- */
-static struct module *setup_load_info(struct load_info *info)
-{
-	unsigned int i;
-	int err;
-	struct module *mod;
-
-	/* Set up the convenience variables */
-	info->sechdrs = (void *)info->hdr + info->hdr->e_shoff;
-	info->secstrings = (void *)info->hdr
-		+ info->sechdrs[info->hdr->e_shstrndx].sh_offset;
-
-	err = rewrite_section_headers(info);
-	if (err)
-		return ERR_PTR(err);
-
-	/* Find internal symbols and strings. */
-	for (i = 1; i < info->hdr->e_shnum; i++) {
-		if (info->sechdrs[i].sh_type == SHT_SYMTAB) {
-			info->index.sym = i;
-			info->index.str = info->sechdrs[i].sh_link;
-			info->strtab = (char *)info->hdr
-				+ info->sechdrs[info->index.str].sh_offset;
-			break;
-		}
-	}
-
-	info->index.mod = find_sec(info, ".gnu.linkonce.this_module");
-	if (!info->index.mod) {
+	modindex = find_sec(hdr, sechdrs, secstrings,
+			    ".gnu.linkonce.this_module");
+	if (!modindex) {
 		printk(KERN_WARNING "No module found in object\n");
-		return ERR_PTR(-ENOEXEC);
+		err = -ENOEXEC;
+		goto free_hdr;
 	}
 	/* This is temporary: point mod into copy of data. */
-	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
+	mod = (void *)sechdrs[modindex].sh_addr;
 
-	if (info->index.sym == 0) {
+	if (symindex == 0) {
 		printk(KERN_WARNING "%s: module has no symbols (stripped?)\n",
 		       mod->name);
-		return ERR_PTR(-ENOEXEC);
+		err = -ENOEXEC;
+		goto free_hdr;
 	}
 
-	info->index.pcpu = find_pcpusec(info);
+	versindex = find_sec(hdr, sechdrs, secstrings, "__versions");
+	infoindex = find_sec(hdr, sechdrs, secstrings, ".modinfo");
+	pcpuindex = find_pcpusec(hdr, sechdrs, secstrings);
+
+	/* Don't keep modinfo and version sections. */
+	sechdrs[infoindex].sh_flags &= ~(unsigned long)SHF_ALLOC;
+	sechdrs[versindex].sh_flags &= ~(unsigned long)SHF_ALLOC;
 
 	/* Check module struct version now, before we try to use module. */
-	if (!check_modstruct_version(info->sechdrs, info->index.vers, mod))
-		return ERR_PTR(-ENOEXEC);
+	if (!check_modstruct_version(sechdrs, versindex, mod)) {
+		err = -ENOEXEC;
+		goto free_hdr;
+	}
 
-	return mod;
-}
-
-static int check_modinfo(struct module *mod, struct load_info *info)
-{
-	const char *modmagic = get_modinfo(info, "vermagic");
-	int err;
-
+	modmagic = get_modinfo(sechdrs, infoindex, "vermagic");
 	/* This is allowed: modprobe --force will invalidate it. */
 	if (!modmagic) {
 		err = try_to_force_load(mod, "bad vermagic");
 		if (err)
-			return err;
-	} else if (!same_magic(modmagic, vermagic, info->index.vers)) {
+			goto free_hdr;
+	} else if (!same_magic(modmagic, vermagic, versindex)) {
 		printk(KERN_ERR "%s: version magic '%s' should be '%s'\n",
 		       mod->name, modmagic, vermagic);
-		return -ENOEXEC;
+		err = -ENOEXEC;
+		goto free_hdr;
 	}
 
-	if (get_modinfo(info, "staging")) {
+	staging = get_modinfo(sechdrs, infoindex, "staging");
+	if (staging) {
 		add_taint_module(mod, TAINT_CRAP);
 		printk(KERN_WARNING "%s: module is from the staging directory,"
 		       " the quality is unknown, you have been warned.\n",
 		       mod->name);
 	}
 
-	/* Set up license info based on the info section */
-	set_license(mod, get_modinfo(info, "license"));
+	/* Now copy in args */
+	args = strndup_user(uargs, ~0UL >> 1);
+	if (IS_ERR(args)) {
+		err = PTR_ERR(args);
+		goto free_hdr;
+	}
 
-	return 0;
-}
+	strmap = kzalloc(BITS_TO_LONGS(sechdrs[strindex].sh_size)
+			 * sizeof(long), GFP_KERNEL);
+	if (!strmap) {
+		err = -ENOMEM;
+		goto free_mod;
+	}
 
-static void find_module_sections(struct module *mod, struct load_info *info)
-{
-	mod->kp = section_objs(info, "__param",
-			       sizeof(*mod->kp), &mod->num_kp);
-	mod->syms = section_objs(info, "__ksymtab",
-				 sizeof(*mod->syms), &mod->num_syms);
-	mod->crcs = section_addr(info, "__kcrctab");
-	mod->gpl_syms = section_objs(info, "__ksymtab_gpl",
-				     sizeof(*mod->gpl_syms),
-				     &mod->num_gpl_syms);
-	mod->gpl_crcs = section_addr(info, "__kcrctab_gpl");
-	mod->gpl_future_syms = section_objs(info,
-					    "__ksymtab_gpl_future",
-					    sizeof(*mod->gpl_future_syms),
-					    &mod->num_gpl_future_syms);
-	mod->gpl_future_crcs = section_addr(info, "__kcrctab_gpl_future");
+	mod->state = MODULE_STATE_COMING;
 
-#ifdef CONFIG_UNUSED_SYMBOLS
-	mod->unused_syms = section_objs(info, "__ksymtab_unused",
-					sizeof(*mod->unused_syms),
-					&mod->num_unused_syms);
-	mod->unused_crcs = section_addr(info, "__kcrctab_unused");
-	mod->unused_gpl_syms = section_objs(info, "__ksymtab_unused_gpl",
-					    sizeof(*mod->unused_gpl_syms),
-					    &mod->num_unused_gpl_syms);
-	mod->unused_gpl_crcs = section_addr(info, "__kcrctab_unused_gpl");
-#endif
-#ifdef CONFIG_CONSTRUCTORS
-	mod->ctors = section_objs(info, ".ctors",
-				  sizeof(*mod->ctors), &mod->num_ctors);
-#endif
+	/* Allow arches to frob section contents and sizes.  */
+	err = module_frob_arch_sections(hdr, sechdrs, secstrings, mod);
+	if (err < 0)
+		goto free_mod;
 
-#ifdef CONFIG_TRACEPOINTS
-	mod->tracepoints = section_objs(info, "__tracepoints",
-					sizeof(*mod->tracepoints),
-					&mod->num_tracepoints);
-#endif
-#ifdef CONFIG_EVENT_TRACING
-	mod->trace_events = section_objs(info, "_ftrace_events",
-					 sizeof(*mod->trace_events),
-					 &mod->num_trace_events);
-	/*
-	 * This section contains pointers to allocated objects in the trace
-	 * code and not scanning it leads to false positives.
-	 */
-	kmemleak_scan_area(mod->trace_events, sizeof(*mod->trace_events) *
-			   mod->num_trace_events, GFP_KERNEL);
-#endif
-#ifdef CONFIG_FTRACE_MCOUNT_RECORD
-	/* sechdrs[0].sh_size is always zero */
-	mod->ftrace_callsites = section_objs(info, "__mcount_loc",
-					     sizeof(*mod->ftrace_callsites),
-					     &mod->num_ftrace_callsites);
-#endif
+	if (pcpuindex) {
+		/* We have a special allocation for this section. */
+		err = percpu_modalloc(mod, sechdrs[pcpuindex].sh_size,
+				      sechdrs[pcpuindex].sh_addralign);
+		if (err)
+			goto free_mod;
+		sechdrs[pcpuindex].sh_flags &= ~(unsigned long)SHF_ALLOC;
+	}
+	/* Keep this around for failure path. */
+	percpu = mod_percpu(mod);
 
-	mod->extable = section_objs(info, "__ex_table",
-				    sizeof(*mod->extable), &mod->num_exentries);
-
-	if (section_addr(info, "__obsparm"))
-		printk(KERN_WARNING "%s: Ignoring obsolete parameters\n",
-		       mod->name);
-
-	info->debug = section_objs(info, "__verbose",
-				   sizeof(*info->debug), &info->num_debug);
-}
-
-static int move_module(struct module *mod, struct load_info *info)
-{
-	int i;
-	void *ptr;
+	/* Determine total sizes, and put offsets in sh_entsize.  For now
+	   this is done generically; there doesn't appear to be any
+	   special cases for the architectures. */
+	layout_sections(mod, hdr, sechdrs, secstrings);
+	symoffs = layout_symtab(mod, sechdrs, symindex, strindex, hdr,
+				secstrings, &stroffs, strmap);
 
 	/* Do the allocs. */
 	ptr = module_alloc_update_bounds(mod->core_size);
@@ -2351,9 +2281,10 @@ static int move_module(struct module *mod, struct load_info *info)
 	 * leak.
 	 */
 	kmemleak_not_leak(ptr);
-	if (!ptr)
-		return -ENOMEM;
-
+	if (!ptr) {
+		err = -ENOMEM;
+		goto free_percpu;
+	}
 	memset(ptr, 0, mod->core_size);
 	mod->module_core = ptr;
 
@@ -2366,40 +2297,50 @@ static int move_module(struct module *mod, struct load_info *info)
 	 */
 	kmemleak_ignore(ptr);
 	if (!ptr && mod->init_size) {
-		module_free(mod, mod->module_core);
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto free_core;
 	}
 	memset(ptr, 0, mod->init_size);
 	mod->module_init = ptr;
 
 	/* Transfer each section which specifies SHF_ALLOC */
 	DEBUGP("final section addresses:\n");
-	for (i = 0; i < info->hdr->e_shnum; i++) {
+	for (i = 0; i < hdr->e_shnum; i++) {
 		void *dest;
-		Elf_Shdr *shdr = &info->sechdrs[i];
 
-		if (!(shdr->sh_flags & SHF_ALLOC))
+		if (!(sechdrs[i].sh_flags & SHF_ALLOC))
 			continue;
 
-		if (shdr->sh_entsize & INIT_OFFSET_MASK)
+		if (sechdrs[i].sh_entsize & INIT_OFFSET_MASK)
 			dest = mod->module_init
-				+ (shdr->sh_entsize & ~INIT_OFFSET_MASK);
+				+ (sechdrs[i].sh_entsize & ~INIT_OFFSET_MASK);
 		else
-			dest = mod->module_core + shdr->sh_entsize;
+			dest = mod->module_core + sechdrs[i].sh_entsize;
 
-		if (shdr->sh_type != SHT_NOBITS)
-			memcpy(dest, (void *)shdr->sh_addr, shdr->sh_size);
+		if (sechdrs[i].sh_type != SHT_NOBITS)
+			memcpy(dest, (void *)sechdrs[i].sh_addr,
+			       sechdrs[i].sh_size);
 		/* Update sh_addr to point to copy in image. */
-		shdr->sh_addr = (unsigned long)dest;
-		DEBUGP("\t0x%lx %s\n",
-		       shdr->sh_addr, info->secstrings + shdr->sh_name);
+		sechdrs[i].sh_addr = (unsigned long)dest;
+		DEBUGP("\t0x%lx %s\n", sechdrs[i].sh_addr, secstrings + sechdrs[i].sh_name);
 	}
+	/* Module has been moved. */
+	mod = (void *)sechdrs[modindex].sh_addr;
+	kmemleak_load_module(mod, hdr, sechdrs, secstrings);
 
-	return 0;
-}
+#if defined(CONFIG_MODULE_UNLOAD)
+	mod->refptr = alloc_percpu(struct module_ref);
+	if (!mod->refptr) {
+		err = -ENOMEM;
+		goto free_init;
+	}
+#endif
+	/* Now we've moved module, initialize linked lists, etc. */
+	module_unload_init(mod);
 
-static int check_module_license_and_versions(struct module *mod)
-{
+	/* Set up license info based on the info section */
+	set_license(mod, get_modinfo(sechdrs, infoindex, "license"));
+
 	/*
 	 * ndiswrapper is under GPL by itself, but loads proprietary modules.
 	 * Don't use add_taint_module(), as it would prevent ndiswrapper from
@@ -2412,6 +2353,77 @@ static int check_module_license_and_versions(struct module *mod)
 	if (strcmp(mod->name, "driverloader") == 0)
 		add_taint_module(mod, TAINT_PROPRIETARY_MODULE);
 
+	/* Set up MODINFO_ATTR fields */
+	setup_modinfo(mod, sechdrs, infoindex);
+
+	/* Fix up syms, so that st_value is a pointer to location. */
+	err = simplify_symbols(sechdrs, symindex, strtab, versindex, pcpuindex,
+			       mod);
+	if (err < 0)
+		goto cleanup;
+
+	/* Now we've got everything in the final locations, we can
+	 * find optional sections. */
+	mod->kp = section_objs(hdr, sechdrs, secstrings, "__param",
+			       sizeof(*mod->kp), &mod->num_kp);
+	mod->syms = section_objs(hdr, sechdrs, secstrings, "__ksymtab",
+				 sizeof(*mod->syms), &mod->num_syms);
+	mod->crcs = section_addr(hdr, sechdrs, secstrings, "__kcrctab");
+	mod->gpl_syms = section_objs(hdr, sechdrs, secstrings, "__ksymtab_gpl",
+				     sizeof(*mod->gpl_syms),
+				     &mod->num_gpl_syms);
+	mod->gpl_crcs = section_addr(hdr, sechdrs, secstrings, "__kcrctab_gpl");
+	mod->gpl_future_syms = section_objs(hdr, sechdrs, secstrings,
+					    "__ksymtab_gpl_future",
+					    sizeof(*mod->gpl_future_syms),
+					    &mod->num_gpl_future_syms);
+	mod->gpl_future_crcs = section_addr(hdr, sechdrs, secstrings,
+					    "__kcrctab_gpl_future");
+
+#ifdef CONFIG_UNUSED_SYMBOLS
+	mod->unused_syms = section_objs(hdr, sechdrs, secstrings,
+					"__ksymtab_unused",
+					sizeof(*mod->unused_syms),
+					&mod->num_unused_syms);
+	mod->unused_crcs = section_addr(hdr, sechdrs, secstrings,
+					"__kcrctab_unused");
+	mod->unused_gpl_syms = section_objs(hdr, sechdrs, secstrings,
+					    "__ksymtab_unused_gpl",
+					    sizeof(*mod->unused_gpl_syms),
+					    &mod->num_unused_gpl_syms);
+	mod->unused_gpl_crcs = section_addr(hdr, sechdrs, secstrings,
+					    "__kcrctab_unused_gpl");
+#endif
+#ifdef CONFIG_CONSTRUCTORS
+	mod->ctors = section_objs(hdr, sechdrs, secstrings, ".ctors",
+				  sizeof(*mod->ctors), &mod->num_ctors);
+#endif
+
+#ifdef CONFIG_TRACEPOINTS
+	mod->tracepoints = section_objs(hdr, sechdrs, secstrings,
+					"__tracepoints",
+					sizeof(*mod->tracepoints),
+					&mod->num_tracepoints);
+#endif
+#ifdef CONFIG_EVENT_TRACING
+	mod->trace_events = section_objs(hdr, sechdrs, secstrings,
+					 "_ftrace_events",
+					 sizeof(*mod->trace_events),
+					 &mod->num_trace_events);
+	/*
+	 * This section contains pointers to allocated objects in the trace
+	 * code and not scanning it leads to false positives.
+	 */
+	kmemleak_scan_area(mod->trace_events, sizeof(*mod->trace_events) *
+			   mod->num_trace_events, GFP_KERNEL);
+#endif
+#ifdef CONFIG_FTRACE_MCOUNT_RECORD
+	/* sechdrs[0].sh_size is always zero */
+	mod->ftrace_callsites = section_objs(hdr, sechdrs, secstrings,
+					     "__mcount_loc",
+					     sizeof(*mod->ftrace_callsites),
+					     &mod->num_ftrace_callsites);
+#endif
 #ifdef CONFIG_MODVERSIONS
 	if ((mod->num_syms && !mod->crcs)
 	    || (mod->num_gpl_syms && !mod->gpl_crcs)
@@ -2421,16 +2433,62 @@ static int check_module_license_and_versions(struct module *mod)
 	    || (mod->num_unused_gpl_syms && !mod->unused_gpl_crcs)
 #endif
 		) {
-		return try_to_force_load(mod,
-					 "no versions for exported symbols");
+		err = try_to_force_load(mod,
+					"no versions for exported symbols");
+		if (err)
+			goto cleanup;
 	}
 #endif
-	return 0;
-}
 
-static void flush_module_icache(const struct module *mod)
-{
-	mm_segment_t old_fs;
+	/* Now do relocations. */
+	for (i = 1; i < hdr->e_shnum; i++) {
+		const char *strtab = (char *)sechdrs[strindex].sh_addr;
+		unsigned int info = sechdrs[i].sh_info;
+
+		/* Not a valid relocation section? */
+		if (info >= hdr->e_shnum)
+			continue;
+
+		/* Don't bother with non-allocated sections */
+		if (!(sechdrs[info].sh_flags & SHF_ALLOC))
+			continue;
+
+		if (sechdrs[i].sh_type == SHT_REL)
+			err = apply_relocate(sechdrs, strtab, symindex, i,mod);
+		else if (sechdrs[i].sh_type == SHT_RELA)
+			err = apply_relocate_add(sechdrs, strtab, symindex, i,
+						 mod);
+		if (err < 0)
+			goto cleanup;
+	}
+
+  	/* Set up and sort exception table */
+	mod->extable = section_objs(hdr, sechdrs, secstrings, "__ex_table",
+				    sizeof(*mod->extable), &mod->num_exentries);
+	sort_extable(mod->extable, mod->extable + mod->num_exentries);
+
+	/* Finally, copy percpu area over. */
+	percpu_modcopy(mod, (void *)sechdrs[pcpuindex].sh_addr,
+		       sechdrs[pcpuindex].sh_size);
+
+	add_kallsyms(mod, sechdrs, hdr->e_shnum, symindex, strindex,
+		     symoffs, stroffs, secstrings, strmap);
+	kfree(strmap);
+	strmap = NULL;
+
+	if (!mod->taints) {
+		struct _ddebug *debug;
+		unsigned int num_debug;
+
+		debug = section_objs(hdr, sechdrs, secstrings, "__verbose",
+				     sizeof(*debug), &num_debug);
+		if (debug)
+			dynamic_debug_setup(debug, num_debug);
+	}
+
+	err = module_finalize(hdr, sechdrs, mod);
+	if (err < 0)
+		goto cleanup;
 
 	/* flush the icache in correct context */
 	old_fs = get_fs();
@@ -2449,160 +2507,11 @@ static void flush_module_icache(const struct module *mod)
 			   (unsigned long)mod->module_core + mod->core_size);
 
 	set_fs(old_fs);
-}
 
-static struct module *layout_and_allocate(struct load_info *info)
-{
-	/* Module within temporary copy. */
-	struct module *mod;
-	Elf_Shdr *pcpusec;
-	int err;
-
-	mod = setup_load_info(info);
-	if (IS_ERR(mod))
-		return mod;
-
-	err = check_modinfo(mod, info);
-	if (err)
-		return ERR_PTR(err);
-
-	/* Allow arches to frob section contents and sizes.  */
-	err = module_frob_arch_sections(info->hdr, info->sechdrs,
-					info->secstrings, mod);
-	if (err < 0)
-		goto out;
-
-	pcpusec = &info->sechdrs[info->index.pcpu];
-	if (pcpusec->sh_size) {
-		/* We have a special allocation for this section. */
-		err = percpu_modalloc(mod,
-				      pcpusec->sh_size, pcpusec->sh_addralign);
-		if (err)
-			goto out;
-		pcpusec->sh_flags &= ~(unsigned long)SHF_ALLOC;
-	}
-
-	/* Determine total sizes, and put offsets in sh_entsize.  For now
-	   this is done generically; there doesn't appear to be any
-	   special cases for the architectures. */
-	layout_sections(mod, info);
-
-	info->strmap = kzalloc(BITS_TO_LONGS(info->sechdrs[info->index.str].sh_size)
-			 * sizeof(long), GFP_KERNEL);
-	if (!info->strmap) {
-		err = -ENOMEM;
-		goto free_percpu;
-	}
-	layout_symtab(mod, info);
-
-	/* Allocate and move to the final place */
-	err = move_module(mod, info);
-	if (err)
-		goto free_strmap;
-
-	/* Module has been copied to its final place now: return it. */
-	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
-	kmemleak_load_module(mod, info);
-	return mod;
-
-free_strmap:
-	kfree(info->strmap);
-free_percpu:
-	percpu_modfree(mod);
-out:
-	return ERR_PTR(err);
-}
-
-/* mod is no longer valid after this! */
-static void module_deallocate(struct module *mod, struct load_info *info)
-{
-	kfree(info->strmap);
-	percpu_modfree(mod);
-	module_free(mod, mod->module_init);
-	module_free(mod, mod->module_core);
-}
-
-static int post_relocation(struct module *mod, const struct load_info *info)
-{
-	/* Sort exception table now relocations are done. */
-	sort_extable(mod->extable, mod->extable + mod->num_exentries);
-
-	/* Copy relocated percpu area over. */
-	percpu_modcopy(mod, (void *)info->sechdrs[info->index.pcpu].sh_addr,
-		       info->sechdrs[info->index.pcpu].sh_size);
-
-	/* Setup kallsyms-specific fields. */
-	add_kallsyms(mod, info);
-
-	/* Arch-specific module finalizing. */
-	return module_finalize(info->hdr, info->sechdrs, mod);
-}
-
-/* Allocate and load the module: note that size of section 0 is always
-   zero, and we rely on this for optional sections. */
-static struct module *load_module(void __user *umod,
-				  unsigned long len,
-				  const char __user *uargs)
-{
-	struct load_info info = { NULL, };
-	struct module *mod;
-	long err;
-
-	DEBUGP("load_module: umod=%p, len=%lu, uargs=%p\n",
-	       umod, len, uargs);
-
-	/* Copy in the blobs from userspace, check they are vaguely sane. */
-	err = copy_and_check(&info, umod, len, uargs);
-	if (err)
-		return ERR_PTR(err);
-
-	/* Figure out module layout, and allocate all the memory. */
-	mod = layout_and_allocate(&info);
-	if (IS_ERR(mod)) {
-		err = PTR_ERR(mod);
-		goto free_copy;
-	}
-
-	/* Now module is in final location, initialize linked lists, etc. */
-	err = module_unload_init(mod);
-	if (err)
-		goto free_module;
-
-	/* Now we've got everything in the final locations, we can
-	 * find optional sections. */
-	find_module_sections(mod, &info);
-
-	err = check_module_license_and_versions(mod);
-	if (err)
-		goto free_unload;
-
-	/* Set up MODINFO_ATTR fields */
-	setup_modinfo(mod, &info);
-
-	/* Fix up syms, so that st_value is a pointer to location. */
-	err = simplify_symbols(mod, &info);
-	if (err < 0)
-		goto free_modinfo;
-
-	err = apply_relocations(mod, &info);
-	if (err < 0)
-		goto free_modinfo;
-
-	err = post_relocation(mod, &info);
-	if (err < 0)
-		goto free_modinfo;
-
-	flush_module_icache(mod);
-
-	/* Now copy in args */
-	mod->args = strndup_user(uargs, ~0UL >> 1);
-	if (IS_ERR(mod->args)) {
-		err = PTR_ERR(mod->args);
-		goto free_arch_cleanup;
-	}
-
-	/* Mark state as coming so strong_try_module_get() ignores us. */
-	mod->state = MODULE_STATE_COMING;
+	mod->args = args;
+	if (section_addr(hdr, sechdrs, secstrings, "__obsparm"))
+		printk(KERN_WARNING "%s: Ignoring obsolete parameters\n",
+		       mod->name);
 
 	/* Now sew it into the lists so we can get lockdep and oops
 	 * info during argument parsing.  Noone should access us, since
@@ -2617,61 +2526,65 @@ static struct module *load_module(void __user *umod,
 		goto unlock;
 	}
 
-	/* This has to be done once we're sure module name is unique. */
-	if (!mod->taints)
-		dynamic_debug_setup(info.debug, info.num_debug);
-
 	/* Find duplicate symbols */
 	err = verify_export_symbols(mod);
 	if (err < 0)
-		goto ddebug;
+		goto unlock;
 
-	module_bug_finalize(info.hdr, info.sechdrs, mod);
 	list_add_rcu(&mod->list, &modules);
 	mutex_unlock(&module_mutex);
 
-	/* Module is ready to execute: parsing args may do that. */
 	err = parse_args(mod->name, mod->args, mod->kp, mod->num_kp, NULL);
 	if (err < 0)
 		goto unlink;
 
-	/* Link in to syfs. */
-	err = mod_sysfs_setup(mod, &info, mod->kp, mod->num_kp);
+	err = mod_sysfs_setup(mod, mod->kp, mod->num_kp);
 	if (err < 0)
 		goto unlink;
 
-	/* Get rid of temporary copy and strmap. */
-	kfree(info.strmap);
-	free_copy(&info);
+	add_sect_attrs(mod, hdr->e_shnum, secstrings, sechdrs);
+	add_notes_attrs(mod, hdr->e_shnum, secstrings, sechdrs);
+
+	/* Get rid of temporary copy */
+	vfree(hdr);
+
+	trace_module_load(mod);
 
 	/* Done! */
-	trace_module_load(mod);
 	return mod;
 
  unlink:
 	mutex_lock(&module_mutex);
 	/* Unlink carefully: kallsyms could be walking list. */
 	list_del_rcu(&mod->list);
-	module_bug_cleanup(mod);
-
- ddebug:
-	if (!mod->taints)
-		dynamic_debug_remove(info.debug);
  unlock:
 	mutex_unlock(&module_mutex);
 	synchronize_sched();
-	kfree(mod->args);
- free_arch_cleanup:
 	module_arch_cleanup(mod);
- free_modinfo:
+ cleanup:
 	free_modinfo(mod);
- free_unload:
 	module_unload_free(mod);
- free_module:
-	module_deallocate(mod, &info);
- free_copy:
-	free_copy(&info);
+#if defined(CONFIG_MODULE_UNLOAD)
+	free_percpu(mod->refptr);
+ free_init:
+#endif
+	module_free(mod, mod->module_init);
+ free_core:
+	module_free(mod, mod->module_core);
+	/* mod will be freed with core. Don't access it beyond this line! */
+ free_percpu:
+	free_percpu(percpu);
+ free_mod:
+	kfree(args);
+	kfree(strmap);
+ free_hdr:
+	vfree(hdr);
 	return ERR_PTR(err);
+
+ truncated:
+	printk(KERN_ERR "Module len %lu truncated\n", len);
+	err = -ENOEXEC;
+	goto free_hdr;
 }
 
 /* Call module constructors. */
