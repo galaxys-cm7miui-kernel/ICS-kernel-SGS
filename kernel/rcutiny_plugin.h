@@ -22,13 +22,11 @@
  * Author: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
  */
 
+#include <linux/kthread.h>
+
 #ifdef CONFIG_TINY_PREEMPT_RCU
 
 #include <linux/delay.h>
-
-/* FIXME: merge with definitions in kernel/rcutree.h. */
-#define ULONG_CMP_GE(a, b)	(ULONG_MAX / 2 >= (a) - (b))
-#define ULONG_CMP_LT(a, b)	(ULONG_MAX / 2 < (a) - (b))
 
 /* Global control variables for preemptible RCU. */
 struct rcu_preempt_ctrlblk {
@@ -76,7 +74,7 @@ static void rcu_report_exp_done(void);
 /*
  * Return true if the CPU has not yet responded to the current grace period.
  */
-static int rcu_cpu_cur_gp(void)
+static int rcu_cpu_blocking_cur_gp(void)
 {
 	return rcu_preempt_ctrlblk.gpcpu != rcu_preempt_ctrlblk.gpnum;
 }
@@ -168,9 +166,9 @@ static void rcu_preempt_cpu_qs(void)
 	if (!rcu_preempt_blocked_readers_any())
 		rcu_preempt_ctrlblk.rcb.donetail = rcu_preempt_ctrlblk.nexttail;
 
-	/* If there are done callbacks, make RCU_SOFTIRQ process them. */
+	/* If there are done callbacks, cause them to be invoked. */
 	if (*rcu_preempt_ctrlblk.rcb.donetail != NULL)
-		raise_softirq(RCU_SOFTIRQ);
+		invoke_rcu_cbs();
 }
 
 /*
@@ -233,7 +231,7 @@ void rcu_preempt_note_context_switch(void)
 		 * cannot end.
 		 */
 		list_add(&t->rcu_node_entry, &rcu_preempt_ctrlblk.blkd_tasks);
-		if (rcu_cpu_cur_gp())
+		if (rcu_cpu_blocking_cur_gp())
 			rcu_preempt_ctrlblk.gp_tasks = &t->rcu_node_entry;
 	}
 
@@ -372,18 +370,22 @@ static void rcu_preempt_check_callbacks(void)
 {
 	struct task_struct *t = current;
 
-	if (!rcu_preempt_running_reader() && rcu_preempt_gp_in_progress())
+	if (rcu_preempt_gp_in_progress() &&
+	    (!rcu_preempt_running_reader() ||
+	     !rcu_cpu_blocking_cur_gp()))
 		rcu_preempt_cpu_qs();
 	if (&rcu_preempt_ctrlblk.rcb.rcucblist !=
 	    rcu_preempt_ctrlblk.rcb.donetail)
-		raise_softirq(RCU_SOFTIRQ);
-	if (rcu_preempt_gp_in_progress() && rcu_preempt_running_reader())
+		invoke_rcu_cbs();
+	if (rcu_preempt_gp_in_progress() &&
+	    rcu_cpu_blocking_cur_gp() &&
+	    rcu_preempt_running_reader())
 		t->rcu_read_unlock_special |= RCU_READ_UNLOCK_NEED_QS;
 }
 
 /*
  * TINY_PREEMPT_RCU has an extra callback-list tail pointer to
- * update, so this is invoked from __rcu_process_callbacks() to
+ * update, so this is invoked from rcu_process_callbacks() to
  * handle that case.  Of course, it is invoked for all flavors of
  * RCU, but RCU callbacks can appear only on one of the lists, and
  * neither ->nexttail nor ->donetail can possibly be NULL, so there
@@ -400,7 +402,7 @@ static void rcu_preempt_remove_callbacks(struct rcu_ctrlblk *rcp)
  */
 static void rcu_preempt_process_callbacks(void)
 {
-	__rcu_process_callbacks(&rcu_preempt_ctrlblk.rcb);
+	rcu_process_callbacks(&rcu_preempt_ctrlblk.rcb);
 }
 
 /*
@@ -599,14 +601,13 @@ static void rcu_preempt_process_callbacks(void)
 #endif /* #else #ifdef CONFIG_TINY_PREEMPT_RCU */
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
-
 #include <linux/kernel_stat.h>
 
 /*
  * During boot, we forgive RCU lockdep issues.  After this function is
  * invoked, we start taking RCU lockdep issues seriously.
  */
-void rcu_scheduler_starting(void)
+void __init rcu_scheduler_starting(void)
 {
 	WARN_ON(nr_context_switches() > 0);
 	rcu_scheduler_active = 1;
