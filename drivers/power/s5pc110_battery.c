@@ -259,23 +259,11 @@ static int s3c_bat_get_property(struct power_supply *bat_ps,
 		val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		if (chg->pdata &&
-			 chg->pdata->psy_fuelgauge &&
-			 chg->pdata->psy_fuelgauge->get_property &&
-			 chg->pdata->psy_fuelgauge->get_property(
-				chg->pdata->psy_fuelgauge, psp, val) < 0)
-			return -EINVAL;
-		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		if (chg->bat_info.batt_soc == 0)
-			val->intval = 0;
-		else if (chg->bat_info.batt_is_full)
-			val->intval = 100;
-		else if (chg->pdata &&
-			 chg->pdata->psy_fuelgauge &&
-			 chg->pdata->psy_fuelgauge->get_property &&
-			 chg->pdata->psy_fuelgauge->get_property(
-				chg->pdata->psy_fuelgauge, psp, val) < 0)
+		if (chg->pdata && chg->pdata->psy_fuelgauge &&
+			chg->pdata->psy_fuelgauge->get_property &&
+			chg->pdata->psy_fuelgauge->get_property(chg->pdata->psy_fuelgauge,
+				psp, (union power_supply_propval *)&val->intval) < 0)
 			return -EINVAL;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
