@@ -25,7 +25,7 @@ MMC=`ls -d /sys/block/mmc*`;
 # set the cfq scheduler as default i/o scheduler (Samsung ROMs)
 for i in $STL $BML $MMC;
 do
-	echo "noop" > $i/queue/scheduler; 
+	echo "bfq" > $i/queue/scheduler; 
 done;
 
 # Optimize non-rotating storage; 
