@@ -443,11 +443,9 @@ static void dhd_htsf_addrxts(dhd_pub_t *dhdp, void *pktbuf);
 static void dhd_dump_htsfhisto(histo_t *his, char *s);
 #endif /* WLMEDIA_HTSF */
 
-extern s32 wl_cfg80211_ifdel_ops(struct net_device *net);
-
 /* Monitor interface */
-extern int dhd_monitor_init(void *dhd_pub);
-extern int dhd_monitor_uninit(void);
+int dhd_monitor_init(void *dhd_pub);
+int dhd_monitor_uninit(void);
 
 
 #if defined(CONFIG_WIRELESS_EXT)
@@ -967,13 +965,18 @@ dhd_op_if(dhd_if_t *ifp)
 		}
 		if (ret == 0) {
 			strncpy(ifp->net->name, ifp->name, IFNAMSIZ);
-#ifdef WL_CFG80211
-			if (dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)
-				wl_cfg80211_notify_ifadd(ifp->net);
-#endif
-
 			ifp->net->name[IFNAMSIZ - 1] = '\0';
 			memcpy(netdev_priv(ifp->net), &dhd, sizeof(dhd));
+#ifdef WL_CFG80211
+			if (dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)
+				if (!wl_cfg80211_notify_ifadd(ifp->net, ifp->idx, ifp->bssidx,
+					dhd_net_attach)) {
+					ifp->state = 0;
+					return;
+			}
+
+#endif
+
 			if ((err = dhd_net_attach(&dhd->pub, ifp->idx)) != 0) {
 				DHD_ERROR(("%s: dhd_net_attach failed, err %d\n",
 					__FUNCTION__, err));
@@ -1381,7 +1384,7 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 	struct sk_buff *skb;
 	uchar *eth;
 	uint len;
-	void *data, *pnext, *save_pktbuf;
+	void *data, *pnext = NULL, *save_pktbuf;
 	int i;
 	dhd_if_t *ifp;
 	wl_event_msg_t event;
@@ -1393,6 +1396,16 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 	for (i = 0; pktbuf && i < numpkt; i++, pktbuf = pnext) {
 		struct ether_header *eh;
 		struct dot11_llc_snap_header *lsh;
+
+		ifp = dhd->iflist[ifidx];
+
+		/* Dropping packets before registering net device to avoid kernel panic */
+		if (!ifp->net || ifp->net->reg_state != NETREG_REGISTERED) {
+			DHD_ERROR(("%s: net device is NOT registered yet. drop packet\n",
+			__FUNCTION__));
+			PKTFREE(dhdp->osh, pktbuf, TRUE);
+			continue;
+		}
 
 		pnext = PKTNEXT(dhdp->osh, pktbuf);
 		PKTSETNEXT(wl->sh.osh, pktbuf, NULL);
@@ -1482,14 +1495,6 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 
 		dhdp->dstats.rx_bytes += skb->len;
 		dhdp->rx_packets++; /* Local count */
-
-		/* Dropping packets before registering net device to avoid kernel panic */
-		if (!ifp->net || ifp->net->reg_state != NETREG_REGISTERED) {
-			DHD_ERROR(("%s: net device is NOT registered yet. drop [%s] packet\n",
-			__FUNCTION__, (ntoh16(skb->protocol) == ETHER_TYPE_BRCM) ? "event" : "data"));
-			PKTFREE(dhdp->osh, pktbuf, TRUE);
-			continue;
-		}
 
 		if (in_interrupt()) {
 			netif_rx(skb);
@@ -2351,6 +2356,7 @@ dhd_add_if(dhd_info_t *dhd, int ifidx, void *handle, char *name,
 	if (handle == NULL) {
 		ifp->state = WLC_E_IF_ADD;
 		ifp->idx = ifidx;
+		ifp->bssidx = bssidx;
 		ASSERT(&dhd->thr_sysioc_ctl.thr_pid >= 0);
 		up(&dhd->thr_sysioc_ctl.sema);
 	} else
@@ -2800,20 +2806,27 @@ int dhd_change_mtu(dhd_pub_t *dhdp, int new_mtu, int ifidx)
 /* add or remove AOE host ip(s) (up to 8 IPs on the interface)  */
 void aoe_update_host_ipv4_table(dhd_pub_t *dhd_pub, u32 ipa, bool add)
 {
-	u32 ipv4_buf[8]; /* temp save for AOE host_ip table */
+	u32 ipv4_buf[MAX_IPV4_ENTRIES]; /* temp save for AOE host_ip table */
 	int i;
+	int ret;
 
 	bzero(ipv4_buf, sizeof(ipv4_buf));
 
 	/* display what we've got */
-	dhd_arp_get_arp_hostip_table(dhd_pub, ipv4_buf, sizeof(ipv4_buf));
+	ret = dhd_arp_get_arp_hostip_table(dhd_pub, ipv4_buf, sizeof(ipv4_buf));
 	DHD_ARPOE(("%s: hostip table read from Dongle:\n", __FUNCTION__));
+#ifdef AOE_DBG
 	dhd_print_buf(ipv4_buf, 32, 4); /* max 8 IPs 4b each */
-
+#endif
 	/* now we saved hoste_ip table, clr it in the dongle AOE */
 	dhd_aoe_hostip_clr(dhd_pub);
 
-	for (i = 0; i < 8; i++) {
+	if (ret) {
+		DHD_ERROR(("%s failed\n", __FUNCTION__));
+		return;
+	}
+
+	for (i = 0; i < MAX_IPV4_ENTRIES; i++) {
 
 		if (add && (ipv4_buf[i] == 0)) {
 
@@ -3046,6 +3059,7 @@ void dhd_detach(dhd_pub_t *dhdp)
 {
 	dhd_info_t *dhd;
 	unsigned long flags;
+	int timer_valid = FALSE;
 
 	if (!dhdp)
 		return;
@@ -3073,7 +3087,6 @@ void dhd_detach(dhd_pub_t *dhdp)
 			unregister_early_suspend(&dhd->early_suspend);
 	}
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) */
-
 
 #if defined(CONFIG_WIRELESS_EXT)
 	if (dhd->dhd_state & DHD_ATTACH_STATE_WL_ATTACH) {
@@ -3108,17 +3121,23 @@ void dhd_detach(dhd_pub_t *dhdp)
 		if (ifp->net->netdev_ops == &dhd_ops_pri)
 #endif
 		{
-			unregister_netdev(ifp->net);
+			if (ifp->net) {
+				unregister_netdev(ifp->net);
+				free_netdev(ifp->net);
+				ifp->net = NULL;
+			}
 			MFREE(dhd->pub.osh, ifp, sizeof(*ifp));
-
+			dhd->iflist[0] = NULL;
 		}
 	}
 
 	/* Clear the watchdog timer */
 	flags = dhd_os_spin_lock(&dhd->pub);
+	timer_valid = dhd->wd_timer_valid;
 	dhd->wd_timer_valid = FALSE;
 	dhd_os_spin_unlock(&dhd->pub, flags);
-	del_timer_sync(&dhd->timer);
+	if (timer_valid)
+		del_timer_sync(&dhd->timer);
 
 	if (dhd->dhd_state & DHD_ATTACH_STATE_THREADS_CREATED) {
 #ifdef DHDTHREAD
@@ -3147,12 +3166,11 @@ void dhd_detach(dhd_pub_t *dhdp)
 	}
 #endif
 
-	if (dhd->dhd_state & DHD_ATTACH_STATE_WAKELOCKS_INIT) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP)
-		unregister_pm_notifier(&dhd_sleep_pm_notifier);
-#endif 
-	/* && defined(CONFIG_PM_SLEEP) */
+	unregister_pm_notifier(&dhd_sleep_pm_notifier);
+#endif
 
+	if (dhd->dhd_state & DHD_ATTACH_STATE_WAKELOCKS_INIT) {
 #ifdef CONFIG_HAS_WAKELOCK
 		wake_lock_destroy(&dhd->wl_wifi);
 		wake_lock_destroy(&dhd->wl_rxwake);
@@ -3250,6 +3268,9 @@ dhd_module_init(void)
 		goto fail_2;
 		}
 #endif
+#if defined(WL_CFG80211)
+	error = wl_android_post_init();
+#endif
 
 	return error;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && 1
@@ -3267,7 +3288,7 @@ fail_1:
 	return error;
 }
 
-module_init(dhd_module_init);
+late_initcall(dhd_module_init);
 module_exit(dhd_module_cleanup);
 
 /*
@@ -4118,6 +4139,30 @@ int net_os_wake_unlock(struct net_device *dev)
 	return ret;
 }
 
+int dhd_ioctl_entry_local(struct net_device *net, wl_ioctl_t *ioc, int cmd)
+{
+	int ifidx;
+	int ret = 0;
+	dhd_info_t *dhd = NULL;
+
+	if (!net || !netdev_priv(net)) {
+		DHD_ERROR(("%s invalid parameter\n", __FUNCTION__));
+		return -EINVAL;
+	}
+
+	dhd = *(dhd_info_t **)netdev_priv(net);
+	ifidx = dhd_net2idx(dhd, net);
+	if (ifidx == DHD_BAD_IF) {
+		DHD_ERROR(("%s bad ifidx\n", __FUNCTION__));
+		return -ENODEV;
+	}
+
+	DHD_OS_WAKE_LOCK(&dhd->pub);
+	ret = dhd_wl_ioctl(&dhd->pub, ifidx, ioc, ioc->buf, ioc->len);
+	DHD_OS_WAKE_UNLOCK(&dhd->pub);
+
+	return ret;
+}
 
 #ifdef PROP_TXSTATUS
 extern int dhd_wlfc_interface_entry_update(void* state,	ewlfc_mac_entry_action_t action, uint8 ifid,
