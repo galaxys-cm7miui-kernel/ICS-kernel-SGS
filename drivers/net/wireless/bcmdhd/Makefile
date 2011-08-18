@@ -15,14 +15,14 @@ DHDOFILES = aiutils.o bcmsdh_sdmmc_linux.o dhd_linux.o siutils.o bcmutils.o   \
 	bcmsdh.o dhd_cdc.o bcmsdh_linux.o dhd_common.o linux_osl.o            \
 	bcmsdh_sdmmc.o dhd_custom_gpio.o sbutils.o wldev_common.o wl_android.o
 
-obj-$(CONFIG_BCMDHD) += bcmdhd.o
-bcmdhd-objs += $(DHDOFILES)
+obj-$(CONFIG_BCMDHD) += bcm4329.o
+bcm4329-objs += $(DHDOFILES)
 ifneq ($(CONFIG_WIRELESS_EXT),)
-bcmdhd-objs += wl_iw.o
+bcm4329-objs += wl_iw.o
 DHDCFLAGS += -DSOFTAP
 endif
 ifneq ($(CONFIG_CFG80211),)
-bcmdhd-objs += wl_cfg80211.o wl_cfgp2p.o dhd_linux_mon.o
+bcm4329-objs += wl_cfg80211.o wl_cfgp2p.o dhd_linux_mon.o
 DHDCFLAGS += -DWL_CFG80211
 endif
 EXTRA_CFLAGS = $(DHDCFLAGS)
