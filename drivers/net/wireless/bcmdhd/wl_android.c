@@ -113,7 +113,7 @@ int wl_cfg80211_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pd
 #endif
 
 extern bool ap_fw_loaded;
-#ifdef CUSTOMER_HW2
+#ifndef CUSTOMER_HW2
 extern char iface_name[IFNAMSIZ];
 #endif
 
@@ -516,7 +516,7 @@ int wl_android_init(void)
 #ifdef ENABLE_INSMOD_NO_FW_LOAD
 	dhd_download_fw_on_driverload = FALSE;
 #endif /* ENABLE_INSMOD_NO_FW_LOAD */
-#ifdef CUSTOMER_HW2
+#ifndef CUSTOMER_HW2
 	if (!iface_name[0])
 		bcm_strncpy_s(iface_name, IFNAMSIZ, "wlan", IFNAMSIZ);
 #endif /* CUSTOMER_HW2 */
