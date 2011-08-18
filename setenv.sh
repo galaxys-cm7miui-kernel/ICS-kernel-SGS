@@ -1,13 +1,13 @@
 #!/bin/sh
 export ARCH=arm 
 export TOOLCHAIN=~/arm-2010q1
+export TOOLPREFIX=arm-none-eabi
 export PATH=$PATH:${TOOLCHAIN}/bin:/usr/java/jdk1.6.0_21/bin
-export CROSS_COMPILE=${TOOLCHAIN}/bin/arm-none-eabi-
-#export ac_cv_linux_vers=2.6.32
-export CC=${TOOLCHAIN}/bin/arm-none-eabi-gcc
-export LD=${TOOLCHAIN}/bin/arm-none-eabi-ld
-export AR=${TOOLCHAIN}/bin/arm-none-eabi-ar
-export RANLIB=${TOOLCHAIN}/arm-none-eabi/bin/ranlib
+export CROSS_COMPILE=${TOOLCHAIN}/bin/${TOOLPREFIX}-
+export CC=${TOOLCHAIN}/bin/${TOOLPREFIX}-gcc
+export LD=${TOOLCHAIN}/bin/${TOOLPREFIX}-ld
+export AR=${TOOLCHAIN}/bin/${TOOLPREFIX}-ar
+export RANLIB=${TOOLCHAIN}/arm-eabi/bin/ranlib
 export PATH=$PATH:${TOOLCHAIN}/bin
 export PATH=$PATH:${TOOLCHAIN}/
 export PATH=$PATH:${TOOLCHAIN}/lib
