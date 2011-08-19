@@ -192,8 +192,8 @@ ARCH		?= arm
 #CROSS_COMPILE	?= ../../../prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
 #CROSS_COMPILE	?= /opt/toolchains/arm-2011.03/bin/arm-none-linux-gnueabi-
 #CROSS_COMPILE	?= /opt/toolchains/arm-2011.03/bin/arm-none-linux-gnueabi-
-CROSS_COMPILE	?= /opt/toolchains/arm-2009q3_arm/bin/arm-none-eabi-
-#CROSS_COMPILE   ?= /opt/toolchains/android-toolchain-eabi_4.5-2011.07/bin/arm-eabi-
+#CROSS_COMPILE	?= /opt/toolchains/arm-2009q3_arm/bin/arm-none-eabi-
+CROSS_COMPILE   ?= /opt/toolchains/android-toolchain-eabi_4.5-2011.07/bin/arm-eabi-
 #CROSS_COMPILE   ?= /opt/toolchains/android-toolchain-eabi_4.6-2011.07/bin/arm-eabi-
 
 # Architecture as present in compile.h
@@ -336,12 +336,12 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-MODFLAGS	= -DMODULE
+MODFLAGS	= -DMODULE -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -floop-interchange -floop-strip-mine -floop-block -ftree-loop-linear -fgraphite-identity -fivopts -ftree-loop-ivcanon -ftree-loop-im
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL	=
-AFLAGS_KERNEL	=
+CFLAGS_KERNEL	= -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -floop-interchange -floop-strip-mine -floop-block -ftree-loop-linear -fgraphite-identity -fivopts -ftree-loop-ivcanon -ftree-loop-im
+AFLAGS_KERNEL	= -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -floop-interchange -floop-strip-mine -floop-block -ftree-loop-linear -fgraphite-identity -fivopts -ftree-loop-ivcanon -ftree-loop-im
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
