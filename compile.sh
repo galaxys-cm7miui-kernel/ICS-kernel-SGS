@@ -1,5 +1,14 @@
 #!/bin/sh
 
+if [ "$1" == "DEBUG" ]; then
+	echo '##################### DEBUG VERSION #################'
+	sed -i 's/# CONFIG_FRAMEBUFFER_CONSOLE is not set/CONFIG_FRAMEBUFFER_CONSOLE=y/' .config
+	DEBUG=1
+else
+	sed -i 's/CONFIG_FRAMEBUFFER_CONSOLE=y/# CONFIG_FRAMEBUFFER_CONSOLE is not set/' .config
+	DEBUG=0
+fi
+
 RELVER=`cat .version`
 let RELVER=RELVER+1
 
@@ -36,6 +45,7 @@ cp drivers/net/wireless/bcmdhd/bcm4329.ko ~/android/system/device/samsung/galaxy
 cp drivers/net/tun.ko ~/android/system/device/samsung/galaxysmtd/
 cp fs/cifs/cifs.ko ~/android/system/device/samsung/galaxysmtd/
 
+if [ $DEBUG == "0" ]; then 
 . ./setenv.sh
 
 echo "building kernel without voodoo color"
@@ -51,3 +61,4 @@ echo "launching packaging script without voodoo color"
 ./release/doit.sh ${RELVER}n
 
 mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd/${TEST}/
+fi
