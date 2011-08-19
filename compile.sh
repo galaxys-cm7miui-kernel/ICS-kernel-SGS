@@ -3,6 +3,9 @@
 RELVER=`cat .version`
 let RELVER=RELVER+1
 
+#ensure there is no more old bcm4329 module
+rm drivers/net/wireless/bcm4329/bcm4329.ko drivers/net/wireless/bcmdhd/bcm4329.ko
+
 if [ -f testcompile ]
 then
         TEST=test
