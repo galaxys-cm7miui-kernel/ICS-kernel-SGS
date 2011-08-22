@@ -665,7 +665,7 @@ more:
 		 * throw out any page cache pages in this range. this
 		 * may block.
 		 */
-		truncate_inode_pages_range(inode->i_mapping, pos, 
+		truncate_inode_pages_range(inode->i_mapping, pos,
 					   (pos+len) | (PAGE_CACHE_SIZE-1));
 	} else {
 		pages = ceph_alloc_page_vector(num_pages, GFP_NOFS);
@@ -697,7 +697,7 @@ more:
 			 * start_request so that a tid has been assigned.
 			 */
 			spin_lock(&ci->i_unsafe_lock);
-			list_add(&ci->i_unsafe_writes, &req->r_unsafe_item);
+			list_add(&req->r_unsafe_item, &ci->i_unsafe_writes);
 			spin_unlock(&ci->i_unsafe_lock);
 			ceph_get_cap_refs(ci, CEPH_CAP_FILE_WR);
 		}
@@ -938,6 +938,8 @@ const struct file_operations ceph_file_fops = {
 	.aio_write = ceph_aio_write,
 	.mmap = ceph_mmap,
 	.fsync = ceph_fsync,
+	.lock = ceph_lock,
+	.flock = ceph_flock,
 	.splice_read = generic_file_splice_read,
 	.splice_write = generic_file_splice_write,
 	.unlocked_ioctl = ceph_ioctl,

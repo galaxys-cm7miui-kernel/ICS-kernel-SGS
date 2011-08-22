@@ -167,10 +167,15 @@ int ext4_truncate_restart_trans(handle_t *handle, struct inode *inode,
 /*
  * Called at the last iput() if i_nlink is zero.
  */
-void ext4_delete_inode(struct inode *inode)
+void ext4_evict_inode(struct inode *inode)
 {
 	handle_t *handle;
 	int err;
+
+	if (inode->i_nlink) {
+		truncate_inode_pages(&inode->i_data, 0);
+		goto no_delete;
+	}
 
 	if (!is_bad_inode(inode))
 		dquot_initialize(inode);
@@ -246,13 +251,13 @@ void ext4_delete_inode(struct inode *inode)
 	 */
 	if (ext4_mark_inode_dirty(handle, inode))
 		/* If that failed, just do the required in-core inode clear. */
-		clear_inode(inode);
+		ext4_clear_inode(inode);
 	else
 		ext4_free_inode(handle, inode);
 	ext4_journal_stop(handle);
 	return;
 no_delete:
-	clear_inode(inode);	/* We must guarantee clearing of inode... */
+	ext4_clear_inode(inode);	/* We must guarantee clearing of inode... */
 }
 
 typedef struct {
@@ -1602,11 +1607,9 @@ retry:
 	*pagep = page;
 
 	if (ext4_should_dioread_nolock(inode))
-		ret = block_write_begin(file, mapping, pos, len, flags, pagep,
-				fsdata, ext4_get_block_write);
+		ret = __block_write_begin(page, pos, len, ext4_get_block_write);
 	else
-		ret = block_write_begin(file, mapping, pos, len, flags, pagep,
-				fsdata, ext4_get_block);
+		ret = __block_write_begin(page, pos, len, ext4_get_block);
 
 	if (!ret && ext4_should_journal_data(inode)) {
 		ret = walk_page_buffers(handle, page_buffers(page),
@@ -1617,7 +1620,7 @@ retry:
 		unlock_page(page);
 		page_cache_release(page);
 		/*
-		 * block_write_begin may have instantiated a few blocks
+		 * __block_write_begin may have instantiated a few blocks
 		 * outside i_size.  Trim these off again. Don't need
 		 * i_size_read because we hold i_mutex.
 		 *
@@ -3205,8 +3208,7 @@ retry:
 	}
 	*pagep = page;
 
-	ret = block_write_begin(file, mapping, pos, len, flags, pagep, fsdata,
-				ext4_da_get_block_prep);
+	ret = __block_write_begin(page, pos, len, ext4_da_get_block_prep);
 	if (ret < 0) {
 		unlock_page(page);
 		ext4_journal_stop(handle);
@@ -5545,11 +5547,19 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 			ext4_truncate(inode);
 	}
 
-	rc = inode_setattr(inode, attr);
+	if ((attr->ia_valid & ATTR_SIZE) &&
+	    attr->ia_size != i_size_read(inode))
+		rc = vmtruncate(inode, attr->ia_size);
 
-	/* If inode_setattr's call to ext4_truncate failed to get a
-	 * transaction handle at all, we need to clean up the in-core
-	 * orphan list manually. */
+	if (!rc) {
+		setattr_copy(inode, attr);
+		mark_inode_dirty(inode);
+	}
+
+	/*
+	 * If the call to ext4_truncate failed to get a transaction handle at
+	 * all, we need to clean up the in-core orphan list manually.
+	 */
 	if (inode->i_nlink)
 		ext4_orphan_del(NULL, inode);
 
@@ -5598,12 +5608,13 @@ static int ext4_indirect_trans_blocks(struct inode *inode, int nrblocks,
 	/* if nrblocks are contiguous */
 	if (chunk) {
 		/*
-		 * With N contiguous data blocks, we need at most
-		 * N/EXT4_ADDR_PER_BLOCK(inode->i_sb) + 1 indirect blocks,
-		 * 2 dindirect blocks, and 1 tindirect block
+		 * With N contiguous data blocks, it need at most
+		 * N/EXT4_ADDR_PER_BLOCK(inode->i_sb) indirect blocks
+		 * 2 dindirect blocks
+		 * 1 tindirect block
 		 */
-		return DIV_ROUND_UP(nrblocks,
-				    EXT4_ADDR_PER_BLOCK(inode->i_sb)) + 4;
+		indirects = nrblocks / EXT4_ADDR_PER_BLOCK(inode->i_sb);
+		return indirects + 3;
 	}
 	/*
 	 * if nrblocks are not contiguous, worse case, each block touch

@@ -430,8 +430,10 @@ error:
  * @inode: inode to release
  *
  */
-void v9fs_clear_inode(struct inode *inode)
+void v9fs_evict_inode(struct inode *inode)
 {
+	truncate_inode_pages(inode->i_mapping, 0);
+	end_writeback(inode);
 	filemap_fdatawrite(inode->i_mapping);
 
 #ifdef CONFIG_9P_FSCACHE
@@ -728,7 +730,10 @@ v9fs_vfs_create_dotl(struct inode *dir, struct dentry *dentry, int mode,
 		P9_DPRINTK(P9_DEBUG_VFS, "inode creation failed %d\n", err);
 		goto error;
 	}
-	dentry->d_op = &v9fs_cached_dentry_operations;
+	if (v9ses->cache)
+		dentry->d_op = &v9fs_cached_dentry_operations;
+	else
+		dentry->d_op = &v9fs_dentry_operations;
 	d_instantiate(dentry, inode);
 	err = v9fs_fid_add(dentry, fid);
 	if (err < 0)
@@ -1126,6 +1131,7 @@ v9fs_vfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	v9fs_stat2inode(st, dentry->d_inode, dentry->d_inode->i_sb);
 		generic_fillattr(dentry->d_inode, stat);
 
+	p9stat_free(st);
 	kfree(st);
 	return 0;
 }
@@ -1209,10 +1215,19 @@ static int v9fs_vfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	}
 
 	retval = p9_client_wstat(fid, &wstat);
-	if (retval >= 0)
-		retval = inode_setattr(dentry->d_inode, iattr);
+	if (retval < 0)
+		return retval;
 
-	return retval;
+	if ((iattr->ia_valid & ATTR_SIZE) &&
+	    iattr->ia_size != i_size_read(dentry->d_inode)) {
+		retval = vmtruncate(dentry->d_inode, iattr->ia_size);
+		if (retval)
+			return retval;
+	}
+
+	setattr_copy(dentry->d_inode, iattr);
+	mark_inode_dirty(dentry->d_inode);
+	return 0;
 }
 
 /**
@@ -1252,10 +1267,19 @@ static int v9fs_vfs_setattr_dotl(struct dentry *dentry, struct iattr *iattr)
 		return PTR_ERR(fid);
 
 	retval = p9_client_setattr(fid, &p9attr);
-	if (retval >= 0)
-		retval = inode_setattr(dentry->d_inode, iattr);
+	if (retval < 0)
+		return retval;
 
-	return retval;
+	if ((iattr->ia_valid & ATTR_SIZE) &&
+	    iattr->ia_size != i_size_read(dentry->d_inode)) {
+		retval = vmtruncate(dentry->d_inode, iattr->ia_size);
+		if (retval)
+			return retval;
+	}
+
+	setattr_copy(dentry->d_inode, iattr);
+	mark_inode_dirty(dentry->d_inode);
+	return 0;
 }
 
 /**
@@ -1469,6 +1493,7 @@ static int v9fs_readlink(struct dentry *dentry, char *buffer, int buflen)
 
 	retval = strnlen(buffer, buflen);
 done:
+	p9stat_free(st);
 	kfree(st);
 	return retval;
 }
@@ -1922,7 +1947,7 @@ static const struct inode_operations v9fs_dir_inode_operations_dotu = {
 	.unlink = v9fs_vfs_unlink,
 	.mkdir = v9fs_vfs_mkdir,
 	.rmdir = v9fs_vfs_rmdir,
-	.mknod = v9fs_vfs_mknod_dotl,
+	.mknod = v9fs_vfs_mknod,
 	.rename = v9fs_vfs_rename,
 	.getattr = v9fs_vfs_getattr,
 	.setattr = v9fs_vfs_setattr,

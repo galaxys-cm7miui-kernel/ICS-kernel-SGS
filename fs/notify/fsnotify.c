@@ -84,7 +84,7 @@ void __fsnotify_update_child_dentry_flags(struct inode *inode)
 }
 
 /* Notify this dentry's parent about a child's events. */
-void __fsnotify_parent(struct file *file, struct dentry *dentry, __u32 mask)
+void __fsnotify_parent(struct path *path, struct dentry *dentry, __u32 mask)
 {
 	struct dentry *parent;
 	struct inode *p_inode;
@@ -92,7 +92,7 @@ void __fsnotify_parent(struct file *file, struct dentry *dentry, __u32 mask)
 	bool should_update_children = false;
 
 	if (!dentry)
-		dentry = file->f_path.dentry;
+		dentry = path->dentry;
 
 	if (!(dentry->d_flags & DCACHE_FSNOTIFY_PARENT_WATCHED))
 		return;
@@ -124,8 +124,8 @@ void __fsnotify_parent(struct file *file, struct dentry *dentry, __u32 mask)
 		 * specifies these are events which came from a child. */
 		mask |= FS_EVENT_ON_CHILD;
 
-		if (file)
-			fsnotify(p_inode, mask, file, FSNOTIFY_EVENT_FILE,
+		if (path)
+			fsnotify(p_inode, mask, path, FSNOTIFY_EVENT_PATH,
 				 dentry->d_name.name, 0);
 		else
 			fsnotify(p_inode, mask, dentry->d_inode, FSNOTIFY_EVENT_INODE,
@@ -152,9 +152,10 @@ static int send_to_group(struct inode *to_tell, struct vfsmount *mnt,
 	__u32 inode_test_mask = 0;
 	__u32 vfsmount_test_mask = 0;
 
-	pr_debug("%s: group=%p to_tell=%p mnt=%p mark=%p mask=%x data=%p"
-		 " data_is=%d cookie=%d event=%p\n", __func__, group, to_tell,
-		 mnt, inode_mark, mask, data, data_is, cookie, *event);
+	if (unlikely(!inode_mark && !vfsmount_mark)) {
+		BUG();
+		return 0;
+	}
 
 	/* clear ignored on inode modification */
 	if (mask & FS_MODIFY) {
@@ -227,8 +228,8 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 	/* global tests shouldn't care about events on child only the specific event */
 	__u32 test_mask = (mask & ~FS_EVENT_ON_CHILD);
 
-	if (data_is == FSNOTIFY_EVENT_FILE)
-		mnt = ((struct file *)data)->f_path.mnt;
+	if (data_is == FSNOTIFY_EVENT_PATH)
+		mnt = ((struct path *)data)->mnt;
 	else
 		mnt = NULL;
 

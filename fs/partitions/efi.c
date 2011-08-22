@@ -96,6 +96,7 @@
 #include <linux/crc32.h>
 #include <linux/math64.h>
 #include <linux/slab.h>
+#include <linux/nls.h>
 #include "check.h"
 #include "efi.h"
 
@@ -602,7 +603,7 @@ int efi_partition(struct parsed_partitions *state)
 {
 	gpt_header *gpt = NULL;
 	gpt_entry *ptes = NULL;
-	u32 i, j;
+	u32 i;
 	unsigned ssz = bdev_logical_block_size(state->bdev) / 512;
 
 	if (!find_valid_gpt(state, &gpt, &ptes) || !gpt || !ptes) {
@@ -618,16 +619,19 @@ int efi_partition(struct parsed_partitions *state)
 		u64 size = le64_to_cpu(ptes[i].ending_lba) -
 			   le64_to_cpu(ptes[i].starting_lba) + 1ULL;
 		u8 name[sizeof(ptes->partition_name) / sizeof(efi_char16_t)];
+		int len;
 
 		if (!is_pte_valid(&ptes[i], last_lba(state->bdev)))
 			continue;
 
-		/* Truncate to ASCII. UTF8 might be better... */
-		for (j = 0; j < sizeof(name); j++)
-			name[j] = ptes[i].partition_name[j] & 0x7f;
+		len = utf16s_to_utf8s(ptes[i].partition_name,
+				      sizeof(ptes[i].partition_name) /
+				      sizeof(efi_char16_t),
+				      UTF16_LITTLE_ENDIAN, name,
+				      sizeof(name));
 
 		put_named_partition(state, i+1, start * ssz, size * ssz,
-				    name, strnlen(name, sizeof(name)));
+				    name, len);
 
 		/* If this is a RAID volume, tell md */
 		if (!efi_guidcmp(ptes[i].partition_type_guid,
@@ -636,6 +640,6 @@ int efi_partition(struct parsed_partitions *state)
 	}
 	kfree(ptes);
 	kfree(gpt);
-	printk("\n");
+	strlcat(state->pp_buf, "\n", PAGE_SIZE);
 	return 1;
 }

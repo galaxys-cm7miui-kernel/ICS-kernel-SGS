@@ -360,7 +360,7 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 	int tag_bytes = journal_tag_bytes(journal);
 	struct buffer_head *cbh = NULL; /* For transactional checksums */
 	__u32 crc32_sum = ~0;
-	int write_op = WRITE_SYNC;
+	int write_op = WRITE;
 
 	/*
 	 * First job: lock down the current transaction and wait for
@@ -379,15 +379,6 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 		jbd2_journal_update_superblock(journal, 1);
 	} else {
 		jbd_debug(3, "superblock not updated\n");
-	}
-
-	if (journal->j_running_transaction == NULL) {
-		/* If we're going to trigger the J_ASSERT below, let's
-		   print some debugging information to figure out why
-		   kjournald decided to wake up and call us */
-		printk(KERN_ERR "JBD2 ASSERT DEBUG: commit_sequence=%d, "
-		       "commit_request=%d\n", journal->j_commit_sequence,
-		       journal->j_commit_request);
 	}
 
 	J_ASSERT(journal->j_running_transaction != NULL);

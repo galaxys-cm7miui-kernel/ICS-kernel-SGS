@@ -17,9 +17,9 @@ static bool should_merge(struct fsnotify_event *old, struct fsnotify_event *new)
 	    old->data_type == new->data_type &&
 	    old->tgid == new->tgid) {
 		switch (old->data_type) {
-		case (FSNOTIFY_EVENT_FILE):
-			if ((old->file->f_path.mnt == new->file->f_path.mnt) &&
-			    (old->file->f_path.dentry == new->file->f_path.dentry))
+		case (FSNOTIFY_EVENT_PATH):
+			if ((old->path.mnt == new->path.mnt) &&
+			    (old->path.dentry == new->path.dentry))
 				return true;
 		case (FSNOTIFY_EVENT_NONE):
 			return true;
@@ -165,16 +165,13 @@ static bool fanotify_should_send_event(struct fsnotify_group *group,
 		 "mask=%x data=%p data_type=%d\n", __func__, group, to_tell,
 		 inode_mark, vfsmnt_mark, event_mask, data, data_type);
 
-	pr_debug("%s: group=%p vfsmount_mark=%p inode_mark=%p mask=%x\n",
-		 __func__, group, vfsmnt_mark, inode_mark, event_mask);
-
 	/* sorry, fanotify only gives a damn about files and dirs */
 	if (!S_ISREG(to_tell->i_mode) &&
 	    !S_ISDIR(to_tell->i_mode))
 		return false;
 
 	/* if we don't have enough info to send an event to userspace say no */
-	if (data_type != FSNOTIFY_EVENT_FILE)
+	if (data_type != FSNOTIFY_EVENT_PATH)
 		return false;
 
 	if (inode_mark && vfsmnt_mark) {

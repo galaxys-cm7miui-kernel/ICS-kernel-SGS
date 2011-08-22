@@ -140,6 +140,13 @@ nfs_opendir(struct inode *inode, struct file *filp)
 
 	/* Call generic open code in order to cache credentials */
 	res = nfs_open(inode, filp);
+	if (filp->f_path.dentry == filp->f_path.mnt->mnt_root) {
+		/* This is a mountpoint, so d_revalidate will never
+		 * have been called, so we need to refresh the
+		 * inode (for close-open consistency) ourselves.
+		 */
+		__nfs_revalidate_inode(NFS_SERVER(inode), inode);
+	}
 	return res;
 }
 
@@ -1652,16 +1659,7 @@ static int nfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 		}
 	}
 
-	/*
-	 * ... prune child dentries and writebacks if needed.
-	 */
-	if (atomic_read(&old_dentry->d_count) > 1) {
-		if (S_ISREG(old_inode->i_mode))
-			nfs_wb_all(old_inode);
-		shrink_dcache_parent(old_dentry);
-	}
 	nfs_inode_return_delegation(old_inode);
-
 	if (new_inode != NULL)
 		nfs_inode_return_delegation(new_inode);
 

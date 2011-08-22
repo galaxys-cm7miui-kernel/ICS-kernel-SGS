@@ -24,7 +24,7 @@
  * This file implements functions needed to recover from unclean un-mounts.
  * When UBIFS is mounted, it checks a flag on the master node to determine if
  * an un-mount was completed successfully. If not, the process of mounting
- * incorparates additional checking and fixing of on-flash data structures.
+ * incorporates additional checking and fixing of on-flash data structures.
  * UBIFS always cleans away all remnants of an unclean un-mount, so that
  * errors do not accumulate. However UBIFS defers recovery if it is mounted
  * read-only, and the flash is not modified in that case.
@@ -300,32 +300,6 @@ int ubifs_recover_master_node(struct ubifs_info *c)
 			goto out_free;
 		}
 		memcpy(c->rcvrd_mst_node, c->mst_node, UBIFS_MST_NODE_SZ);
-
-		/*
-		 * We had to recover the master node, which means there was an
-		 * unclean reboot. However, it is possible that the master node
-		 * is clean at this point, i.e., %UBIFS_MST_DIRTY is not set.
-		 * E.g., consider the following chain of events:
-		 *
-		 * 1. UBIFS was cleanly unmounted, so the master node is clean
-		 * 2. UBIFS is being mounted R/W and starts changing the master
-		 *    node in the first (%UBIFS_MST_LNUM). A power cut happens,
-		 *    so this LEB ends up with some amount of garbage at the
-		 *    end.
-		 * 3. UBIFS is being mounted R/O. We reach this place and
-		 *    recover the master node from the second LEB
-		 *    (%UBIFS_MST_LNUM + 1). But we cannot update the media
-		 *    because we are being mounted R/O. We have to defer the
-		 *    operation.
-		 * 4. However, this master node (@c->mst_node) is marked as
-		 *    clean (since the step 1). And if we just return, the
-		 *    mount code will be confused and won't recover the master
-		 *    node when it is re-mounter R/W later.
-		 *
-		 *    Thus, to force the recovery by marking the master node as
-		 *    dirty.
-		 */
-		c->mst_node->flags |= cpu_to_le32(UBIFS_MST_DIRTY);
 	} else {
 		/* Write the recovered master node */
 		c->max_sqnum = le64_to_cpu(mst->ch.sqnum) - 1;
@@ -1089,8 +1063,21 @@ int ubifs_rcvry_gc_commit(struct ubifs_info *c)
 	}
 	err = ubifs_find_dirty_leb(c, &lp, wbuf->offs, 2);
 	if (err) {
-		if (err == -ENOSPC)
-			dbg_err("could not find a dirty LEB");
+		/*
+		 * There are no dirty or empty LEBs subject to here being
+		 * enough for the index. Try to use
+		 * 'ubifs_find_free_leb_for_idx()', which will return any empty
+		 * LEBs (ignoring index requirements). If the index then
+		 * doesn't have enough LEBs the recovery commit will fail -
+		 * which is the  same result anyway i.e. recovery fails. So
+		 * there is no problem ignoring index  requirements and just
+		 * grabbing a free LEB since we have already established there
+		 * is not a dirty LEB we could have used instead.
+		 */
+		if (err == -ENOSPC) {
+			dbg_rcvry("could not find a dirty LEB");
+			goto find_free;
+		}
 		return err;
 	}
 	ubifs_assert(!(lp.flags & LPROPS_INDEX));
@@ -1165,8 +1152,8 @@ int ubifs_rcvry_gc_commit(struct ubifs_info *c)
 find_free:
 	/*
 	 * There is no GC head LEB or the free space in the GC head LEB is too
-	 * small. Allocate gc_lnum by calling 'ubifs_find_free_leb_for_idx()' so
-	 * GC is not run.
+	 * small, or there are not dirty LEBs. Allocate gc_lnum by calling
+	 * 'ubifs_find_free_leb_for_idx()' so GC is not run.
 	 */
 	lnum = ubifs_find_free_leb_for_idx(c);
 	if (lnum < 0) {

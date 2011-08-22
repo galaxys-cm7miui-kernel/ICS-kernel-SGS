@@ -21,7 +21,6 @@
 #include <linux/rwsem.h>
 #include <linux/rbtree.h>
 #include <linux/poll.h>
-#include <linux/workqueue.h>
 
 /** Max number of pages that can be used in a single read request */
 #define FUSE_MAX_PAGES_PER_REQ 32
@@ -258,10 +257,7 @@ struct fuse_req {
 	union {
 		struct fuse_forget_in forget_in;
 		struct {
-			union {
-				struct fuse_release_in in;
-				struct work_struct work;
-			};
+			struct fuse_release_in in;
 			struct path path;
 		} release;
 		struct fuse_init_in init_in;
@@ -276,6 +272,7 @@ struct fuse_req {
 			struct fuse_write_in in;
 			struct fuse_write_out out;
 		} write;
+		struct fuse_notify_retrieve_in retrieve_in;
 		struct fuse_lk_in lk_in;
 	} misc;
 
@@ -751,5 +748,7 @@ long fuse_do_ioctl(struct file *file, unsigned int cmd, unsigned long arg,
 		   unsigned int flags);
 unsigned fuse_file_poll(struct file *file, poll_table *wait);
 int fuse_dev_release(struct inode *inode, struct file *file);
+
+void fuse_write_update_size(struct inode *inode, loff_t pos);
 
 #endif /* _FS_FUSE_I_H */
