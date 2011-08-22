@@ -143,7 +143,7 @@ extern unsigned long nr_iowait_cpu(int cpu);
 extern unsigned long this_cpu_load(void);
 
 
-extern void calc_global_load(unsigned long ticks);
+extern void calc_global_load(void);
 
 extern unsigned long get_parent_ip(unsigned long addr);
 
@@ -1078,7 +1078,7 @@ struct sched_class {
 					 struct task_struct *task);
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	void (*task_move_group) (struct task_struct *p, int on_rq);
+	void (*moved_group) (struct task_struct *p, int on_rq);
 	void (*prep_move_group) (struct task_struct *p, int on_rq);
 #endif
 };
