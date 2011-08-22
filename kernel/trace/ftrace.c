@@ -1892,7 +1892,6 @@ function_trace_probe_call(unsigned long ip, unsigned long parent_ip)
 	struct hlist_head *hhd;
 	struct hlist_node *n;
 	unsigned long key;
-	int resched;
 
 	key = hash_long(ip, FTRACE_HASH_BITS);
 
@@ -1906,12 +1905,12 @@ function_trace_probe_call(unsigned long ip, unsigned long parent_ip)
 	 * period. This syncs the hash iteration and freeing of items
 	 * on the hash. rcu_read_lock is too dangerous here.
 	 */
-	resched = ftrace_preempt_disable();
+	preempt_disable_notrace();
 	hlist_for_each_entry_rcu(entry, n, hhd, node) {
 		if (entry->ip == ip)
 			entry->ops->func(ip, parent_ip, &entry->data);
 	}
-	ftrace_preempt_enable(resched);
+	preempt_enable_notrace();
 }
 
 static struct ftrace_ops trace_probe_ops __read_mostly =
@@ -3290,7 +3289,7 @@ static int start_graph_tracing(void)
 	/* The cpu_boot init_task->ret_stack will never be freed */
 	for_each_online_cpu(cpu) {
 		if (!idle_task(cpu)->ret_stack)
-			ftrace_graph_init_idle_task(idle_task(cpu), cpu);
+			ftrace_graph_init_task(idle_task(cpu));
 	}
 
 	do {
@@ -3380,49 +3379,6 @@ void unregister_ftrace_graph(void)
 	mutex_unlock(&ftrace_lock);
 }
 
-static DEFINE_PER_CPU(struct ftrace_ret_stack *, idle_ret_stack);
-
-static void
-graph_init_task(struct task_struct *t, struct ftrace_ret_stack *ret_stack)
-{
-	atomic_set(&t->tracing_graph_pause, 0);
-	atomic_set(&t->trace_overrun, 0);
-	t->ftrace_timestamp = 0;
-	/* make curr_ret_stack visable before we add the ret_stack */
-	smp_wmb();
-	t->ret_stack = ret_stack;
-}
-
-/*
- * Allocate a return stack for the idle task. May be the first
- * time through, or it may be done by CPU hotplug online.
- */
-void ftrace_graph_init_idle_task(struct task_struct *t, int cpu)
-{
-	t->curr_ret_stack = -1;
-	/*
-	 * The idle task has no parent, it either has its own
-	 * stack or no stack at all.
-	 */
-	if (t->ret_stack)
-		WARN_ON(t->ret_stack != per_cpu(idle_ret_stack, cpu));
-
-	if (ftrace_graph_active) {
-		struct ftrace_ret_stack *ret_stack;
-
-		ret_stack = per_cpu(idle_ret_stack, cpu);
-		if (!ret_stack) {
-			ret_stack = kmalloc(FTRACE_RETFUNC_DEPTH
-					    * sizeof(struct ftrace_ret_stack),
-					    GFP_KERNEL);
-			if (!ret_stack)
-				return;
-			per_cpu(idle_ret_stack, cpu) = ret_stack;
-		}
-		graph_init_task(t, ret_stack);
-	}
-}
-
 /* Allocate a return stack for newly created task */
 void ftrace_graph_init_task(struct task_struct *t)
 {
@@ -3438,7 +3394,12 @@ void ftrace_graph_init_task(struct task_struct *t)
 				GFP_KERNEL);
 		if (!ret_stack)
 			return;
-		graph_init_task(t, ret_stack);
+		atomic_set(&t->tracing_graph_pause, 0);
+		atomic_set(&t->trace_overrun, 0);
+		t->ftrace_timestamp = 0;
+		/* make curr_ret_stack visable before we add the ret_stack */
+		smp_wmb();
+		t->ret_stack = ret_stack;
 	}
 }
 
