@@ -19,7 +19,7 @@ rm drivers/net/wireless/bcm4329/bcm4329.ko drivers/net/wireless/bcmdhd/bcm4329.k
 
 if [ -f testcompile ]
 then
-        TEST=test
+        TEST=experimental
 	echo '************* WARNING, this is a TEST BUILD ***************'
 fi
 
