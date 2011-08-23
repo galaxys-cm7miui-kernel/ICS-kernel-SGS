@@ -700,7 +700,6 @@ config ARCH_S5PV210
 	select HAVE_CLK
 	select ARM_L1_CACHE_SHIFT_6
 	select ARCH_USES_GETTIMEOFFSET
-	select TICK_ONESHOT
 	help
 	  Samsung S5PV210/S5PC110 series based systems
 
