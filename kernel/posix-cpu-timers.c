@@ -16,13 +16,13 @@
  * siglock protection since other code may update expiration cache as
  * well.
  */
-void update_rlimit_cpu(struct task_struct *task, unsigned long rlim_new)
+void update_rlimit_cpu(unsigned long rlim_new)
 {
 	cputime_t cputime = secs_to_cputime(rlim_new);
 
-	spin_lock_irq(&task->sighand->siglock);
-	set_process_cpu_timer(task, CPUCLOCK_PROF, &cputime, NULL);
-	spin_unlock_irq(&task->sighand->siglock);
+	spin_lock_irq(&current->sighand->siglock);
+	set_process_cpu_timer(current, CPUCLOCK_PROF, &cputime, NULL);
+	spin_unlock_irq(&current->sighand->siglock);
 }
 
 static int check_clock(const clockid_t which_clock)
@@ -232,24 +232,31 @@ static int cpu_clock_sample(const clockid_t which_clock, struct task_struct *p,
 
 void thread_group_cputime(struct task_struct *tsk, struct task_cputime *times)
 {
-	struct signal_struct *sig = tsk->signal;
+	struct sighand_struct *sighand;
+	struct signal_struct *sig;
 	struct task_struct *t;
 
-	times->utime = sig->utime;
-	times->stime = sig->stime;
-	times->sum_exec_runtime = sig->sum_sched_runtime;
+	*times = INIT_CPUTIME;
 
 	rcu_read_lock();
-	/* make sure we can trust tsk->thread_group list */
-	if (!likely(pid_alive(tsk)))
+	sighand = rcu_dereference(tsk->sighand);
+	if (!sighand)
 		goto out;
+
+	sig = tsk->signal;
 
 	t = tsk;
 	do {
 		times->utime = cputime_add(times->utime, t->utime);
 		times->stime = cputime_add(times->stime, t->stime);
 		times->sum_exec_runtime += t->se.sum_exec_runtime;
-	} while_each_thread(tsk, t);
+
+		t = next_thread(t);
+	} while (t != tsk);
+
+	times->utime = cputime_add(times->utime, sig->utime);
+	times->stime = cputime_add(times->stime, sig->stime);
+	times->sum_exec_runtime += sig->sum_sched_runtime;
 out:
 	rcu_read_unlock();
 }
@@ -1272,6 +1279,10 @@ static inline int fastpath_timer_check(struct task_struct *tsk)
 {
 	struct signal_struct *sig;
 
+	/* tsk == current, ensure it is safe to use ->signal/sighand */
+	if (unlikely(tsk->exit_state))
+		return 0;
+
 	if (!task_cputime_zero(&tsk->cputime_expires)) {
 		struct task_cputime task_sample = {
 			.utime = tsk->utime,
@@ -1287,10 +1298,7 @@ static inline int fastpath_timer_check(struct task_struct *tsk)
 	if (sig->cputimer.running) {
 		struct task_cputime group_sample;
 
-		spin_lock(&sig->cputimer.lock);
-		group_sample = sig->cputimer.cputime;
-		spin_unlock(&sig->cputimer.lock);
-
+		thread_group_cputimer(tsk, &group_sample);
 		if (task_cputime_expired(&group_sample, &sig->cputime_expires))
 			return 1;
 	}
@@ -1307,7 +1315,6 @@ void run_posix_cpu_timers(struct task_struct *tsk)
 {
 	LIST_HEAD(firing);
 	struct k_itimer *timer, *next;
-	unsigned long flags;
 
 	BUG_ON(!irqs_disabled());
 
@@ -1318,8 +1325,7 @@ void run_posix_cpu_timers(struct task_struct *tsk)
 	if (!fastpath_timer_check(tsk))
 		return;
 
-	if (!lock_task_sighand(tsk, &flags))
-		return;
+	spin_lock(&tsk->sighand->siglock);
 	/*
 	 * Here we take off tsk->signal->cpu_timers[N] and
 	 * tsk->cpu_timers[N] all the timers that are firing, and
@@ -1341,7 +1347,7 @@ void run_posix_cpu_timers(struct task_struct *tsk)
 	 * that gets the timer lock before we do will give it up and
 	 * spin until we've taken care of that timer below.
 	 */
-	unlock_task_sighand(tsk, &flags);
+	spin_unlock(&tsk->sighand->siglock);
 
 	/*
 	 * Now that all the timers on our list have the firing flag,

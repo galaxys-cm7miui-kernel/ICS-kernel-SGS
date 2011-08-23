@@ -1,5 +1,6 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 1027
 =======
 1018
@@ -7,3 +8,6 @@
 =======
 1015
 >>>>>>> parent of 235131f... Add TINY_PREEMPT_RCU again as it has been deleted by former commit
+=======
+1007
+>>>>>>> parent of fc2f4a8... Import remaining kernel base from 2.6.36

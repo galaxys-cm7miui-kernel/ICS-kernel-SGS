@@ -443,7 +443,6 @@ int ring_buffer_print_page_header(struct trace_seq *s)
  */
 struct ring_buffer_per_cpu {
 	int				cpu;
-	atomic_t			record_disabled;
 	struct ring_buffer		*buffer;
 	spinlock_t			reader_lock;	/* serialize readers */
 	arch_spinlock_t			lock;
@@ -463,6 +462,7 @@ struct ring_buffer_per_cpu {
 	unsigned long			read;
 	u64				write_stamp;
 	u64				read_stamp;
+	atomic_t			record_disabled;
 };
 
 struct ring_buffer {
@@ -2242,6 +2242,8 @@ static void trace_recursive_unlock(void)
 
 #endif
 
+static DEFINE_PER_CPU(int, rb_need_resched);
+
 /**
  * ring_buffer_lock_reserve - reserve a part of the buffer
  * @buffer: the ring buffer to reserve from
@@ -2262,13 +2264,13 @@ ring_buffer_lock_reserve(struct ring_buffer *buffer, unsigned long length)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
 	struct ring_buffer_event *event;
-	int cpu;
+	int cpu, resched;
 
 	if (ring_buffer_flags != RB_BUFFERS_ON)
 		return NULL;
 
 	/* If we are tracing schedule, we don't want to recurse */
-	preempt_disable_notrace();
+	resched = ftrace_preempt_disable();
 
 	if (atomic_read(&buffer->record_disabled))
 		goto out_nocheck;
@@ -2293,13 +2295,21 @@ ring_buffer_lock_reserve(struct ring_buffer *buffer, unsigned long length)
 	if (!event)
 		goto out;
 
+	/*
+	 * Need to store resched state on this cpu.
+	 * Only the first needs to.
+	 */
+
+	if (preempt_count() == 1)
+		per_cpu(rb_need_resched, cpu) = resched;
+
 	return event;
 
  out:
 	trace_recursive_unlock();
 
  out_nocheck:
-	preempt_enable_notrace();
+	ftrace_preempt_enable(resched);
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(ring_buffer_lock_reserve);
@@ -2345,7 +2355,13 @@ int ring_buffer_unlock_commit(struct ring_buffer *buffer,
 
 	trace_recursive_unlock();
 
-	preempt_enable_notrace();
+	/*
+	 * Only the last preempt count needs to restore preemption.
+	 */
+	if (preempt_count() == 1)
+		ftrace_preempt_enable(per_cpu(rb_need_resched, cpu));
+	else
+		preempt_enable_no_resched_notrace();
 
 	return 0;
 }
@@ -2453,7 +2469,13 @@ void ring_buffer_discard_commit(struct ring_buffer *buffer,
 
 	trace_recursive_unlock();
 
-	preempt_enable_notrace();
+	/*
+	 * Only the last preempt count needs to restore preemption.
+	 */
+	if (preempt_count() == 1)
+		ftrace_preempt_enable(per_cpu(rb_need_resched, cpu));
+	else
+		preempt_enable_no_resched_notrace();
 
 }
 EXPORT_SYMBOL_GPL(ring_buffer_discard_commit);
@@ -2479,12 +2501,12 @@ int ring_buffer_write(struct ring_buffer *buffer,
 	struct ring_buffer_event *event;
 	void *body;
 	int ret = -EBUSY;
-	int cpu;
+	int cpu, resched;
 
 	if (ring_buffer_flags != RB_BUFFERS_ON)
 		return -EBUSY;
 
-	preempt_disable_notrace();
+	resched = ftrace_preempt_disable();
 
 	if (atomic_read(&buffer->record_disabled))
 		goto out;
@@ -2514,7 +2536,7 @@ int ring_buffer_write(struct ring_buffer *buffer,
 
 	ret = 0;
  out:
-	preempt_enable_notrace();
+	ftrace_preempt_enable(resched);
 
 	return ret;
 }
@@ -2985,11 +3007,13 @@ static void rb_advance_reader(struct ring_buffer_per_cpu *cpu_buffer)
 
 static void rb_advance_iter(struct ring_buffer_iter *iter)
 {
+	struct ring_buffer *buffer;
 	struct ring_buffer_per_cpu *cpu_buffer;
 	struct ring_buffer_event *event;
 	unsigned length;
 
 	cpu_buffer = iter->cpu_buffer;
+	buffer = cpu_buffer->buffer;
 
 	/*
 	 * Check if we are at the end of the buffer.

@@ -274,6 +274,7 @@ static int kdb_bp(int argc, const char **argv)
 	int i, bpno;
 	kdb_bp_t *bp, *bp_check;
 	int diag;
+	int free;
 	char *symname = NULL;
 	long offset = 0ul;
 	int nextarg;
@@ -304,6 +305,7 @@ static int kdb_bp(int argc, const char **argv)
 	/*
 	 * Find an empty bp structure to allocate
 	 */
+	free = KDB_MAXBPT;
 	for (bpno = 0, bp = kdb_breakpoints; bpno < KDB_MAXBPT; bpno++, bp++) {
 		if (bp->bp_free)
 			break;

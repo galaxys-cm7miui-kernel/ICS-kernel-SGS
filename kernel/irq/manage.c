@@ -360,6 +360,9 @@ int set_irq_wake(unsigned int irq, unsigned int on)
 	unsigned long flags;
 	int ret = 0;
 
+	if (!desc)
+		return -EINVAL;
+
 	/* wakeup-capable irqs can be shared between drivers that
 	 * don't need to have the same sleep mode behaviors.
 	 */
@@ -1093,7 +1096,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 	if (retval)
 		kfree(action);
 
-#ifdef CONFIG_DEBUG_SHIRQ
+#ifdef CONFIG_DEBUG_SHIRQ_FIXME
 	if (!retval && (irqflags & IRQF_SHARED)) {
 		/*
 		 * It's a shared IRQ -- the driver ought to be prepared for it

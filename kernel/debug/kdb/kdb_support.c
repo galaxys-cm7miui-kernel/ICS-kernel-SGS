@@ -82,8 +82,8 @@ static char *kdb_name_table[100];	/* arbitrary size */
 int kdbnearsym(unsigned long addr, kdb_symtab_t *symtab)
 {
 	int ret = 0;
-	unsigned long symbolsize = 0;
-	unsigned long offset = 0;
+	unsigned long symbolsize;
+	unsigned long offset;
 #define knt1_size 128		/* must be >= kallsyms table size */
 	char *knt1 = NULL;
 
