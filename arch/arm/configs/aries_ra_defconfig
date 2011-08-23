@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.36
-# Tue Aug 23 22:28:53 2011
+# Tue Aug 23 23:33:11 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -1788,7 +1788,7 @@ CONFIG_RTC_DRV_S3C=y
 CONFIG_STAGING=y
 # CONFIG_STAGING_EXCLUDE_BUILD is not set
 # CONFIG_ECHO is not set
-# CONFIG_BRCMUTIL is not set
+# CONFIG_BRCM80211 is not set
 # CONFIG_COMEDI is not set
 
 #
@@ -1809,20 +1809,26 @@ CONFIG_ANDROID_TIMED_OUTPUT=y
 CONFIG_ANDROID_TIMED_GPIO=y
 CONFIG_ANDROID_LOW_MEMORY_KILLER=y
 # CONFIG_POHMELFS is not set
-
-#
-# RAR Register Driver
-#
+# CONFIG_AUTOFS_FS is not set
 # CONFIG_IIO is not set
+CONFIG_ZRAM=y
 # CONFIG_BATMAN_ADV is not set
 # CONFIG_FB_SM7XX is not set
 
 #
 # Texas Instruments shared transport line discipline
 #
-# CONFIG_TI_ST is not set
 # CONFIG_ST_BT is not set
 # CONFIG_ADIS16255 is not set
+# CONFIG_SMB_FS is not set
+# CONFIG_MACH_OMAP3_WESTBRIDGE_AST_PNAND_HAL is not set
+CONFIG_MACH_NO_WESTBRIDGE=y
+# CONFIG_ATH6K_LEGACY is not set
+# CONFIG_FT1000 is not set
+
+#
+# Speakup console speech
+#
 
 #
 # File systems
@@ -1848,7 +1854,6 @@ CONFIG_FSNOTIFY=y
 # CONFIG_DNOTIFY is not set
 CONFIG_INOTIFY_USER=y
 # CONFIG_QUOTA is not set
-# CONFIG_AUTOFS_FS is not set
 # CONFIG_AUTOFS4_FS is not set
 # CONFIG_FUSE_FS is not set
 CONFIG_GENERIC_ACL=y
@@ -1924,7 +1929,6 @@ CONFIG_SYSV_FS=y
 CONFIG_NETWORK_FILESYSTEMS=y
 # CONFIG_NFS_FS is not set
 # CONFIG_NFSD is not set
-# CONFIG_SMB_FS is not set
 # CONFIG_CEPH_FS is not set
 CONFIG_CIFS=m
 # CONFIG_CIFS_STATS is not set
@@ -2214,6 +2218,8 @@ CONFIG_CRC32=y
 CONFIG_LIBCRC32C=y
 CONFIG_ZLIB_INFLATE=y
 CONFIG_ZLIB_DEFLATE=y
+CONFIG_LZO_COMPRESS=y
+CONFIG_LZO_DECOMPRESS=y
 CONFIG_REED_SOLOMON=y
 CONFIG_REED_SOLOMON_ENC8=y
 CONFIG_REED_SOLOMON_DEC8=y

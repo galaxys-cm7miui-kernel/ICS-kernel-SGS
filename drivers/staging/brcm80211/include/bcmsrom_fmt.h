@@ -103,9 +103,9 @@
 
 #define	SROM_CRCREV		63
 
-/* SROM Rev 4: Reallocate the software part of the srom to accommodate
+/* SROM Rev 4: Reallocate the software part of the srom to accomodate
  * MIMO features. It assumes up to two PCIE functions and 440 bytes
- * of usable srom i.e. the usable storage in chips with OTP that
+ * of useable srom i.e. the useable storage in chips with OTP that
  * implements hardware redundancy.
  */
 

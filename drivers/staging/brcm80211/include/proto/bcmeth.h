@@ -17,6 +17,8 @@
 #ifndef _BCMETH_H_
 #define _BCMETH_H_
 
+#include <packed_section_start.h>
+
 #define	BCMILCP_SUBTYPE_RATE		1
 #define	BCMILCP_SUBTYPE_LINK		2
 #define	BCMILCP_SUBTYPE_CSA		3
@@ -33,12 +35,14 @@
 #define BCMILCP_BCM_SUBTYPEHDR_MINLENGTH	8
 #define BCMILCP_BCM_SUBTYPEHDR_VERSION		0
 
-typedef  struct bcmeth_hdr {
+typedef BWL_PRE_PACKED_STRUCT struct bcmeth_hdr {
 	u16 subtype;
 	u16 length;
 	u8 version;
 	u8 oui[3];
 	u16 usr_subtype;
-} __attribute__((packed)) bcmeth_hdr_t;
+} BWL_POST_PACKED_STRUCT bcmeth_hdr_t;
+
+#include <packed_section_end.h>
 
 #endif				/* _BCMETH_H_ */

@@ -629,7 +629,7 @@ static int snd_cx25821_pcm(struct cx25821_audio_dev *chip, int device,
  * Only boards with eeprom and byte 1 at eeprom=1 have it
  */
 
-static struct pci_device_id cx25821_audio_pci_tbl[] __devinitdata = {
+static const struct pci_device_id cx25821_audio_pci_tbl[] __devinitdata = {
 	{0x14f1, 0x0920, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
 	{0,}
 };
@@ -698,7 +698,7 @@ static int cx25821_audio_initdev(struct cx25821_dev *dev)
 
 	/* Card "creation" */
 	card->private_free = snd_cx25821_dev_free;
-	chip = (struct cx25821_audio_dev *) card->private_data;
+	chip = card->private_data;
 	spin_lock_init(&chip->reg_lock);
 
 	chip->dev = dev;
