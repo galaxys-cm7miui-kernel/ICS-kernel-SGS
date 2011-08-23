@@ -89,18 +89,7 @@ static struct comedi_driver driver_pcmad = {
 	.offset = sizeof(pcmad_boards[0]),
 };
 
-static int __init driver_pcmad_init_module(void)
-{
-	return comedi_driver_register(&driver_pcmad);
-}
-
-static void __exit driver_pcmad_cleanup_module(void)
-{
-	comedi_driver_unregister(&driver_pcmad);
-}
-
-module_init(driver_pcmad_init_module);
-module_exit(driver_pcmad_cleanup_module);
+COMEDI_INITCLEANUP(driver_pcmad);
 
 #define TIMEOUT	100
 
@@ -187,7 +176,3 @@ static int pcmad_detach(struct comedi_device *dev)
 
 	return 0;
 }
-
-MODULE_AUTHOR("Comedi http://www.comedi.org");
-MODULE_DESCRIPTION("Comedi low-level driver");
-MODULE_LICENSE("GPL");

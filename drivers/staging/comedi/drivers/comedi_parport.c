@@ -101,18 +101,7 @@ static struct comedi_driver driver_parport = {
 	.detach = parport_detach,
 };
 
-static int __init driver_parport_init_module(void)
-{
-	return comedi_driver_register(&driver_parport);
-}
-
-static void __exit driver_parport_cleanup_module(void)
-{
-	comedi_driver_unregister(&driver_parport);
-}
-
-module_init(driver_parport_init_module);
-module_exit(driver_parport_cleanup_module);
+COMEDI_INITCLEANUP(driver_parport);
 
 struct parport_private {
 	unsigned int a_data;
@@ -407,7 +396,3 @@ static int parport_detach(struct comedi_device *dev)
 
 	return 0;
 }
-
-MODULE_AUTHOR("Comedi http://www.comedi.org");
-MODULE_DESCRIPTION("Comedi low-level driver");
-MODULE_LICENSE("GPL");

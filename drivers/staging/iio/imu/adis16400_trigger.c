@@ -23,7 +23,8 @@ static int adis16400_data_rdy_trig_poll(struct iio_dev *dev_info,
 	struct adis16400_state *st = iio_dev_get_devdata(dev_info);
 	struct iio_trigger *trig = st->trig;
 
-	iio_trigger_poll(trig, timestamp);
+	trig->timestamp = timestamp;
+	iio_trigger_poll(trig);
 
 	return IRQ_HANDLED;
 }
@@ -85,13 +86,14 @@ int adis16400_probe_trigger(struct iio_dev *indio_dev)
 	struct adis16400_state *st = indio_dev->dev_data;
 
 	st->trig = iio_allocate_trigger();
-	st->trig->name = kasprintf(GFP_KERNEL,
-				   "adis16400-dev%d",
-				   indio_dev->id);
+	st->trig->name = kmalloc(IIO_TRIGGER_NAME_LENGTH, GFP_KERNEL);
 	if (!st->trig->name) {
 		ret = -ENOMEM;
 		goto error_free_trig;
 	}
+	snprintf((char *)st->trig->name,
+		 IIO_TRIGGER_NAME_LENGTH,
+		 "adis16400-dev%d", indio_dev->id);
 	st->trig->dev.parent = &st->us->dev;
 	st->trig->owner = THIS_MODULE;
 	st->trig->private_data = st;

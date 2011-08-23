@@ -67,7 +67,7 @@
 #define VENDOR_DIR_OUT		0x40
 
 /*
- * internal addresses of the 8051 processor
+ * internal adresses of the 8051 processor
  */
 #define USBDUXFASTSUB_CPUCS	0xE600
 

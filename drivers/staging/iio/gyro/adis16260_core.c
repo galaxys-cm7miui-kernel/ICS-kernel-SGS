@@ -14,13 +14,12 @@
 #include <linux/device.h>
 #include <linux/kernel.h>
 #include <linux/spi/spi.h>
-#include <linux/slab.h>
+
 #include <linux/sysfs.h>
 #include <linux/list.h>
 
 #include "../iio.h"
 #include "../sysfs.h"
-#include "../ring_generic.h"
 #include "../adc/adc.h"
 #include "gyro.h"
 
@@ -556,7 +555,8 @@ static int __devinit adis16260_probe(struct spi_device *spi)
 	if (ret)
 		goto error_unreg_ring_funcs;
 	regdone = 1;
-	ret = iio_ring_buffer_register(st->indio_dev->ring, 0);
+
+	ret = adis16260_initialize_ring(st->indio_dev->ring);
 	if (ret) {
 		printk(KERN_ERR "failed to initialize the ring\n");
 		goto error_unreg_ring_funcs;
@@ -588,7 +588,7 @@ error_unregister_line:
 	if (spi->irq)
 		iio_unregister_interrupt_line(st->indio_dev, 0);
 error_uninitialize_ring:
-	iio_ring_buffer_unregister(st->indio_dev->ring);
+	adis16260_uninitialize_ring(st->indio_dev->ring);
 error_unreg_ring_funcs:
 	adis16260_unconfigure_ring(st->indio_dev);
 error_free_dev:
@@ -622,12 +622,14 @@ static int adis16260_remove(struct spi_device *spi)
 	if (spi->irq)
 		iio_unregister_interrupt_line(indio_dev, 0);
 
-	iio_ring_buffer_unregister(st->indio_dev->ring);
+	adis16260_uninitialize_ring(indio_dev->ring);
 	iio_device_unregister(indio_dev);
 	adis16260_unconfigure_ring(indio_dev);
 	kfree(st->tx);
 	kfree(st->rx);
 	kfree(st);
+
+	return 0;
 
 err_ret:
 	return ret;

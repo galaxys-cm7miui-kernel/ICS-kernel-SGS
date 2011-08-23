@@ -1,21 +1,9 @@
-/******************************************************************************
- * Copyright(c) 2008 - 2010 Realtek Corporation. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- * The full GNU General Public License is included in this distribution in the
- * file called LICENSE.
- *
- * Contact Information:
- * wlanfae <wlanfae@realtek.com>
-******************************************************************************/
+/********************************************************************************************************************************
+ * This file is created to process BA Action Frame. According to 802.11 spec, there are 3 BA action types at all. And as BA is
+ * related to TS, this part need some struture defined in QOS side code. Also TX RX is going to be resturctured, so how to send
+ * ADDBAREQ ADDBARSP and DELBA packet is still on consideration. Temporarily use MANAGE QUEUE instead of Normal Queue.
+ * WB 2008-05-27
+ * *****************************************************************************************************************************/
 #include "ieee80211.h"
 #include "rtl819x_BA.h"
 
@@ -124,6 +112,7 @@ static struct sk_buff* ieee80211_ADDBA(struct ieee80211_device* ieee, u8* Dst, P
 	u8* tag = NULL;
 	u16 tmp = 0;
 	u16 len = ieee->tx_headroom + 9;
+	//category(1) + action field(1) + Dialog Token(1) + BA Parameter Set(2) +  BA Timeout Value(2) +  BA Start SeqCtrl(2)(or StatusCode(2))
 	IEEE80211_DEBUG(IEEE80211_DL_TRACE | IEEE80211_DL_BA, "========>%s(), frame(%d) sentd to:%pM, ieee->dev:%p\n", __FUNCTION__, type, Dst, ieee->dev);
 	if (pBA == NULL||ieee == NULL)
 	{
@@ -149,6 +138,7 @@ static struct sk_buff* ieee80211_ADDBA(struct ieee80211_device* ieee, u8* Dst, P
 
 	BAReq->frame_control = cpu_to_le16(IEEE80211_STYPE_MANAGE_ACT); //action frame
 
+	//tag += sizeof( struct ieee80211_hdr_3addr); //move to action field
 	tag = (u8*)skb_put(skb, 9);
 	*tag ++= ACT_CAT_BA;
 	*tag ++= type;
@@ -181,6 +171,7 @@ static struct sk_buff* ieee80211_ADDBA(struct ieee80211_device* ieee, u8* Dst, P
 
 	IEEE80211_DEBUG_DATA(IEEE80211_DL_DATA|IEEE80211_DL_BA, skb->data, skb->len);
 	return skb;
+	//return NULL;
 }
 
 /********************************************************************************************************************
@@ -205,6 +196,7 @@ static struct sk_buff* ieee80211_DELBA(
 	 struct ieee80211_hdr_3addr* Delba = NULL;
 	u8* tag = NULL;
 	u16 tmp = 0;
+	//len = head len + DELBA Parameter Set(2) + Reason Code(2)
 	u16 len = 6 + ieee->tx_headroom;
 
 	if (net_ratelimit())
@@ -221,6 +213,7 @@ static struct sk_buff* ieee80211_DELBA(
 		IEEE80211_DEBUG(IEEE80211_DL_ERR, "can't alloc skb for ADDBA_REQ\n");
 		return NULL;
 	}
+//	memset(skb->data, 0, len+sizeof( struct ieee80211_hdr_3addr));
 	skb_reserve(skb, ieee->tx_headroom);
 
 	Delba = ( struct ieee80211_hdr_3addr *) skb_put(skb,sizeof( struct ieee80211_hdr_3addr));
@@ -265,6 +258,9 @@ void ieee80211_send_ADDBAReq(struct ieee80211_device* ieee, u8*	dst, PBA_RECORD	
 	if (skb)
 	{
 		softmac_mgmt_xmit(skb, ieee);
+		//add statistic needed here.
+		//and skb will be freed in softmac_mgmt_xmit(), so omit all dev_kfree_skb_any() outside softmac_mgmt_xmit()
+		//WB
 	}
 	else
 	{
@@ -288,6 +284,7 @@ void ieee80211_send_ADDBARsp(struct ieee80211_device* ieee, u8* dst, PBA_RECORD 
 	if (skb)
 	{
 		softmac_mgmt_xmit(skb, ieee);
+		//same above
 	}
 	else
 	{
@@ -314,6 +311,7 @@ void ieee80211_send_DELBA(struct ieee80211_device* ieee, u8* dst, PBA_RECORD pBA
 	if (skb)
 	{
 		softmac_mgmt_xmit(skb, ieee);
+		//same above
 	}
 	else
 	{
@@ -363,7 +361,8 @@ int ieee80211_rx_ADDBAReq( struct ieee80211_device* ieee, struct sk_buff *skb)
 //some other capability is not ready now.
 	if(	(ieee->current_network.qos_data.active == 0) ||
 		(ieee->pHTInfo->bCurrentHTSupport == false) ||
-		(ieee->pHTInfo->IOTAction & HT_IOT_ACT_REJECT_ADDBA_REQ))
+		(ieee->pHTInfo->IOTAction & HT_IOT_ACT_REJECT_ADDBA_REQ)) //||
+	//	(ieee->pStaQos->bEnableRxImmBA == false)	)
 	{
 		rc = ADDBA_STATUS_REFUSED;
 		IEEE80211_DEBUG(IEEE80211_DL_ERR, "Failed to reply on ADDBA_REQ as some capability is not ready(%d, %d)\n", ieee->current_network.qos_data.active, ieee->pHTInfo->bCurrentHTSupport);
@@ -395,6 +394,7 @@ int ieee80211_rx_ADDBAReq( struct ieee80211_device* ieee, struct sk_buff *skb)
 		goto OnADDBAReq_Fail;
 	}
 		// Admit the ADDBA Request
+	//
 	DeActivateBAEntry(ieee, pBA);
 	pBA->DialogToken = *pDialogToken;
 	pBA->BaParamSet = *pBaParamSet;
@@ -406,9 +406,10 @@ int ieee80211_rx_ADDBAReq( struct ieee80211_device* ieee, struct sk_buff *skb)
 	pBA->BaParamSet.field.BufferSize = 1;
 	else
 	pBA->BaParamSet.field.BufferSize = 32;
-	ActivateBAEntry(ieee, pBA, 0);
+	ActivateBAEntry(ieee, pBA, 0);//pBA->BaTimeoutValue);
 	ieee80211_send_ADDBARsp(ieee, dst, pBA, ADDBA_STATUS_SUCCESS);
 
+	// End of procedure.
 	return 0;
 
 OnADDBAReq_Fail:
@@ -540,11 +541,11 @@ int ieee80211_rx_ADDBARsp( struct ieee80211_device* ieee, struct sk_buff *skb)
 		pAdmittedBA->BaParamSet = *pBaParamSet;
 		DeActivateBAEntry(ieee, pAdmittedBA);
 		ActivateBAEntry(ieee, pAdmittedBA, *pBaTimeoutVal);
-	} else {
+	}
+	else
+	{
+		// Delay next ADDBA process.
 		pTS->bAddBaReqDelayed = true;
-		pTS->bDisable_AddBa = true;
-		ReasonCode = DELBA_REASON_END_BA;
-		goto OnADDBARsp_Reject;
 	}
 
 	// End of procedure
@@ -634,6 +635,7 @@ int ieee80211_rx_DELBA(struct ieee80211_device* ieee,struct sk_buff *skb)
 		pTxTs->bAddBaReqInProgress = false;
 		pTxTs->bAddBaReqDelayed = false;
 		del_timer_sync(&pTxTs->TsAddBaTimer);
+		//PlatformCancelTimer(Adapter, &pTxTs->TsAddBaTimer);
 		TxTsDeleteBA(ieee, pTxTs);
 	}
 	return 0;

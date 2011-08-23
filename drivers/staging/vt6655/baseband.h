@@ -118,45 +118,45 @@
 
 /*---------------------  Export Functions  --------------------------*/
 
-unsigned int
+UINT
 BBuGetFrameTime(
-    unsigned char byPreambleType,
-    unsigned char byPktType,
-    unsigned int cbFrameLength,
-    unsigned short wRate
+    BYTE byPreambleType,
+    BYTE byPktType,
+    UINT cbFrameLength,
+    WORD wRate
     );
 
 void
 BBvCaculateParameter (
     PSDevice pDevice,
-    unsigned int cbFrameLength,
-    unsigned short wRate,
-    unsigned char byPacketType,
-    unsigned short *pwPhyLen,
-    unsigned char *pbyPhySrv,
-    unsigned char *pbyPhySgn
+    UINT cbFrameLength,
+    WORD wRate,
+    BYTE byPacketType,
+    PWORD pwPhyLen,
+    PBYTE pbyPhySrv,
+    PBYTE pbyPhySgn
     );
 
-bool BBbReadEmbeded(unsigned long dwIoBase, unsigned char byBBAddr, unsigned char *pbyData);
-bool BBbWriteEmbeded(unsigned long dwIoBase, unsigned char byBBAddr, unsigned char byData);
+BOOL BBbReadEmbeded(DWORD_PTR dwIoBase, BYTE byBBAddr, PBYTE pbyData);
+BOOL BBbWriteEmbeded(DWORD_PTR dwIoBase, BYTE byBBAddr, BYTE byData);
 
-void BBvReadAllRegs(unsigned long dwIoBase, unsigned char *pbyBBRegs);
+void BBvReadAllRegs(DWORD_PTR dwIoBase, PBYTE pbyBBRegs);
 void BBvLoopbackOn(PSDevice pDevice);
 void BBvLoopbackOff(PSDevice pDevice);
 void BBvSetShortSlotTime(PSDevice pDevice);
-bool BBbIsRegBitsOn(unsigned long dwIoBase, unsigned char byBBAddr, unsigned char byTestBits);
-bool BBbIsRegBitsOff(unsigned long dwIoBase, unsigned char byBBAddr, unsigned char byTestBits);
-void BBvSetVGAGainOffset(PSDevice pDevice, unsigned char byData);
+BOOL BBbIsRegBitsOn(DWORD_PTR dwIoBase, BYTE byBBAddr, BYTE byTestBits);
+BOOL BBbIsRegBitsOff(DWORD_PTR dwIoBase, BYTE byBBAddr, BYTE byTestBits);
+void BBvSetVGAGainOffset(PSDevice pDevice, BYTE byData);
 
 // VT3253 Baseband
-bool BBbVT3253Init(PSDevice pDevice);
-void BBvSoftwareReset(unsigned long dwIoBase);
-void BBvPowerSaveModeON(unsigned long dwIoBase);
-void BBvPowerSaveModeOFF(unsigned long dwIoBase);
-void BBvSetTxAntennaMode(unsigned long dwIoBase, unsigned char byAntennaMode);
-void BBvSetRxAntennaMode(unsigned long dwIoBase, unsigned char byAntennaMode);
-void BBvSetDeepSleep(unsigned long dwIoBase, unsigned char byLocalID);
-void BBvExitDeepSleep(unsigned long dwIoBase, unsigned char byLocalID);
+BOOL BBbVT3253Init(PSDevice pDevice);
+void BBvSoftwareReset(DWORD_PTR dwIoBase);
+void BBvPowerSaveModeON(DWORD_PTR dwIoBase);
+void BBvPowerSaveModeOFF(DWORD_PTR dwIoBase);
+void BBvSetTxAntennaMode(DWORD_PTR dwIoBase, BYTE byAntennaMode);
+void BBvSetRxAntennaMode(DWORD_PTR dwIoBase, BYTE byAntennaMode);
+void BBvSetDeepSleep(DWORD_PTR dwIoBase, BYTE byLocalID);
+void BBvExitDeepSleep(DWORD_PTR dwIoBase, BYTE byLocalID);
 
 // timer for antenna diversity
 
@@ -170,7 +170,7 @@ TimerState1CallBack(
     void *hDeviceContext
     );
 
-void BBvAntennaDiversity(PSDevice pDevice, unsigned char byRxRate, unsigned char bySQ3);
+void BBvAntennaDiversity(PSDevice pDevice, BYTE byRxRate, BYTE bySQ3);
 void
 BBvClearAntDivSQ3Value (PSDevice pDevice);
 

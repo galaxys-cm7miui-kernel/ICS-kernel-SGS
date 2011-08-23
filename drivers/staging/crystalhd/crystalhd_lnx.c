@@ -15,12 +15,11 @@
   along with this driver.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************/
 
-#include <linux/mutex.h>
+#include <linux/smp_lock.h>
 #include <linux/slab.h>
 
 #include "crystalhd_lnx.h"
 
-static DEFINE_MUTEX(chd_dec_mutex);
 static struct class *crystalhd_class;
 
 static struct crystalhd_adp *g_adp_info;
@@ -153,8 +152,10 @@ static int chd_dec_fetch_cdata(struct crystalhd_adp *adp, struct crystalhd_ioctl
 	if (rc) {
 		BCMLOG_ERR("failed to pull add_cdata sz:%x ua_off:%x\n",
 			   io->add_cdata_sz, (unsigned int)ua_off);
-		kfree(io->add_cdata);
-		io->add_cdata = NULL;
+		if (io->add_cdata) {
+			kfree(io->add_cdata);
+			io->add_cdata = NULL;
+		}
 		return -ENODATA;
 	}
 
@@ -272,22 +273,22 @@ static long chd_dec_ioctl(struct file *fd, unsigned int cmd, unsigned long ua)
 		return -EINVAL;
 	}
 
-	uc = fd->private_data;
+	uc = (struct crystalhd_user *)fd->private_data;
 	if (!uc) {
 		BCMLOG_ERR("Failed to get uc\n");
 		return -ENODATA;
 	}
 
-	mutex_lock(&chd_dec_mutex);
+	lock_kernel();
 	cproc = crystalhd_get_cmd_proc(&adp->cmds, cmd, uc);
 	if (!cproc) {
 		BCMLOG_ERR("Unhandled command: %d\n", cmd);
-		mutex_unlock(&chd_dec_mutex);
+		unlock_kernel();
 		return -EINVAL;
 	}
 
 	ret = chd_dec_api_cmd(adp, ua, uc->uid, cmd, cproc);
-	mutex_unlock(&chd_dec_mutex);
+	unlock_kernel();
 	return ret;
 }
 
@@ -333,7 +334,7 @@ static int chd_dec_close(struct inode *in, struct file *fd)
 		return -EINVAL;
 	}
 
-	uc = fd->private_data;
+	uc = (struct crystalhd_user *)fd->private_data;
 	if (!uc) {
 		BCMLOG_ERR("Failed to get uc\n");
 		return -ENODATA;
@@ -434,7 +435,8 @@ static void __devexit chd_dec_release_chdev(struct crystalhd_adp *adp)
 	/* Clear iodata pool.. */
 	do {
 		temp = chd_dec_alloc_iodata(adp, 0);
-		kfree(temp);
+		if (temp)
+			kfree(temp);
 	} while (temp);
 
 	crystalhd_delete_elem_pool(adp);

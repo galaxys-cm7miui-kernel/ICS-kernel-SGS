@@ -186,6 +186,7 @@ static int StorVscChannelInit(struct hv_device *Device)
 	if (!storDevice) {
 		DPRINT_ERR(STORVSC, "unable to get stor device..."
 			   "device being destroyed?");
+		DPRINT_EXIT(STORVSC);
 		return -1;
 	}
 
@@ -343,6 +344,8 @@ Cleanup:
 	request->WaitEvent = NULL;
 nomem:
 	PutStorDevice(Device);
+
+	DPRINT_EXIT(STORVSC);
 	return ret;
 }
 
@@ -353,10 +356,13 @@ static void StorVscOnIOCompletion(struct hv_device *Device,
 	struct hv_storvsc_request *request;
 	struct storvsc_device *storDevice;
 
+	DPRINT_ENTER(STORVSC);
+
 	storDevice = MustGetStorDevice(Device);
 	if (!storDevice) {
 		DPRINT_ERR(STORVSC, "unable to get stor device..."
 			   "device being destroyed?");
+		DPRINT_EXIT(STORVSC);
 		return;
 	}
 
@@ -408,6 +414,8 @@ static void StorVscOnIOCompletion(struct hv_device *Device,
 	atomic_dec(&storDevice->NumOutstandingRequests);
 
 	PutStorDevice(Device);
+
+	DPRINT_EXIT(STORVSC);
 }
 
 static void StorVscOnReceive(struct hv_device *Device,
@@ -441,12 +449,15 @@ static void StorVscOnChannelCallback(void *context)
 	struct storvsc_request_extension *request;
 	int ret;
 
+	DPRINT_ENTER(STORVSC);
+
 	/* ASSERT(device); */
 
 	storDevice = MustGetStorDevice(device);
 	if (!storDevice) {
 		DPRINT_ERR(STORVSC, "unable to get stor device..."
 			   "device being destroyed?");
+		DPRINT_EXIT(STORVSC);
 		return;
 	}
 
@@ -490,6 +501,8 @@ static void StorVscOnChannelCallback(void *context)
 	} while (1);
 
 	PutStorDevice(device);
+
+	DPRINT_EXIT(STORVSC);
 	return;
 }
 
@@ -534,6 +547,8 @@ static int StorVscOnDeviceAdd(struct hv_device *Device, void *AdditionalInfo)
 	struct storvsc_device_info *deviceInfo;
 	int ret = 0;
 
+	DPRINT_ENTER(STORVSC);
+
 	deviceInfo = (struct storvsc_device_info *)AdditionalInfo;
 	storDevice = AllocStorDevice(Device);
 	if (!storDevice) {
@@ -569,6 +584,8 @@ static int StorVscOnDeviceAdd(struct hv_device *Device, void *AdditionalInfo)
 		   storDevice->TargetId);
 
 Cleanup:
+	DPRINT_EXIT(STORVSC);
+
 	return ret;
 }
 
@@ -578,6 +595,8 @@ Cleanup:
 static int StorVscOnDeviceRemove(struct hv_device *Device)
 {
 	struct storvsc_device *storDevice;
+
+	DPRINT_ENTER(STORVSC);
 
 	DPRINT_INFO(STORVSC, "disabling storage device (%p)...",
 		    Device->Extension);
@@ -606,6 +625,8 @@ static int StorVscOnDeviceRemove(struct hv_device *Device)
 	Device->Driver->VmbusChannelInterface.Close(Device);
 
 	FreeStorDevice(storDevice);
+
+	DPRINT_EXIT(STORVSC);
 	return 0;
 }
 
@@ -616,12 +637,15 @@ int StorVscOnHostReset(struct hv_device *Device)
 	struct vstor_packet *vstorPacket;
 	int ret;
 
+	DPRINT_ENTER(STORVSC);
+
 	DPRINT_INFO(STORVSC, "resetting host adapter...");
 
 	storDevice = GetStorDevice(Device);
 	if (!storDevice) {
 		DPRINT_ERR(STORVSC, "unable to get stor device..."
 			   "device being destroyed?");
+		DPRINT_EXIT(STORVSC);
 		return -1;
 	}
 
@@ -663,6 +687,7 @@ int StorVscOnHostReset(struct hv_device *Device)
 
 Cleanup:
 	PutStorDevice(Device);
+	DPRINT_EXIT(STORVSC);
 	return ret;
 }
 
@@ -676,6 +701,8 @@ static int StorVscOnIORequest(struct hv_device *Device,
 	struct storvsc_request_extension *requestExtension;
 	struct vstor_packet *vstorPacket;
 	int ret = 0;
+
+	DPRINT_ENTER(STORVSC);
 
 	requestExtension =
 		(struct storvsc_request_extension *)Request->Extension;
@@ -693,6 +720,7 @@ static int StorVscOnIORequest(struct hv_device *Device,
 	if (!storDevice) {
 		DPRINT_ERR(STORVSC, "unable to get stor device..."
 			   "device being destroyed?");
+		DPRINT_EXIT(STORVSC);
 		return -2;
 	}
 
@@ -758,6 +786,8 @@ static int StorVscOnIORequest(struct hv_device *Device,
 	atomic_inc(&storDevice->NumOutstandingRequests);
 
 	PutStorDevice(Device);
+
+	DPRINT_EXIT(STORVSC);
 	return ret;
 }
 
@@ -766,6 +796,8 @@ static int StorVscOnIORequest(struct hv_device *Device,
  */
 static void StorVscOnCleanup(struct hv_driver *Driver)
 {
+	DPRINT_ENTER(STORVSC);
+	DPRINT_EXIT(STORVSC);
 }
 
 /*
@@ -774,6 +806,8 @@ static void StorVscOnCleanup(struct hv_driver *Driver)
 int StorVscInitialize(struct hv_driver *Driver)
 {
 	struct storvsc_driver_object *storDriver;
+
+	DPRINT_ENTER(STORVSC);
 
 	storDriver = (struct storvsc_driver_object *)Driver;
 
@@ -817,6 +851,8 @@ int StorVscInitialize(struct hv_driver *Driver)
 	storDriver->Base.OnCleanup	= StorVscOnCleanup;
 
 	storDriver->OnIORequest		= StorVscOnIORequest;
+
+	DPRINT_EXIT(STORVSC);
 
 	return 0;
 }

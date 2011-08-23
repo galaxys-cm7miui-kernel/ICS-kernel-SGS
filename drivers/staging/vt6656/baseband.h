@@ -104,13 +104,16 @@ BBuGetFrameTime(
      WORD wRate
     );
 
-void BBvCaculateParameter(PSDevice pDevice,
-			  unsigned int cbFrameLength,
-			  WORD wRate,
-			  BYTE byPacketType,
-			  PWORD pwPhyLen,
-			  PBYTE pbyPhySrv,
-			  PBYTE pbyPhySgn);
+void
+BBvCaculateParameter (
+      PSDevice pDevice,
+      unsigned int cbFrameLength,
+      WORD wRate,
+      BYTE byPacketType,
+     PWORD pwPhyLen,
+     PBYTE pbyPhySrv,
+     PBYTE pbyPhySgn
+    );
 
 // timer for antenna diversity
 
@@ -125,7 +128,7 @@ void BBvSoftwareReset(PSDevice pDevice);
 void BBvSetShortSlotTime(PSDevice pDevice);
 void BBvSetVGAGainOffset(PSDevice pDevice, BYTE byData);
 void BBvSetAntennaMode(PSDevice pDevice, BYTE byAntennaMode);
-BOOL BBbVT3184Init(PSDevice pDevice);
+BOOL BBbVT3184Init (PSDevice pDevice);
 void BBvSetDeepSleep(PSDevice pDevice);
 void BBvExitDeepSleep(PSDevice pDevice);
 void BBvUpdatePreEDThreshold(

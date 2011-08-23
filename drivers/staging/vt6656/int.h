@@ -57,7 +57,7 @@ typedef struct tagSINTData {
     BYTE    byACKFail;
     BYTE    byFCSErr;
     BYTE    abySW[2];
-} __attribute__ ((__packed__))
+}__attribute__ ((__packed__))
 SINTData, *PSINTData;
 
 
@@ -68,6 +68,10 @@ SINTData, *PSINTData;
 /*---------------------  Export Functions  --------------------------*/
 
 void INTvWorkItem(void *Context);
-int INTnsProcessData(PSDevice pDevice);
+
+NTSTATUS
+INTnsProcessData(
+      PSDevice pDevice
+    );
 
 #endif /* __INT_H__ */

@@ -62,14 +62,16 @@ static int pci_card_data(struct pcilst_struct *amcc,
 /* build list of Inova cards in this system */
 static void pci_card_list_init(unsigned short pci_vendor, char display)
 {
-	struct pci_dev *pcidev = NULL;
+	struct pci_dev *pcidev;
 	struct pcilst_struct *inova, *last;
 	int i;
 
 	inova_devices = NULL;
 	last = NULL;
 
-	for_each_pci_dev(pcidev) {
+	for (pcidev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, NULL);
+	     pcidev != NULL;
+	     pcidev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID, pcidev)) {
 		if (pcidev->vendor == pci_vendor) {
 			inova = kzalloc(sizeof(*inova), GFP_KERNEL);
 			if (!inova) {

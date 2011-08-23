@@ -43,8 +43,8 @@
 			_dummy > smallest_signed_int(_dummy); })
 #define seq_after(x, y) seq_before(y, x)
 
-static struct hashtable_t *vis_hash;
-static DEFINE_SPINLOCK(vis_hash_lock);
+struct hashtable_t *vis_hash;
+DEFINE_SPINLOCK(vis_hash_lock);
 static DEFINE_SPINLOCK(recv_list_lock);
 static struct vis_info *my_vis_info;
 static struct list_head send_list;	/* always locked with vis_hash_lock */
@@ -115,7 +115,7 @@ static void vis_data_insert_interface(const uint8_t *interface,
 	}
 
 	/* its a new address, add it to the list */
-	entry = kmalloc(sizeof(*entry), GFP_ATOMIC);
+	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
 	if (!entry)
 		return;
 	memcpy(entry->addr, interface, ETH_ALEN);
@@ -142,29 +142,12 @@ static ssize_t vis_data_read_prim_sec(char *buff, struct hlist_head *if_list)
 	return len;
 }
 
-static size_t vis_data_count_prim_sec(struct hlist_head *if_list)
-{
-	struct if_list_entry *entry;
-	struct hlist_node *pos;
-	size_t count = 0;
-
-	hlist_for_each_entry(entry, pos, if_list, list) {
-		if (entry->primary)
-			count += 9;
-		else
-			count += 23;
-	}
-
-	return count;
-}
-
 /* read an entry  */
 static ssize_t vis_data_read_entry(char *buff, struct vis_info_entry *entry,
 				   uint8_t *src, bool primary)
 {
-	char to[18];
+	char to[40];
 
-	/* maximal length: max(4+17+2, 3+17+1+3+2) == 26 */
 	addr_to_string(to, entry->dest);
 	if (primary && entry->quality == 0)
 		return sprintf(buff, "HNA %s, ", to);
@@ -174,73 +157,37 @@ static ssize_t vis_data_read_entry(char *buff, struct vis_info_entry *entry,
 	return 0;
 }
 
-int vis_seq_print_text(struct seq_file *seq, void *offset)
+ssize_t vis_fill_buffer_text(struct net_device *net_dev, char *buff,
+			      size_t count, loff_t off)
 {
 	HASHIT(hashit);
-	HASHIT(hashit_count);
 	struct vis_info *info;
 	struct vis_info_entry *entries;
-	struct net_device *net_dev = (struct net_device *)seq->private;
 	struct bat_priv *bat_priv = netdev_priv(net_dev);
 	HLIST_HEAD(vis_if_list);
 	struct if_list_entry *entry;
 	struct hlist_node *pos, *n;
-	int i;
+	size_t hdr_len, tmp_len;
+	int i, bytes_written = 0;
 	char tmp_addr_str[ETH_STR_LEN];
 	unsigned long flags;
 	int vis_server = atomic_read(&bat_priv->vis_mode);
-	size_t buff_pos, buf_size;
-	char *buff;
 
 	if ((!bat_priv->primary_if) ||
 	    (vis_server == VIS_TYPE_CLIENT_UPDATE))
 		return 0;
 
-	buf_size = 1;
-	/* Estimate length */
+	hdr_len = 0;
+
 	spin_lock_irqsave(&vis_hash_lock, flags);
-	while (hash_iterate(vis_hash, &hashit_count)) {
-		info = hashit_count.bucket->data;
-		entries = (struct vis_info_entry *)
-			((char *)info + sizeof(struct vis_info));
-
-		for (i = 0; i < info->packet.entries; i++) {
-			if (entries[i].quality == 0)
-				continue;
-			vis_data_insert_interface(entries[i].src, &vis_if_list,
-				compare_orig(entries[i].src,
-						info->packet.vis_orig));
-		}
-
-		hlist_for_each_entry(entry, pos, &vis_if_list, list) {
-			buf_size += 18 + 26 * info->packet.entries;
-
-			/* add primary/secondary records */
-			if (compare_orig(entry->addr, info->packet.vis_orig))
-				buf_size +=
-					vis_data_count_prim_sec(&vis_if_list);
-
-			buf_size += 1;
-		}
-
-		hlist_for_each_entry_safe(entry, pos, n, &vis_if_list, list) {
-			hlist_del(&entry->list);
-			kfree(entry);
-		}
-	}
-
-	buff = kmalloc(buf_size, GFP_ATOMIC);
-	if (!buff) {
-		spin_unlock_irqrestore(&vis_hash_lock, flags);
-		return -ENOMEM;
-	}
-	buff[0] = '\0';
-	buff_pos = 0;
-
 	while (hash_iterate(vis_hash, &hashit)) {
 		info = hashit.bucket->data;
 		entries = (struct vis_info_entry *)
 			((char *)info + sizeof(struct vis_info));
+
+		/* estimated line length */
+		if (count < bytes_written + 200)
+			break;
 
 		for (i = 0; i < info->packet.entries; i++) {
 			if (entries[i].quality == 0)
@@ -252,22 +199,30 @@ int vis_seq_print_text(struct seq_file *seq, void *offset)
 
 		hlist_for_each_entry(entry, pos, &vis_if_list, list) {
 			addr_to_string(tmp_addr_str, entry->addr);
-			buff_pos += sprintf(buff + buff_pos, "%s,",
-					    tmp_addr_str);
+			tmp_len = sprintf(buff + bytes_written,
+					  "%s,", tmp_addr_str);
 
 			for (i = 0; i < info->packet.entries; i++)
-				buff_pos += vis_data_read_entry(buff + buff_pos,
-								&entries[i],
-								entry->addr,
-								entry->primary);
+				tmp_len += vis_data_read_entry(
+						buff + bytes_written + tmp_len,
+						&entries[i], entry->addr,
+						entry->primary);
 
 			/* add primary/secondary records */
 			if (compare_orig(entry->addr, info->packet.vis_orig))
-				buff_pos +=
-					vis_data_read_prim_sec(buff + buff_pos,
-							       &vis_if_list);
+				tmp_len += vis_data_read_prim_sec(
+						buff + bytes_written + tmp_len,
+						&vis_if_list);
 
-			buff_pos += sprintf(buff + buff_pos, "\n");
+			tmp_len += sprintf(buff + bytes_written + tmp_len,
+					  "\n");
+
+			hdr_len += tmp_len;
+
+			if (off >= hdr_len)
+				continue;
+
+			bytes_written += tmp_len;
 		}
 
 		hlist_for_each_entry_safe(entry, pos, n, &vis_if_list, list) {
@@ -275,13 +230,9 @@ int vis_seq_print_text(struct seq_file *seq, void *offset)
 			kfree(entry);
 		}
 	}
-
 	spin_unlock_irqrestore(&vis_hash_lock, flags);
 
-	seq_printf(seq, "%s", buff);
-	kfree(buff);
-
-	return 0;
+	return bytes_written;
 }
 
 /* add the info packet to the send list, if it was not
@@ -357,8 +308,7 @@ static struct vis_info *add_packet(struct vis_packet *vis_packet,
 	old_info = hash_find(vis_hash, &search_elem);
 
 	if (old_info != NULL) {
-		if (!seq_after(ntohl(vis_packet->seqno),
-				ntohl(old_info->packet.seqno))) {
+		if (!seq_after(vis_packet->seqno, old_info->packet.seqno)) {
 			if (old_info->packet.seqno == vis_packet->seqno) {
 				recv_list_add(&old_info->recv_list,
 					      vis_packet->sender_orig);
@@ -390,7 +340,7 @@ static struct vis_info *add_packet(struct vis_packet *vis_packet,
 
 	/* Make it a broadcast packet, if required */
 	if (make_broadcast)
-		memcpy(info->packet.target_orig, broadcast_addr, ETH_ALEN);
+		memcpy(info->packet.target_orig, broadcastAddr, ETH_ALEN);
 
 	/* repair if entries is longer than packet. */
 	if (info->packet.entries * sizeof(struct vis_info_entry) > vis_info_len)
@@ -524,9 +474,9 @@ static int generate_vis_packet(struct bat_priv *bat_priv)
 	info->packet.vis_type = atomic_read(&bat_priv->vis_mode);
 
 	spin_lock_irqsave(&orig_hash_lock, flags);
-	memcpy(info->packet.target_orig, broadcast_addr, ETH_ALEN);
+	memcpy(info->packet.target_orig, broadcastAddr, ETH_ALEN);
 	info->packet.ttl = TTL;
-	info->packet.seqno = htonl(ntohl(info->packet.seqno) + 1);
+	info->packet.seqno++;
 	info->packet.entries = 0;
 
 	if (info->packet.vis_type == VIS_TYPE_CLIENT_UPDATE) {
@@ -597,7 +547,7 @@ static void purge_vis_packets(void)
 		if (info == my_vis_info)	/* never purge own data. */
 			continue;
 		if (time_after(jiffies,
-			       info->first_seen + VIS_TIMEOUT * HZ)) {
+			       info->first_seen + (VIS_TIMEOUT*HZ)/1000)) {
 			hash_remove_bucket(vis_hash, &hashit);
 			send_list_del(info);
 			kref_put(&info->refcount, free_info);
@@ -641,7 +591,7 @@ static void broadcast_vis_packet(struct vis_info *info, int packet_length)
 
 	}
 	spin_unlock_irqrestore(&orig_hash_lock, flags);
-	memcpy(info->packet.target_orig, broadcast_addr, ETH_ALEN);
+	memcpy(info->packet.target_orig, broadcastAddr, ETH_ALEN);
 }
 
 static void unicast_vis_packet(struct vis_info *info, int packet_length)
@@ -678,11 +628,11 @@ static void send_vis_packet(struct vis_info *info)
 	int packet_length;
 
 	if (info->packet.ttl < 2) {
-		pr_warning("Error - can't send vis packet: ttl exceeded\n");
+		printk(KERN_WARNING "batman-adv: Error - can't send vis packet: ttl exceeded\n");
 		return;
 	}
 
-	memcpy(info->packet.sender_orig, main_if_addr, ETH_ALEN);
+	memcpy(info->packet.sender_orig, mainIfAddr, ETH_ALEN);
 	info->packet.ttl--;
 
 	packet_length = sizeof(struct vis_packet) +
@@ -740,18 +690,18 @@ int vis_init(void)
 
 	vis_hash = hash_new(256, vis_info_cmp, vis_info_choose);
 	if (!vis_hash) {
-		pr_err("Can't initialize vis_hash\n");
+		printk(KERN_ERR "batman-adv:Can't initialize vis_hash\n");
 		goto err;
 	}
 
 	my_vis_info = kmalloc(1000, GFP_ATOMIC);
 	if (!my_vis_info) {
-		pr_err("Can't initialize vis packet\n");
+		printk(KERN_ERR "batman-adv:Can't initialize vis packet\n");
 		goto err;
 	}
 
 	/* prefill the vis info */
-	my_vis_info->first_seen = jiffies - msecs_to_jiffies(VIS_INTERVAL);
+	my_vis_info->first_seen = jiffies - atomic_read(&vis_interval);
 	INIT_LIST_HEAD(&my_vis_info->recv_list);
 	INIT_LIST_HEAD(&my_vis_info->send_list);
 	kref_init(&my_vis_info->refcount);
@@ -763,11 +713,12 @@ int vis_init(void)
 
 	INIT_LIST_HEAD(&send_list);
 
-	memcpy(my_vis_info->packet.vis_orig, main_if_addr, ETH_ALEN);
-	memcpy(my_vis_info->packet.sender_orig, main_if_addr, ETH_ALEN);
+	memcpy(my_vis_info->packet.vis_orig, mainIfAddr, ETH_ALEN);
+	memcpy(my_vis_info->packet.sender_orig, mainIfAddr, ETH_ALEN);
 
 	if (hash_add(vis_hash, my_vis_info) < 0) {
-		pr_err("Can't add own vis packet into hash\n");
+		printk(KERN_ERR
+		       "batman-adv:Can't add own vis packet into hash\n");
 		/* not in hash, need to remove it manually. */
 		kref_put(&my_vis_info->refcount, free_info);
 		goto err;
@@ -813,5 +764,5 @@ void vis_quit(void)
 static void start_vis_timer(void)
 {
 	queue_delayed_work(bat_event_workqueue, &vis_timer_wq,
-			   (VIS_INTERVAL * HZ) / 1000);
+			   (atomic_read(&vis_interval) * HZ) / 1000);
 }

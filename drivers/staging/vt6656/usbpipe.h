@@ -41,7 +41,8 @@
 
 /*---------------------  Export Functions  --------------------------*/
 
-int PIPEnsControlOut(
+NTSTATUS
+PIPEnsControlOut(
      PSDevice     pDevice,
      BYTE         byRequest,
      WORD         wValue,
@@ -50,7 +51,10 @@ int PIPEnsControlOut(
      PBYTE        pbyBuffer
     );
 
-int PIPEnsControlOutAsyn(
+
+
+NTSTATUS
+PIPEnsControlOutAsyn(
      PSDevice     pDevice,
      BYTE         byRequest,
      WORD         wValue,
@@ -59,7 +63,8 @@ int PIPEnsControlOutAsyn(
      PBYTE        pbyBuffer
     );
 
-int PIPEnsControlIn(
+NTSTATUS
+PIPEnsControlIn(
      PSDevice     pDevice,
      BYTE         byRequest,
      WORD         wValue,
@@ -68,8 +73,24 @@ int PIPEnsControlIn(
        PBYTE   pbyBuffer
     );
 
-int PIPEnsInterruptRead(PSDevice pDevice);
-int PIPEnsBulkInUsbRead(PSDevice pDevice, PRCB pRCB);
-int PIPEnsSendBulkOut(PSDevice pDevice, PUSB_SEND_CONTEXT pContext);
+
+
+
+NTSTATUS
+PIPEnsInterruptRead(
+     PSDevice pDevice
+    );
+
+NTSTATUS
+PIPEnsBulkInUsbRead(
+     PSDevice pDevice,
+     PRCB     pRCB
+    );
+
+NTSTATUS
+PIPEnsSendBulkOut(
+      PSDevice pDevice,
+      PUSB_SEND_CONTEXT pContext
+    );
 
 #endif /* __USBPIPE_H__ */

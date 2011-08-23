@@ -74,22 +74,26 @@ static void VmbusChannelSetEvent(struct vmbus_channel *Channel)
 {
 	struct hv_monitor_page *monitorPage;
 
+	DPRINT_ENTER(VMBUS);
+
 	if (Channel->OfferMsg.MonitorAllocated) {
 		/* Each u32 represents 32 channels */
-		set_bit(Channel->OfferMsg.ChildRelId & 31,
+		sync_set_bit(Channel->OfferMsg.ChildRelId & 31,
 			(unsigned long *) gVmbusConnection.SendInterruptPage +
 			(Channel->OfferMsg.ChildRelId >> 5));
 
 		monitorPage = gVmbusConnection.MonitorPages;
 		monitorPage++; /* Get the child to parent monitor page */
 
-		set_bit(Channel->MonitorBit,
+		sync_set_bit(Channel->MonitorBit,
 			(unsigned long *)&monitorPage->TriggerGroup
 					[Channel->MonitorGroup].Pending);
 
 	} else {
 		VmbusSetEvent(Channel->OfferMsg.ChildRelId);
 	}
+
+	DPRINT_EXIT(VMBUS);
 }
 
 #if 0
@@ -97,9 +101,11 @@ static void VmbusChannelClearEvent(struct vmbus_channel *channel)
 {
 	struct hv_monitor_page *monitorPage;
 
+	DPRINT_ENTER(VMBUS);
+
 	if (Channel->OfferMsg.MonitorAllocated) {
 		/* Each u32 represents 32 channels */
-		clear_bit(Channel->OfferMsg.ChildRelId & 31,
+		sync_clear_bit(Channel->OfferMsg.ChildRelId & 31,
 			  (unsigned long *)gVmbusConnection.SendInterruptPage +
 			  (Channel->OfferMsg.ChildRelId >> 5));
 
@@ -107,10 +113,12 @@ static void VmbusChannelClearEvent(struct vmbus_channel *channel)
 			(struct hv_monitor_page *)gVmbusConnection.MonitorPages;
 		monitorPage++; /* Get the child to parent monitor page */
 
-		clear_bit(Channel->MonitorBit,
+		sync_clear_bit(Channel->MonitorBit,
 			  (unsigned long *)&monitorPage->TriggerGroup
 					[Channel->MonitorGroup].Pending);
 	}
+
+	DPRINT_EXIT(VMBUS);
 }
 
 #endif
@@ -171,6 +179,8 @@ int VmbusChannelOpen(struct vmbus_channel *NewChannel, u32 SendRingBufferSize,
 	void *in, *out;
 	unsigned long flags;
 	int ret, err = 0;
+
+	DPRINT_ENTER(VMBUS);
 
 	/* Aligned to page size */
 	/* ASSERT(!(SendRingBufferSize & (PAGE_SIZE - 1))); */
@@ -295,6 +305,9 @@ Cleanup:
 
 	kfree(openInfo->WaitEvent);
 	kfree(openInfo);
+
+	DPRINT_EXIT(VMBUS);
+
 	return 0;
 
 errorout:
@@ -452,8 +465,6 @@ static int VmbusChannelCreateGpadlHeader(void *Kbuffer, u32 Size,
 			  sizeof(struct vmbus_channel_gpadl_header) +
 			  sizeof(struct gpa_range) + pageCount * sizeof(u64);
 		msgHeader = kzalloc(msgSize, GFP_KERNEL);
-		if (msgHeader == NULL)
-			goto nomem;
 		msgHeader->MessageSize = msgSize;
 
 		gpaHeader = (struct vmbus_channel_gpadl_header *)msgHeader->Msg;
@@ -497,6 +508,8 @@ int VmbusChannelEstablishGpadl(struct vmbus_channel *Channel, void *Kbuffer,
 	u32 nextGpadlHandle;
 	unsigned long flags;
 	int ret = 0;
+
+	DPRINT_ENTER(VMBUS);
 
 	nextGpadlHandle = atomic_read(&gVmbusConnection.NextGpadlHandle);
 	atomic_inc(&gVmbusConnection.NextGpadlHandle);
@@ -579,6 +592,9 @@ Cleanup:
 
 	kfree(msgInfo->WaitEvent);
 	kfree(msgInfo);
+
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 
@@ -591,6 +607,8 @@ int VmbusChannelTeardownGpadl(struct vmbus_channel *Channel, u32 GpadlHandle)
 	struct vmbus_channel_msginfo *info;
 	unsigned long flags;
 	int ret;
+
+	DPRINT_ENTER(VMBUS);
 
 	/* ASSERT(GpadlHandle != 0); */
 
@@ -632,6 +650,9 @@ int VmbusChannelTeardownGpadl(struct vmbus_channel *Channel, u32 GpadlHandle)
 
 	kfree(info->WaitEvent);
 	kfree(info);
+
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 
@@ -644,6 +665,8 @@ void VmbusChannelClose(struct vmbus_channel *Channel)
 	struct vmbus_channel_msginfo *info;
 	unsigned long flags;
 	int ret;
+
+	DPRINT_ENTER(VMBUS);
 
 	/* Stop callback and cancel the timer asap */
 	Channel->OnChannelCallback = NULL;
@@ -697,6 +720,8 @@ void VmbusChannelClose(struct vmbus_channel *Channel)
 
 		FreeVmbusChannel(Channel);
 	}
+
+	DPRINT_EXIT(VMBUS);
 }
 
 /**
@@ -724,6 +749,7 @@ int VmbusChannelSendPacket(struct vmbus_channel *Channel, const void *Buffer,
 	u64 alignedData = 0;
 	int ret;
 
+	DPRINT_ENTER(VMBUS);
 	DPRINT_DBG(VMBUS, "channel %p buffer %p len %d",
 		   Channel, Buffer, BufferLen);
 
@@ -750,6 +776,8 @@ int VmbusChannelSendPacket(struct vmbus_channel *Channel, const void *Buffer,
 	if (ret == 0 && !GetRingBufferInterruptMask(&Channel->Outbound))
 		VmbusChannelSetEvent(Channel);
 
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 EXPORT_SYMBOL(VmbusChannelSendPacket);
@@ -771,6 +799,8 @@ int VmbusChannelSendPacketPageBuffer(struct vmbus_channel *Channel,
 	u32 packetLenAligned;
 	struct scatterlist bufferList[3];
 	u64 alignedData = 0;
+
+	DPRINT_ENTER(VMBUS);
 
 	if (PageCount > MAX_PAGE_BUFFER_COUNT)
 		return -EINVAL;
@@ -814,6 +844,8 @@ int VmbusChannelSendPacketPageBuffer(struct vmbus_channel *Channel,
 	if (ret == 0 && !GetRingBufferInterruptMask(&Channel->Outbound))
 		VmbusChannelSetEvent(Channel);
 
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 
@@ -834,6 +866,8 @@ int VmbusChannelSendPacketMultiPageBuffer(struct vmbus_channel *Channel,
 	u64 alignedData = 0;
 	u32 PfnCount = NUM_PAGES_SPANNED(MultiPageBuffer->Offset,
 					 MultiPageBuffer->Length);
+
+	DPRINT_ENTER(VMBUS);
 
 	DumpVmbusChannel(Channel);
 
@@ -880,6 +914,8 @@ int VmbusChannelSendPacketMultiPageBuffer(struct vmbus_channel *Channel,
 	if (ret == 0 && !GetRingBufferInterruptMask(&Channel->Outbound))
 		VmbusChannelSetEvent(Channel);
 
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 
@@ -906,6 +942,8 @@ int VmbusChannelRecvPacket(struct vmbus_channel *Channel, void *Buffer,
 	int ret;
 	unsigned long flags;
 
+	DPRINT_ENTER(VMBUS);
+
 	*BufferActualLen = 0;
 	*RequestId = 0;
 
@@ -917,6 +955,7 @@ int VmbusChannelRecvPacket(struct vmbus_channel *Channel, void *Buffer,
 		spin_unlock_irqrestore(&Channel->inbound_lock, flags);
 
 		/* DPRINT_DBG(VMBUS, "nothing to read!!"); */
+		DPRINT_EXIT(VMBUS);
 		return 0;
 	}
 
@@ -938,6 +977,8 @@ int VmbusChannelRecvPacket(struct vmbus_channel *Channel, void *Buffer,
 
 		DPRINT_ERR(VMBUS, "buffer too small - got %d needs %d",
 			   BufferLen, userLen);
+		DPRINT_EXIT(VMBUS);
+
 		return -1;
 	}
 
@@ -948,6 +989,8 @@ int VmbusChannelRecvPacket(struct vmbus_channel *Channel, void *Buffer,
 			     (desc.DataOffset8 << 3));
 
 	spin_unlock_irqrestore(&Channel->inbound_lock, flags);
+
+	DPRINT_EXIT(VMBUS);
 
 	return 0;
 }
@@ -966,6 +1009,8 @@ int VmbusChannelRecvPacketRaw(struct vmbus_channel *Channel, void *Buffer,
 	int ret;
 	unsigned long flags;
 
+	DPRINT_ENTER(VMBUS);
+
 	*BufferActualLen = 0;
 	*RequestId = 0;
 
@@ -977,6 +1022,7 @@ int VmbusChannelRecvPacketRaw(struct vmbus_channel *Channel, void *Buffer,
 		spin_unlock_irqrestore(&Channel->inbound_lock, flags);
 
 		/* DPRINT_DBG(VMBUS, "nothing to read!!"); */
+		DPRINT_EXIT(VMBUS);
 		return 0;
 	}
 
@@ -997,6 +1043,7 @@ int VmbusChannelRecvPacketRaw(struct vmbus_channel *Channel, void *Buffer,
 
 		DPRINT_ERR(VMBUS, "buffer too small - needed %d bytes but "
 			   "got space for only %d bytes", packetLen, BufferLen);
+		DPRINT_EXIT(VMBUS);
 		return -2;
 	}
 
@@ -1006,6 +1053,9 @@ int VmbusChannelRecvPacketRaw(struct vmbus_channel *Channel, void *Buffer,
 	ret = RingBufferRead(&Channel->Inbound, Buffer, packetLen, 0);
 
 	spin_unlock_irqrestore(&Channel->inbound_lock, flags);
+
+	DPRINT_EXIT(VMBUS);
+
 	return 0;
 }
 

@@ -65,6 +65,7 @@ struct usb_device_id rtusb_usb_id[] = {
 	{USB_DEVICE(0x14B2, 0x3C07)},	/* AL */
 	{USB_DEVICE(0x050D, 0x8053)},	/* Belkin */
 	{USB_DEVICE(0x050D, 0x825B)},	/* Belkin */
+	{USB_DEVICE(0x050D, 0x935A)},	/* Belkin F6D4050 v1 */
 	{USB_DEVICE(0x050D, 0x935B)},	/* Belkin F6D4050 v2 */
 	{USB_DEVICE(0x14B2, 0x3C23)},	/* Airlink */
 	{USB_DEVICE(0x14B2, 0x3C27)},	/* Airlink */
@@ -181,6 +182,7 @@ struct usb_device_id rtusb_usb_id[] = {
 	{USB_DEVICE(0x2001, 0x3C09)},	/* D-Link */
 	{USB_DEVICE(0x2001, 0x3C0A)},	/* D-Link 3072 */
 	{USB_DEVICE(0x2019, 0xED14)},	/* Planex Communications, Inc. */
+	{USB_DEVICE(0x0411, 0x015D)},	/* Buffalo Airstation WLI-UC-GN */
 	{}			/* Terminating entry */
 };
 
@@ -460,8 +462,8 @@ int MlmeThread(IN void *Context)
 	int status;
 	status = 0;
 
-	pTask = Context;
-	pAd = pTask->priv;
+	pTask = (struct rt_rtmp_os_task *)Context;
+	pAd = (struct rt_rtmp_adapter *)pTask->priv;
 
 	RtmpOSTaskCustomize(pTask);
 
@@ -529,8 +531,8 @@ int RTUSBCmdThread(IN void *Context)
 	int status;
 	status = 0;
 
-	pTask = Context;
-	pAd = pTask->priv;
+	pTask = (struct rt_rtmp_os_task *)Context;
+	pAd = (struct rt_rtmp_adapter *)pTask->priv;
 
 	RtmpOSTaskCustomize(pTask);
 

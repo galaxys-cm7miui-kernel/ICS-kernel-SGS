@@ -170,33 +170,23 @@ static int tweak_set_configuration_cmd(struct urb *urb)
 
 static int tweak_reset_device_cmd(struct urb *urb)
 {
-	struct usb_ctrlrequest *req;
-	__u16 value;
-	__u16 index;
-	int ret;
+	struct stub_priv *priv = (struct stub_priv *) urb->context;
+	struct stub_device *sdev = priv->sdev;
 
-	req = (struct usb_ctrlrequest *) urb->setup_packet;
-	value = le16_to_cpu(req->wValue);
-	index = le16_to_cpu(req->wIndex);
+	usbip_uinfo("reset_device %s\n", dev_name(&urb->dev->dev));
 
-	usbip_uinfo("reset_device (port %d) to %s\n", index,
-						dev_name(&urb->dev->dev));
-
-	/* all interfaces should be owned by usbip driver, so just reset it.  */
-	ret = usb_lock_device_for_reset(urb->dev, NULL);
-	if (ret < 0) {
-		dev_err(&urb->dev->dev, "lock for reset\n");
-		return ret;
-	}
-
-	/* try to reset the device */
-	ret = usb_reset_device(urb->dev);
-	if (ret < 0)
-		dev_err(&urb->dev->dev, "device reset\n");
-
-	usb_unlock_device(urb->dev);
-
-	return ret;
+	/*
+	 * usb_lock_device_for_reset caused a deadlock: it causes the driver
+	 * to unbind. In the shutdown the rx thread is signalled to shut down
+	 * but this thread is pending in the usb_lock_device_for_reset.
+	 *
+	 * Instead queue the reset.
+	 *
+	 * Unfortunatly an existing usbip connection will be dropped due to
+	 * driver unbinding.
+	 */
+	usb_queue_reset_device(sdev->interface);
+	return 0;
 }
 
 /*
@@ -362,16 +352,54 @@ static struct stub_priv *stub_priv_alloc(struct stub_device *sdev,
 	return priv;
 }
 
+
+static struct usb_host_endpoint *get_ep_from_epnum(struct usb_device *udev,
+		int epnum0)
+{
+	struct usb_host_config *config;
+	int i = 0, j = 0;
+	struct usb_host_endpoint *ep = NULL;
+	int epnum;
+	int found = 0;
+
+	if (epnum0 == 0)
+		return &udev->ep0;
+
+	config = udev->actconfig;
+	if (!config)
+		return NULL;
+
+	for (i = 0; i < config->desc.bNumInterfaces; i++) {
+		struct usb_host_interface *setting;
+
+		setting = config->interface[i]->cur_altsetting;
+
+		for (j = 0; j < setting->desc.bNumEndpoints; j++) {
+			ep = &setting->endpoint[j];
+			epnum = (ep->desc.bEndpointAddress & 0x7f);
+
+			if (epnum == epnum0) {
+				/* usbip_uinfo("found epnum %d\n", epnum0);*/
+				found = 1;
+				break;
+			}
+		}
+	}
+
+	if (found)
+		return ep;
+	else
+		return NULL;
+}
+
+
 static int get_pipe(struct stub_device *sdev, int epnum, int dir)
 {
 	struct usb_device *udev = interface_to_usbdev(sdev->interface);
 	struct usb_host_endpoint *ep;
 	struct usb_endpoint_descriptor *epd = NULL;
 
-	if (dir == USBIP_DIR_IN)
-		ep = udev->ep_in[epnum & 0x7f];
-	else
-		ep = udev->ep_out[epnum & 0x7f];
+	ep = get_ep_from_epnum(udev, epnum);
 	if (!ep) {
 		dev_err(&sdev->interface->dev, "no such endpoint?, %d\n",
 			epnum);
@@ -422,60 +450,6 @@ static int get_pipe(struct stub_device *sdev, int epnum, int dir)
 	/* NOT REACHED */
 	dev_err(&sdev->interface->dev, "get pipe, epnum %d\n", epnum);
 	return 0;
-}
-
-static void masking_bogus_flags(struct urb *urb)
-{
-	int				xfertype;
-	struct usb_device		*dev;
-	struct usb_host_endpoint	*ep;
-	int				is_out;
-	unsigned int	allowed;
-
-	if (!urb || urb->hcpriv || !urb->complete)
-		return;
-	dev = urb->dev;
-	if ((!dev) || (dev->state < USB_STATE_UNAUTHENTICATED))
-		return;
-
-	ep = (usb_pipein(urb->pipe) ? dev->ep_in : dev->ep_out)
-			[usb_pipeendpoint(urb->pipe)];
-	if (!ep)
-		return;
-
-	xfertype = usb_endpoint_type(&ep->desc);
-	if (xfertype == USB_ENDPOINT_XFER_CONTROL) {
-		struct usb_ctrlrequest *setup =
-				(struct usb_ctrlrequest *) urb->setup_packet;
-
-		if (!setup)
-			return;
-		is_out = !(setup->bRequestType & USB_DIR_IN) ||
-				!setup->wLength;
-	} else {
-		is_out = usb_endpoint_dir_out(&ep->desc);
-	}
-
-	/* enforce simple/standard policy */
-	allowed = (URB_NO_TRANSFER_DMA_MAP | URB_NO_INTERRUPT |
-		   URB_DIR_MASK | URB_FREE_BUFFER);
-	switch (xfertype) {
-	case USB_ENDPOINT_XFER_BULK:
-		if (is_out)
-			allowed |= URB_ZERO_PACKET;
-		/* FALLTHROUGH */
-	case USB_ENDPOINT_XFER_CONTROL:
-		allowed |= URB_NO_FSBR;	/* only affects UHCI */
-		/* FALLTHROUGH */
-	default:			/* all non-iso endpoints */
-		if (!is_out)
-			allowed |= URB_SHORT_NOT_OK;
-		break;
-	case USB_ENDPOINT_XFER_ISOC:
-		allowed |= URB_ISO_ASAP;
-		break;
-	}
-	urb->transfer_flags &= allowed;
 }
 
 static void stub_recv_cmd_submit(struct stub_device *sdev,
@@ -544,7 +518,6 @@ static void stub_recv_cmd_submit(struct stub_device *sdev,
 	/* no need to submit an intercepted request, but harmless? */
 	tweak_special_requests(priv->urb);
 
-	masking_bogus_flags(priv->urb);
 	/* urb is now ready to submit */
 	ret = usb_submit_urb(priv->urb, GFP_KERNEL);
 

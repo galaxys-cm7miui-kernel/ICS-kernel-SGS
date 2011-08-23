@@ -70,18 +70,7 @@ static struct comedi_driver driver_dt2814 = {
 	.detach = dt2814_detach,
 };
 
-static int __init driver_dt2814_init_module(void)
-{
-	return comedi_driver_register(&driver_dt2814);
-}
-
-static void __exit driver_dt2814_cleanup_module(void)
-{
-	comedi_driver_unregister(&driver_dt2814);
-}
-
-module_init(driver_dt2814_init_module);
-module_exit(driver_dt2814_cleanup_module);
+COMEDI_INITCLEANUP(driver_dt2814);
 
 static irqreturn_t dt2814_interrupt(int irq, void *dev);
 
@@ -398,7 +387,3 @@ static irqreturn_t dt2814_interrupt(int irq, void *d)
 	comedi_event(dev, s);
 	return IRQ_HANDLED;
 }
-
-MODULE_AUTHOR("Comedi http://www.comedi.org");
-MODULE_DESCRIPTION("Comedi low-level driver");
-MODULE_LICENSE("GPL");

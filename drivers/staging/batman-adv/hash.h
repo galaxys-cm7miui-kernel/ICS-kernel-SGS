@@ -19,9 +19,8 @@
  *
  */
 
-#ifndef _NET_BATMAN_ADV_HASH_H_
-#define _NET_BATMAN_ADV_HASH_H_
-
+#ifndef _BATMAN_HASH_H
+#define _BATMAN_HASH_H
 #define HASHIT(name) struct hash_it_t name = { \
 		.index = -1, .bucket = NULL, \
 		.prev_bucket = NULL, \
@@ -56,6 +55,9 @@ struct hashtable_t {
 				     * based on the key in the data of the first
 				     * argument and the size the second */
 };
+
+/* clears the hash */
+void hash_init(struct hashtable_t *hash);
 
 /* allocates and clears the hash */
 struct hashtable_t *hash_new(int size, hashdata_compare_cb compare,
@@ -97,4 +99,6 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size);
 struct hash_it_t *hash_iterate(struct hashtable_t *hash,
 			       struct hash_it_t *iter_in);
 
-#endif /* _NET_BATMAN_ADV_HASH_H_ */
+/* print the hash table for debugging */
+void hash_debug(struct hashtable_t *hash);
+#endif

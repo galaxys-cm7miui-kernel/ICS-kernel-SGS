@@ -27,7 +27,7 @@
 #define XGIFB_ID          0x53495346    /* Identify myself with 'XGIF' */
 #endif
 
-enum XGI_CHIP_TYPE {
+typedef enum _XGI_CHIP_TYPE {
     XGI_VGALegacy = 0,
     XGI_300,
     XGI_630,
@@ -53,9 +53,9 @@ enum XGI_CHIP_TYPE {
     XG21,
     XG27,
     MAX_XGI_CHIP
-};
+} XGI_CHIP_TYPE;
 
-enum xgi_tvtype {
+typedef enum _TVTYPE {
 	TVMODE_NTSC = 0,
 	TVMODE_PAL,
 	TVMODE_HIVISION,
@@ -63,11 +63,13 @@ enum xgi_tvtype {
     	TVTYPE_PALN,	// vicki@030226
     	TVTYPE_NTSCJ,	// vicki@030226
 	TVMODE_TOTAL
-};
+} XGI_TV_TYPE;
 
 
-struct XGIfb_info {
-	unsigned long XGIfb_id;
+typedef struct _XGIFB_INFO XGIfb_info;
+struct _XGIFB_INFO {
+
+unsigned long XGIfb_id;
  	int    chip_id;			/* PCI ID of detected chip */
 	int    memory;			/* video memory in KB which XGIfb manages */
 	int    heapstart;               /* heap start (= XGIfb "mem" argument) in KB */
@@ -95,7 +97,7 @@ struct XGIfb_info {
 
 
 
-enum xgi_tv_plug {	/* vicki@030226 */
+typedef enum _TVPLUGTYPE {	// vicki@030226
 //	TVPLUG_Legacy = 0,
 //	TVPLUG_COMPOSITE,
 //	TVPLUG_SVIDEO,
@@ -111,7 +113,7 @@ enum xgi_tv_plug {	/* vicki@030226 */
     	TVPLUG_YPBPR_750P = 7,
     	TVPLUG_YPBPR_1080i = 8,
 	TVPLUG_TOTAL
-};
+} XGI_TV_PLUG;
 
 
 struct mode_info {
@@ -130,10 +132,10 @@ struct ap_data {
 	unsigned long iobase;
 	unsigned int  mem_size;
 	unsigned long disp_state;
-	enum XGI_CHIP_TYPE chip;
+	XGI_CHIP_TYPE chip;
 	unsigned char hasVB;
-	enum xgi_tvtype TV_type;
-	enum xgi_tv_plug TV_plug;
+	XGI_TV_TYPE TV_type;
+	XGI_TV_PLUG TV_plug;
 	unsigned long version;
 	char reserved[256];
 };
@@ -182,7 +184,7 @@ struct video_info{
         unsigned char TV_type;
         unsigned char TV_plug;
 
-	enum XGI_CHIP_TYPE chip;
+        XGI_CHIP_TYPE chip;
         unsigned char revision_id;
 
         unsigned short DstColor;
@@ -205,4 +207,9 @@ struct video_info{
 
 extern struct video_info xgi_video_info;
 
+#ifdef __KERNEL__
+//extern void xgi_malloc(struct xgi_memreq *req);
+extern void xgi_free(unsigned long base);
+extern void xgi_dispinfo(struct ap_data *rec);
+#endif
 #endif

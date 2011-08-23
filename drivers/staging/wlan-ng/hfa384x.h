@@ -1284,8 +1284,6 @@ typedef struct hfa384x {
 	u16 link_status_new;
 	struct sk_buff_head authq;
 
-	u32 txrate;
-
 	/* And here we have stuff that used to be in priv */
 
 	/* State variables */
@@ -1409,7 +1407,7 @@ int hfa384x_drvr_start(hfa384x_t *hw);
 int hfa384x_drvr_stop(hfa384x_t *hw);
 int
 hfa384x_drvr_txframe(hfa384x_t *hw, struct sk_buff *skb,
-		     union p80211_hdr *p80211_hdr, struct p80211_metawep *p80211_wep);
+		     p80211_hdr_t *p80211_hdr, p80211_metawep_t *p80211_wep);
 void hfa384x_tx_timeout(wlandevice_t *wlandev);
 
 int hfa384x_cmd_initialize(hfa384x_t *hw);

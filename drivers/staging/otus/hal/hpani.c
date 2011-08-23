@@ -72,6 +72,7 @@ s32_t BEACON_RSSI(zdev_t *dev)
 
 void zfHpAniAttach(zdev_t *dev)
 {
+#define N(a)     (sizeof(a) / sizeof(a[0]))
     u32_t i;
     struct zsHpPriv *HpPriv;
 
@@ -124,6 +125,7 @@ void zfHpAniAttach(zdev_t *dev)
     HpPriv->stats.ast_nodestats.ns_avgbrssi = ZM_RSSI_DUMMY_MARKER;
     HpPriv->stats.ast_nodestats.ns_avgrssi = ZM_RSSI_DUMMY_MARKER;
     HpPriv->stats.ast_nodestats.ns_avgtxrssi = ZM_RSSI_DUMMY_MARKER;
+#undef N
 }
 
 /*
@@ -131,6 +133,7 @@ void zfHpAniAttach(zdev_t *dev)
  */
 u8_t zfHpAniControl(zdev_t *dev, ZM_HAL_ANI_CMD cmd, int param)
 {
+#define N(a) (sizeof(a)/sizeof(a[0]))
     typedef s32_t TABLE[];
     struct zsHpPriv *HpPriv;
     struct zsAniState *aniState;
@@ -145,9 +148,9 @@ u8_t zfHpAniControl(zdev_t *dev, ZM_HAL_ANI_CMD cmd, int param)
     {
         u32_t level = param;
 
-        if (level >= ARRAY_SIZE(HpPriv->totalSizeDesired)) {
+        if (level >= N(HpPriv->totalSizeDesired)) {
           zm_debug_msg1("level out of range, desired level : ", level);
-          zm_debug_msg1("max level : ", ARRAY_SIZE(HpPriv->totalSizeDesired));
+          zm_debug_msg1("max level : ", N(HpPriv->totalSizeDesired));
           return FALSE;
         }
 
@@ -257,10 +260,10 @@ u8_t zfHpAniControl(zdev_t *dev, ZM_HAL_ANI_CMD cmd, int param)
         const TABLE firstep = { 0, 4, 8 };
         u32_t level = param;
 
-        if (level >= ARRAY_SIZE(firstep))
+        if (level >= N(firstep))
         {
             zm_debug_msg1("level out of range, desired level : ", level);
-            zm_debug_msg1("max level : ", ARRAY_SIZE(firstep));
+            zm_debug_msg1("max level : ", N(firstep));
             return FALSE;
         }
         zfDelayWriteInternalReg(dev, AR_PHY_FIND_SIG,
@@ -280,10 +283,10 @@ u8_t zfHpAniControl(zdev_t *dev, ZM_HAL_ANI_CMD cmd, int param)
         const TABLE cycpwrThr1 = { 2, 4, 6, 8, 10, 12, 14, 16 };
         u32_t level = param;
 
-        if (level >= ARRAY_SIZE(cycpwrThr1))
+        if (level >= N(cycpwrThr1))
         {
             zm_debug_msg1("level out of range, desired level : ", level);
-            zm_debug_msg1("max level : ", ARRAY_SIZE(cycpwrThr1));
+            zm_debug_msg1("max level : ", N(cycpwrThr1));
             return FALSE;
         }
         zfDelayWriteInternalReg(dev, AR_PHY_TIMING5,
@@ -332,6 +335,7 @@ u8_t zfHpAniControl(zdev_t *dev, ZM_HAL_ANI_CMD cmd, int param)
         return FALSE;
     }
     return TRUE;
+#undef  N
 }
 
 void zfHpAniRestart(zdev_t* dev)

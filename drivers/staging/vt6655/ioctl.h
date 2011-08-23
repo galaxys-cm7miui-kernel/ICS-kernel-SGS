@@ -45,9 +45,9 @@ int private_ioctl(PSDevice pDevice, struct ifreq *rq);
 /*
 void vConfigWEPKey (
     PSDevice pDevice,
-    unsigned long dwKeyIndex,
-    unsigned char *pbyKey,
-    unsigned long uKeyLength
+    DWORD    dwKeyIndex,
+    PBYTE    pbyKey,
+    ULONG    uKeyLength
     );
 */
 

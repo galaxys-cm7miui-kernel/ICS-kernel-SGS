@@ -430,7 +430,7 @@ void zfInitPhy(zdev_t* dev,  u32_t frequency, u8_t bw40)
      * Register setting by mode
      */
 
-    entries = ARRAY_SIZE(ar5416Modes);
+    entries = sizeof(ar5416Modes) / sizeof(*ar5416Modes);
     zm_msg1_scan(ZM_LV_2, "Modes register setting entries=", entries);
     for (i=0; i<entries; i++)
     {
@@ -496,7 +496,7 @@ void zfInitPhy(zdev_t* dev,  u32_t frequency, u8_t bw40)
     /*
      * Common Register setting
      */
-    entries = ARRAY_SIZE(ar5416Common);
+    entries = sizeof(ar5416Common) / sizeof(*ar5416Common);
     for (i=0; i<entries; i++)
     {
         reg_write(ar5416Common[i][0], ar5416Common[i][1]);
@@ -506,7 +506,7 @@ void zfInitPhy(zdev_t* dev,  u32_t frequency, u8_t bw40)
     /*
      * RF Gain setting by freqIndex
      */
-    entries = ARRAY_SIZE(ar5416BB_RfGain);
+    entries = sizeof(ar5416BB_RfGain) / sizeof(*ar5416BB_RfGain);
     for (i=0; i<entries; i++)
     {
         reg_write(ar5416BB_RfGain[i][0], ar5416BB_RfGain[i][freqIndex]);
@@ -963,6 +963,7 @@ u32_t reverse_bits(u32_t chan_sel)
 /* Bank 0 1 2 3 5 6 7 */
 void zfSetRfRegs(zdev_t* dev, u32_t frequency)
 {
+    u16_t entries;
     u16_t freqIndex = 0;
     u16_t i;
 
@@ -983,28 +984,33 @@ void zfSetRfRegs(zdev_t* dev, u32_t frequency)
     }
 
 #if 1
-    for (i=0; i<ARRAY_SIZE(otusBank); i++)
+    entries = sizeof(otusBank) / sizeof(*otusBank);
+    for (i=0; i<entries; i++)
     {
         reg_write(otusBank[i][0], otusBank[i][freqIndex]);
     }
 #else
     /* Bank0 */
-    for (i=0; i<ARRAY_SIZE(ar5416Bank0); i++)
+    entries = sizeof(ar5416Bank0) / sizeof(*ar5416Bank0);
+    for (i=0; i<entries; i++)
     {
         reg_write(ar5416Bank0[i][0], ar5416Bank0[i][1]);
     }
     /* Bank1 */
-    for (i=0; i<ARRAY_SIZE(ar5416Bank1); i++)
+    entries = sizeof(ar5416Bank1) / sizeof(*ar5416Bank1);
+    for (i=0; i<entries; i++)
     {
         reg_write(ar5416Bank1[i][0], ar5416Bank1[i][1]);
     }
     /* Bank2 */
-    for (i=0; i<ARRAY_SIZE(ar5416Bank2); i++)
+    entries = sizeof(ar5416Bank2) / sizeof(*ar5416Bank2);
+    for (i=0; i<entries; i++)
     {
         reg_write(ar5416Bank2[i][0], ar5416Bank2[i][1]);
     }
     /* Bank3 */
-    for (i=0; i<ARRAY_SIZE(ar5416Bank3); i++)
+    entries = sizeof(ar5416Bank3) / sizeof(*ar5416Bank3);
+    for (i=0; i<entries; i++)
     {
         reg_write(ar5416Bank3[i][0], ar5416Bank3[i][freqIndex]);
     }
@@ -1012,12 +1018,14 @@ void zfSetRfRegs(zdev_t* dev, u32_t frequency)
     reg_write (0x98b0,  0x00000013);
     reg_write (0x98e4,  0x00000002);
     /* Bank6 */
-    for (i=0; i<ARRAY_SIZE(ar5416Bank6); i++)
+    entries = sizeof(ar5416Bank6) / sizeof(*ar5416Bank6);
+    for (i=0; i<entries; i++)
     {
         reg_write(ar5416Bank6[i][0], ar5416Bank6[i][freqIndex]);
     }
     /* Bank7 */
-    for (i=0; i<ARRAY_SIZE(ar5416Bank7); i++)
+    entries = sizeof(ar5416Bank7) / sizeof(*ar5416Bank7);
+    for (i=0; i<entries; i++)
     {
         reg_write(ar5416Bank7[i][0], ar5416Bank7[i][1]);
     }

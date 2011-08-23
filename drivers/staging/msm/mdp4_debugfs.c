@@ -63,6 +63,13 @@ DEFINE_SIMPLE_ATTRIBUTE(
 			"%llx\n");
 
 
+static int mdp4_debugfs_open(struct inode *inode, struct file *file)
+{
+	/* non-seekable */
+	file->f_mode &= ~(FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
+	return 0;
+}
+
 static int mdp4_debugfs_release(struct inode *inode, struct file *file)
 {
 	return 0;
@@ -137,11 +144,10 @@ static ssize_t mdp4_debugfs_read(
 }
 
 static const struct file_operations mdp4_debugfs_fops = {
-	.open = nonseekable_open,
+	.open = mdp4_debugfs_open,
 	.release = mdp4_debugfs_release,
 	.read = mdp4_debugfs_read,
 	.write = mdp4_debugfs_write,
-	.llseek = no_llseek,
 };
 
 int mdp4_debugfs_init(void)

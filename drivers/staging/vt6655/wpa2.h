@@ -40,12 +40,12 @@
 #define MAX_PMKID_CACHE         16
 
 typedef struct tagsPMKIDInfo {
-    unsigned char abyBSSID[6];
-    unsigned char abyPMKID[16];
+    BYTE    abyBSSID[6];
+    BYTE    abyPMKID[16];
 } PMKIDInfo, *PPMKIDInfo;
 
 typedef struct tagSPMKIDCache {
-    unsigned long BSSIDInfoCount;
+    ULONG       BSSIDInfoCount;
     PMKIDInfo   BSSIDInfo[MAX_PMKID_CACHE];
 } SPMKIDCache, *PSPMKIDCache;
 
@@ -69,7 +69,7 @@ WPA2vParseRSN (
     PWLAN_IE_RSN     pRSN
     );
 
-unsigned int
+UINT
 WPA2uSetIEs(
     void *pMgmtHandle,
     PWLAN_IE_RSN pRSNIEs

@@ -23,7 +23,7 @@
 #include "hash.h"
 
 /* clears the hash */
-static void hash_init(struct hashtable_t *hash)
+void hash_init(struct hashtable_t *hash)
 {
 	int i;
 

@@ -128,6 +128,9 @@ WCMDvCommandThread(
     );
 */
 
+//2007-0115-09<Add>by MikeLiu
+#ifdef TxInSleep
 void BSSvSecondTxData(void *hDeviceContext);
+#endif
 
 #endif /* __WCMD_H__ */

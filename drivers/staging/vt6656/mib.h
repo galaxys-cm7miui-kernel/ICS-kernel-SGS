@@ -356,6 +356,7 @@ typedef struct tagSStatCounter {
 
     SCustomCounters CustomStat;
 
+   #ifdef Calcu_LinkQual
        //Tx count:
   unsigned long TxNoRetryOkCount;         /* success tx no retry ! */
   unsigned long TxRetryOkCount;           /* success tx but retry ! */
@@ -366,8 +367,11 @@ typedef struct tagSStatCounter {
       //statistic
     unsigned long SignalStren;
     unsigned long LinkQuality;
+   #endif
 
 } SStatCounter, *PSStatCounter;
+
+#define NTSTATUS        int
 
 /*---------------------  Export Classes  ----------------------------*/
 
@@ -377,9 +381,7 @@ typedef struct tagSStatCounter {
 
 void STAvClearAllCounter(PSStatCounter pStatistic);
 
-void STAvUpdateIsrStatCounter(PSStatCounter pStatistic,
-			      BYTE byIsr0,
-			      BYTE byIsr1);
+void STAvUpdateIsrStatCounter (PSStatCounter pStatistic, BYTE byIsr0, BYTE byIsr1);
 
 void STAvUpdateRDStatCounter(PSStatCounter pStatistic,
 			     BYTE byRSR, BYTE byNewRSR, BYTE byRxSts,
@@ -391,8 +393,14 @@ void STAvUpdateRDStatCounterEx(PSStatCounter pStatistic,
 			       BYTE byRxRate, PBYTE pbyBuffer,
 			       unsigned int cbFrameLength);
 
-void STAvUpdateTDStatCounter(PSStatCounter pStatistic, BYTE byPktNum,
-			     BYTE byRate, BYTE byTSR);
+void
+STAvUpdateTDStatCounter (
+    PSStatCounter   pStatistic,
+    BYTE            byPktNum,
+    BYTE            byRate,
+    BYTE            byTSR
+    );
+
 
 void
 STAvUpdate802_11Counter(
@@ -405,6 +413,11 @@ STAvUpdate802_11Counter(
     );
 
 void STAvClear802_11Counter(PSDot11Counters p802_11Counter);
-void STAvUpdateUSBCounter(PSUSBCounter pUsbCounter, int ntStatus);
+
+void
+STAvUpdateUSBCounter(
+    PSUSBCounter    pUsbCounter,
+    NTSTATUS        ntStatus
+    );
 
 #endif /* __MIB_H__ */

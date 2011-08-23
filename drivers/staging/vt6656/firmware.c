@@ -848,7 +848,7 @@ FIRMWAREbCheckVersion(
      PSDevice pDevice
     )
 {
-	int ntStatus;
+    NTSTATUS                ntStatus;
 
     ntStatus = CONTROLnsRequestIn(pDevice,
                                     MESSAGE_TYPE_READ,

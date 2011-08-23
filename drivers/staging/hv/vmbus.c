@@ -57,7 +57,9 @@ static struct hv_device *gDevice; /* vmbus root device */
  */
 static void VmbusGetChannelOffers(void)
 {
+	DPRINT_ENTER(VMBUS);
 	VmbusChannelRequestOffers();
+	DPRINT_EXIT(VMBUS);
 }
 
 /*
@@ -118,6 +120,8 @@ static int VmbusOnDeviceAdd(struct hv_device *dev, void *AdditionalInfo)
 	u32 *irqvector = AdditionalInfo;
 	int ret;
 
+	DPRINT_ENTER(VMBUS);
+
 	gDevice = dev;
 
 	memcpy(&gDevice->deviceType, &gVmbusDeviceType, sizeof(struct hv_guid));
@@ -132,6 +136,8 @@ static int VmbusOnDeviceAdd(struct hv_device *dev, void *AdditionalInfo)
 	ret = VmbusConnect();
 
 	/* VmbusSendEvent(device->localPortId+1); */
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 
@@ -142,9 +148,12 @@ static int VmbusOnDeviceRemove(struct hv_device *dev)
 {
 	int ret = 0;
 
+	DPRINT_ENTER(VMBUS);
 	VmbusChannelReleaseUnattachedChannels();
 	VmbusDisconnect();
 	on_each_cpu(HvSynicCleanup, NULL, 1);
+	DPRINT_EXIT(VMBUS);
+
 	return ret;
 }
 
@@ -155,7 +164,9 @@ static void VmbusOnCleanup(struct hv_driver *drv)
 {
 	/* struct vmbus_driver *driver = (struct vmbus_driver *)drv; */
 
+	DPRINT_ENTER(VMBUS);
 	HvCleanup();
+	DPRINT_EXIT(VMBUS);
 }
 
 /*
@@ -228,6 +239,8 @@ static int VmbusOnISR(struct hv_driver *drv)
 	page_addr = gHvContext.synICMessagePage[cpu];
 	msg = (struct hv_message *)page_addr + VMBUS_MESSAGE_SINT;
 
+	DPRINT_ENTER(VMBUS);
+
 	/* Check if there are actual msgs to be process */
 	if (msg->Header.MessageType != HvMessageTypeNone) {
 		DPRINT_DBG(VMBUS, "received msg type %d size %d",
@@ -241,11 +254,12 @@ static int VmbusOnISR(struct hv_driver *drv)
 	event = (union hv_synic_event_flags *)page_addr + VMBUS_MESSAGE_SINT;
 
 	/* Since we are a child, we only need to check bit 0 */
-	if (test_and_clear_bit(0, (unsigned long *) &event->Flags32[0])) {
+	if (sync_test_and_clear_bit(0, (unsigned long *) &event->Flags32[0])) {
 		DPRINT_DBG(VMBUS, "received event %d", event->Flags32[0]);
 		ret |= 0x2;
 	}
 
+	DPRINT_EXIT(VMBUS);
 	return ret;
 }
 
@@ -256,6 +270,8 @@ int VmbusInitialize(struct hv_driver *drv)
 {
 	struct vmbus_driver *driver = (struct vmbus_driver *)drv;
 	int ret;
+
+	DPRINT_ENTER(VMBUS);
 
 	DPRINT_INFO(VMBUS, "+++++++ HV Driver version = %s +++++++",
 		    HV_DRV_VERSION);
@@ -288,6 +304,8 @@ int VmbusInitialize(struct hv_driver *drv)
 		DPRINT_ERR(VMBUS, "Unable to initialize the hypervisor - 0x%x",
 				ret);
 	gDriver = drv;
+
+	DPRINT_EXIT(VMBUS);
 
 	return ret;
 }

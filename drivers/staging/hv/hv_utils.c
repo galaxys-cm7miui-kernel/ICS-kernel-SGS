@@ -52,6 +52,8 @@ static void shutdown_onchannelcallback(void *context)
 	struct icmsg_hdr *icmsghdrp;
 	struct icmsg_negotiate *negop = NULL;
 
+	DPRINT_ENTER(VMBUS);
+
 	buflen = PAGE_SIZE;
 	buf = kmalloc(buflen, GFP_ATOMIC);
 
@@ -99,6 +101,8 @@ static void shutdown_onchannelcallback(void *context)
 	}
 
 	kfree(buf);
+
+	DPRINT_EXIT(VMBUS);
 
 	if (execute_shutdown == true)
 		orderly_poweroff(false);
@@ -156,6 +160,8 @@ static void timesync_onchannelcallback(void *context)
 	struct icmsg_hdr *icmsghdrp;
 	struct ictimesync_data *timedatap;
 
+	DPRINT_ENTER(VMBUS);
+
 	buflen = PAGE_SIZE;
 	buf = kmalloc(buflen, GFP_ATOMIC);
 
@@ -186,6 +192,8 @@ static void timesync_onchannelcallback(void *context)
 	}
 
 	kfree(buf);
+
+	DPRINT_EXIT(VMBUS);
 }
 
 /*
@@ -201,6 +209,8 @@ static void heartbeat_onchannelcallback(void *context)
 	u64 requestid;
 	struct icmsg_hdr *icmsghdrp;
 	struct heartbeat_msg_data *heartbeat_msg;
+
+	DPRINT_ENTER(VMBUS);
 
 	buflen = PAGE_SIZE;
 	buf = kmalloc(buflen, GFP_ATOMIC);
@@ -239,6 +249,8 @@ static void heartbeat_onchannelcallback(void *context)
 	}
 
 	kfree(buf);
+
+	DPRINT_EXIT(VMBUS);
 }
 
 static const struct pci_device_id __initconst

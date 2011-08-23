@@ -168,10 +168,6 @@ typedef struct ieee_param {
 /* QOS control */
 #define IEEE80211_QCTL_TID              0x000F
 
-#define OUI_SUBTYPE_WMM_INFO		0
-#define OUI_SUBTYPE_WMM_PARAM	1
-#define OUI_SUBTYPE_QOS_CAPABI	5
-
 /* debug macros */
 #define CONFIG_IEEE80211_DEBUG
 #ifdef CONFIG_IEEE80211_DEBUG
@@ -1124,26 +1120,10 @@ enum {
 	COUNTRY_CODE_MKK = 5,
 	COUNTRY_CODE_MKK1 = 6,
 	COUNTRY_CODE_ISRAEL = 7,
-	COUNTRY_CODE_TELEC = 8,
-	COUNTRY_CODE_MIC = 9,
-	COUNTRY_CODE_GLOBAL_DOMAIN = 10,
-	COUNTRY_CODE_WORLD_WIDE_13 = 11,
-	COUNTRY_CODE_TELEC_NETGEAR = 12,
-	COUNTRY_CODE_MAX
+	COUNTRY_CODE_TELEC,
+	COUNTRY_CODE_MIC,
+	COUNTRY_CODE_GLOBAL_DOMAIN
 };
-
-#define	NUM_PMKID_CACHE		16
-
-typedef struct _RT_PMKID_LIST
-{
-	u8						bUsed;
-	u8 						Bssid[6];
-	u8						PMKID[16];
-	u8						SsidBuf[33];
-	u8*						ssid_octet;
-	u16 					ssid_length;
-} RT_PMKID_LIST, *PRT_PMKID_LIST;
-
 
 #include "ieee80211_r8192s.h"
 
@@ -1154,7 +1134,6 @@ struct ieee80211_device {
 	/* hw security related */
 	u8 hwsec_active;
 	bool is_silent_reset;
-	bool force_mic_error;
 	bool is_roaming;
 	bool ieee_up;
 	bool bSupportRemoteWakeUp;
@@ -1268,7 +1247,6 @@ struct ieee80211_device {
 	int bcrx_sta_key; /* use individual keys to override default keys even
 			   * with RX of broad/multicast frames */
 
-	RT_PMKID_LIST		PMKIDList[NUM_PMKID_CACHE];
 	/* Fragmentation structures */
 	// each streaming contain a entry
 	struct ieee80211_frag_entry frag_cache[17][IEEE80211_FRAG_CACHE_LEN];
@@ -1317,10 +1295,6 @@ struct ieee80211_device {
 	 */
 	void *pDot11dInfo;
 	bool bGlobalDomain;
-
-	u8   IbssStartChnl;
-	u8   ibss_maxjoin_chal;
-
 	int rate;       /* current rate */
 	int basic_rate;
 	//FIXME: pleace callback, see if redundant with softmac_features

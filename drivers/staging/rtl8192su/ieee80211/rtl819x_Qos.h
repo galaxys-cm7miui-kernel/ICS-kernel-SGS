@@ -1,21 +1,3 @@
-/******************************************************************************
- * Copyright(c) 2008 - 2010 Realtek Corporation. All rights reserved.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- * The full GNU General Public License is included in this distribution in the
- * file called LICENSE.
- *
- * Contact Information:
- * wlanfae <wlanfae@realtek.com>
-******************************************************************************/
 #ifndef __INC_QOS_TYPE_H
 #define __INC_QOS_TYPE_H
 
@@ -54,6 +36,18 @@
 
 #define	MAX_WMMELE_LENGTH	64
 
+//
+// QoS mode.
+// enum 0, 1, 2, 4: since we can use the OR(|) operation.
+//
+// QOS_MODE is redefined for enum can't be ++, | under C++ compiler, 2006.05.17, by rcnjko.
+//typedef	enum _QOS_MODE{
+//	QOS_DISABLE		= 0,
+//	QOS_WMM			= 1,
+//	QOS_EDCA			= 2,
+//	QOS_HCCA			= 4,
+//}QOS_MODE,*PQOS_MODE;
+//
 typedef u32 QOS_MODE, *PQOS_MODE;
 #define QOS_DISABLE		0
 #define QOS_WMM			1
@@ -225,6 +219,19 @@ typedef	union _QOS_INFO_FIELD{
 
 }QOS_INFO_FIELD, *PQOS_INFO_FIELD;
 
+//
+// ACI to AC coding.
+// Ref: WMM spec 2.2.2: WME Parameter Element, p.13.
+//
+// AC_CODING is redefined for enum can't be ++, | under C++ compiler, 2006.05.17, by rcnjko.
+//typedef	enum _AC_CODING{
+//	AC0_BE	= 0,		// ACI: 0x00	// Best Effort
+//	AC1_BK	= 1,		// ACI: 0x01	// Background
+//	AC2_VI	= 2,		// ACI: 0x10	// Video
+//	AC3_VO	= 3,		// ACI: 0x11	// Voice
+//	AC_MAX = 4,		// Max: define total number; Should not to be used as a real enum.
+//}AC_CODING,*PAC_CODING;
+//
 typedef u32 AC_CODING;
 #define AC0_BE	0		// ACI: 0x00	// Best Effort
 #define AC1_BK	1		// ACI: 0x01	// Background
@@ -245,7 +252,7 @@ typedef	union _ACI_AIFSN{
 		u8	ACM:1;
 		u8	ACI:2;
 		u8	Reserved:1;
-	}f;
+	}f;	// Field
 }ACI_AIFSN, *PACI_AIFSN;
 
 //
@@ -258,7 +265,7 @@ typedef	union _ECW{
 	{
 		u8	ECWmin:4;
 		u8	ECWmax:4;
-	}f;
+	}f;	// Field
 }ECW, *PECW;
 
 //
@@ -274,7 +281,7 @@ typedef	union _AC_PARAM{
 		ACI_AIFSN	AciAifsn;
 		ECW		Ecw;
 		u16		TXOPLimit;
-	}f;
+	}f;	// Field
 }AC_PARAM, *PAC_PARAM;
 
 
@@ -347,7 +354,7 @@ typedef union _TSPEC_BODY{
 		u32	MinPhyRate;
 		u16	SurplusBandwidthAllowance;
 		u16	MediumTime;
-	} f;
+	} f;	// Field
 }TSPEC_BODY, *PTSPEC_BODY;
 
 
@@ -377,6 +384,7 @@ typedef	enum _ACM_METHOD{
 
 
 typedef struct _ACM{
+//	u8		RegEnableACM;
 	u64		UsedTime;
 	u64		MediumTime;
 	u8		HwAcmCtl;	// TRUE: UsedTime exceed => Do NOT USE this AC. It wll be written to ACM_CONTROL(0xBF BIT 0/1/2 in 8185B).
@@ -396,6 +404,10 @@ typedef	u8		AC_UAPSD, *PAC_UAPSD;
 #define	GET_BE_UAPSD(_apsd) ((_apsd) & BIT3)
 #define	SET_BE_UAPSD(_apsd) ((_apsd) |= BIT3)
 
+
+//typedef struct _TCLASS{
+// TODO
+//} TCLASS, *PTCLASS;
 typedef union _QOS_TCLAS{
 
 	struct _TYPE_GENERAL{
@@ -447,11 +459,31 @@ typedef union _QOS_TCLAS{
 	} TYPE2_8021Q;
 } QOS_TCLAS, *PQOS_TCLAS;
 
+//typedef struct _WMM_TSTREAM{
+//
+//- TSPEC
+//- AC (which to mapping)
+//} WMM_TSTREAM, *PWMM_TSTREAM;
 typedef struct _QOS_TSTREAM{
 	u8			AC;
 	WMM_TSPEC		TSpec;
 	QOS_TCLAS		TClass;
 } QOS_TSTREAM, *PQOS_TSTREAM;
+
+//typedef struct _U_APSD{
+//- TriggerEnable [4]
+//- MaxSPLength
+//- HighestAcBuffered
+//} U_APSD, *PU_APSD;
+
+//joseph TODO:
+//	UAPSD function should be implemented by 2 data structure
+//	"Qos control field" and "Qos info field"
+//typedef struct _QOS_UAPSD{
+//	u8			bTriggerEnable[4];
+//	u8 			MaxSPLength;
+//	u8			HighestBufAC;
+//} QOS_UAPSD, *PQOS_APSD;
 
 //----------------------------------------------------------------------------
 //      802.11 Management frame Status Code field
@@ -466,6 +498,7 @@ typedef struct _OCTET_STRING{
 // Ref: DOT11_QOS in 8185 code. [def. in QoS_mp.h]
 //
 typedef struct _STA_QOS{
+	//DECLARE_RT_OBJECT(STA_QOS);
 	u8				WMMIEBuf[MAX_WMMELE_LENGTH];
 	u8*				WMMIE;
 
@@ -532,9 +565,18 @@ typedef struct _BSS_QOS{
 	AC_PARAM		AcParameter[4];
 }BSS_QOS, *PBSS_QOS;
 
+
+//
+// Ref: sQoSCtlLng and QoSCtl definition in 8185 QoS code.
+//#define QoSCtl   ((	(Adapter->bRegQoS) && (Adapter->dot11QoS.QoSMode &(QOS_EDCA|QOS_HCCA))	  )  ?sQoSCtlLng:0)
+//
 #define sQoSCtlLng			2
 #define	QOS_CTRL_LEN(_QosMode)		((_QosMode > QOS_DISABLE)? sQoSCtlLng : 0)
 
+
+//Added by joseph
+//UP Mapping to AC, using in MgntQuery_SequenceNumber() and maybe for DSCP
+//#define UP2AC(up)			((up<3)?((up==0)?1:0):(up>>1))
 #define IsACValid(ac)			((ac<=7 )?true:false )
 
-#endif
+#endif // #ifndef __INC_QOS_TYPE_H

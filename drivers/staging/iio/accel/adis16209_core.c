@@ -14,13 +14,12 @@
 #include <linux/device.h>
 #include <linux/kernel.h>
 #include <linux/spi/spi.h>
-#include <linux/slab.h>
+
 #include <linux/sysfs.h>
 #include <linux/list.h>
 
 #include "../iio.h"
 #include "../sysfs.h"
-#include "../ring_generic.h"
 #include "accel.h"
 #include "inclinometer.h"
 #include "../gyro/gyro.h"
@@ -77,13 +76,11 @@ static int adis16209_spi_write_reg_16(struct device *dev,
 			.bits_per_word = 8,
 			.len = 2,
 			.cs_change = 1,
-			.delay_usecs = 30,
 		}, {
 			.tx_buf = st->tx + 2,
 			.bits_per_word = 8,
 			.len = 2,
 			.cs_change = 1,
-			.delay_usecs = 30,
 		},
 	};
 
@@ -123,13 +120,13 @@ static int adis16209_spi_read_reg_16(struct device *dev,
 			.bits_per_word = 8,
 			.len = 2,
 			.cs_change = 1,
-			.delay_usecs = 30,
+			.delay_usecs = 20,
 		}, {
 			.rx_buf = st->rx,
 			.bits_per_word = 8,
 			.len = 2,
 			.cs_change = 1,
-			.delay_usecs = 30,
+			.delay_usecs = 20,
 		},
 	};
 
@@ -521,7 +518,7 @@ static int __devinit adis16209_probe(struct spi_device *spi)
 		goto error_unreg_ring_funcs;
 	regdone = 1;
 
-	ret = iio_ring_buffer_register(st->indio_dev->ring, 0);
+	ret = adis16209_initialize_ring(st->indio_dev->ring);
 	if (ret) {
 		printk(KERN_ERR "failed to initialize the ring\n");
 		goto error_unreg_ring_funcs;
@@ -553,7 +550,7 @@ error_unregister_line:
 	if (spi->irq)
 		iio_unregister_interrupt_line(st->indio_dev, 0);
 error_uninitialize_ring:
-	iio_ring_buffer_unregister(st->indio_dev->ring);
+	adis16209_uninitialize_ring(st->indio_dev->ring);
 error_unreg_ring_funcs:
 	adis16209_unconfigure_ring(st->indio_dev);
 error_free_dev:
@@ -582,7 +579,7 @@ static int adis16209_remove(struct spi_device *spi)
 	if (spi->irq)
 		iio_unregister_interrupt_line(indio_dev, 0);
 
-	iio_ring_buffer_unregister(indio_dev->ring);
+	adis16209_uninitialize_ring(indio_dev->ring);
 	iio_device_unregister(indio_dev);
 	adis16209_unconfigure_ring(indio_dev);
 	kfree(st->tx);
