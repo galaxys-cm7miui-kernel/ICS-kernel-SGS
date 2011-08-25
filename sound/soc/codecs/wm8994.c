@@ -128,6 +128,10 @@ select_route universal_wm8994_playback_paths[] =
 	{wm8994_set_off, wm8994_set_playback_receiver,
 	wm8994_set_playback_speaker, wm8994_set_playback_headset, wm8994_set_off, wm8994_set_playback_speaker_headset};
 
+select_route universal_wm8994_voicecall_paths[] = 
+	{wm8994_set_off, wm8994_set_voicecall_receiver, 
+	wm8994_set_voicecall_speaker, wm8994_set_voicecall_headset, wm8994_set_voicecall_bluetooth}; 
+
 /* codec private data */
 struct wm8994_priv {
 	struct wm_hubs_data hubs;
