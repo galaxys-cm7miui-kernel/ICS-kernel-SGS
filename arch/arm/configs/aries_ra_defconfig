@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.36
-# Thu Aug 25 17:37:28 2011
+# Thu Aug 25 18:16:27 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -1170,7 +1170,7 @@ CONFIG_INPUT_MISC=y
 # CONFIG_GYRO_K3G is not set
 # CONFIG_INPUT_AD714X is not set
 CONFIG_INPUT_BMA023=y
-CONFIG_INPUT_KR3DH=y
+# CONFIG_INPUT_KR3DH is not set
 CONFIG_INPUT_YAS529=y
 CONFIG_INPUT_YAS529_POSITION=7
 CONFIG_INPUT_ORIENTATION=y
