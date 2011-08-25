@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.36
-# Thu Aug 25 09:25:27 2011
+# Thu Aug 25 14:46:39 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -1320,6 +1320,7 @@ CONFIG_GPIO_SYSFS=y
 # CONFIG_GPIO_MAX732X is not set
 # CONFIG_GPIO_PCA953X is not set
 # CONFIG_GPIO_PCF857X is not set
+# CONFIG_GPIO_SX150X is not set
 # CONFIG_GPIO_ADP5588 is not set
 
 #
@@ -1464,8 +1465,8 @@ CONFIG_VIDEO_JPEG_DEBUG=y
 CONFIG_RADIO_ADAPTERS=y
 # CONFIG_I2C_SI4713 is not set
 # CONFIG_RADIO_SI4713 is not set
-CONFIG_RADIO_SI470X=y
-CONFIG_I2C_SI470X=y
+# CONFIG_RADIO_SI470X is not set
+CONFIG_RADIO_SI4709=y
 # CONFIG_RADIO_TEA5764 is not set
 # CONFIG_RADIO_SAA7706H is not set
 # CONFIG_RADIO_TEF6862 is not set
