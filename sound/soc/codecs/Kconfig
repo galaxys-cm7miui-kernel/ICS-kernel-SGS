@@ -328,13 +328,6 @@ config SND_WM8994_EXTENSIONS_FM
 	help
 	  Adds a control to enable or disable the high-pass filter on FM radio
 
-config SND_VOODOO_FM
-	bool "FM radio: frequency response and levels optimizations"
-	depends on SND_WM8994_EXTENSIONS && ARIES_EUR
-	default n
-	help
-	  Adds a control to enable or disable the high-pass filter on FM radio
-
 config SND_WM8994_EXTENSIONS_MODULE
 	tristate "Build also as module (incomplete)"
 	depends on SND_WM8994_EXTENSIONS && m && n
