@@ -105,7 +105,7 @@ struct cpuset {
 	/* for custom sched domain */
 	int relax_domain_level;
 
-	/* used for walking a cpuset heirarchy */
+	/* used for walking a cpuset hierarchy */
 	struct list_head stack_list;
 };
 
@@ -1583,10 +1583,8 @@ static int cpuset_write_resmask(struct cgroup *cgrp, struct cftype *cft,
 		return -ENODEV;
 
 	trialcs = alloc_trial_cpuset(cs);
-	if (!trialcs) {
-		retval = -ENOMEM;
-		goto out;
-	}
+	if (!trialcs)
+		return -ENOMEM;
 
 	switch (cft->private) {
 	case FILE_CPULIST:
@@ -1601,7 +1599,6 @@ static int cpuset_write_resmask(struct cgroup *cgrp, struct cftype *cft,
 	}
 
 	free_trial_cpuset(trialcs);
-out:
 	cgroup_unlock();
 	return retval;
 }
@@ -2128,7 +2125,7 @@ static void scan_for_empty_cpusets(struct cpuset *root)
  * Called within get_online_cpus().  Needs to call cgroup_lock()
  * before calling generate_sched_domains().
  */
-void __cpuexit cpuset_update_active_cpus(void)
+void cpuset_update_active_cpus(void)
 {
 	struct sched_domain_attr *attr;
 	cpumask_var_t *doms;
