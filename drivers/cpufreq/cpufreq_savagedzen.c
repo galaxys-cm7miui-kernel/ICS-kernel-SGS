@@ -83,14 +83,14 @@ static unsigned long up_rate_us;
 /*
  * The minimum amount of time to spend at a frequency before we can ramp down.
  */
-#define DEFAULT_DOWN_RATE_US 70000;
+#define DEFAULT_DOWN_RATE_US 45000;
 static unsigned long down_rate_us;
 
 /*
  * When ramping up frequency with no idle cycles jump to at least this frequency.
  * Zero disables. Set a very high value to jump to policy max freqeuncy.
  */
-#define DEFAULT_UP_MIN_FREQ 1000000
+#define DEFAULT_UP_MIN_FREQ 800000
 static unsigned int up_min_freq;
 
 /*
@@ -114,7 +114,7 @@ static unsigned int sleep_wakeup_freq;
  * go below this frequency.
  * Set awake_min_freq=0 to disable this behavior.
  */
-#define DEFAULT_AWAKE_MIN_FREQ 600000
+#define DEFAULT_AWAKE_MIN_FREQ 400000
 static unsigned int awake_min_freq;
 
 /*
@@ -127,7 +127,7 @@ static unsigned int sample_rate_jiffies;
  * Freqeuncy delta when ramping up.
  * zero disables and causes to always jump straight to max frequency.
  */
-#define DEFAULT_RAMP_UP_STEP 200000
+#define DEFAULT_RAMP_UP_STEP 400000
 static unsigned int ramp_up_step;
 
 /*
@@ -159,7 +159,7 @@ static
 struct cpufreq_governor cpufreq_gov_savagedzen = {
         .name = "SavagedZen",
         .governor = cpufreq_governor_savagedzen,
-        .max_transition_latency = 9000000,
+        .max_transition_latency =6000000,
         .owner = THIS_MODULE,
 };
 
