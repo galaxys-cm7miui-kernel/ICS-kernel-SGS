@@ -26,7 +26,6 @@
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/async.h>
-#include <linux/timer.h>
 
 #include "../base.h"
 #include "power.h"
@@ -46,17 +45,13 @@ LIST_HEAD(dpm_list);
 static DEFINE_MUTEX(dpm_list_mtx);
 static pm_message_t pm_transition;
 
-static void dpm_drv_timeout(unsigned long data);
-struct dpm_drv_wd_data {
-	struct device *dev;
-	struct task_struct *tsk;
-};
-
 /*
  * Set once the preparation of devices for a PM transition has started, reset
  * before starting to resume devices.  Protected by dpm_list_mtx.
  */
 static bool transition_started;
+
+static int async_error;
 
 /**
  * device_pm_init - Initialize the PM-related part of a device object.
@@ -67,7 +62,8 @@ void device_pm_init(struct device *dev)
 	dev->power.status = DPM_ON;
 	init_completion(&dev->power.completion);
 	complete_all(&dev->power.completion);
-	dev->power.wakeup_count = 0;
+	dev->power.wakeup = NULL;
+	spin_lock_init(&dev->power.lock);
 	pm_runtime_init(dev);
 }
 
@@ -127,6 +123,7 @@ void device_pm_remove(struct device *dev)
 	mutex_lock(&dpm_list_mtx);
 	list_del_init(&dev->power.entry);
 	mutex_unlock(&dpm_list_mtx);
+	device_wakeup_disable(dev);
 	pm_runtime_remove(dev);
 }
 
@@ -414,7 +411,7 @@ static void pm_dev_err(struct device *dev, pm_message_t state, char *info,
 static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 {
 	ktime_t calltime;
-	s64 usecs64;
+	u64 usecs64;
 	int usecs;
 
 	calltime = ktime_get();
@@ -531,9 +528,7 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 	TRACE_DEVICE(dev);
 	TRACE_RESUME(0);
 
-	if (dev->parent && (dev->parent->power.status >= DPM_OFF ||
-			    dev->parent->power.status == DPM_RESUMING))
-		dpm_wait(dev->parent, async);
+	dpm_wait(dev->parent, async);
 	device_lock(dev);
 
 	dev->power.status = DPM_RESUMING;
@@ -594,30 +589,6 @@ static bool is_async(struct device *dev)
 }
 
 /**
- *	dpm_drv_timeout - Driver suspend / resume watchdog handler
- *	@data: struct device which timed out
- *
- * 	Called when a driver has timed out suspending or resuming.
- * 	There's not much we can do here to recover so
- * 	BUG() out for a crash-dump
- *
- */
-static void dpm_drv_timeout(unsigned long data)
-{
-	struct dpm_drv_wd_data *wd_data = (void *)data;
-	struct device *dev = wd_data->dev;
-	struct task_struct *tsk = wd_data->tsk;
-
-	printk(KERN_EMERG "**** DPM device timeout: %s (%s)\n", dev_name(dev),
-	       (dev->driver ? dev->driver->name : "no driver"));
-
-	printk(KERN_EMERG "dpm suspend stack:\n");
-	show_stack(tsk, NULL);
-
-	BUG();
-}
-
-/**
  * dpm_resume - Execute "resume" callbacks for non-sysdev devices.
  * @state: PM transition of the system being carried out.
  *
@@ -633,6 +604,7 @@ static void dpm_resume(pm_message_t state)
 	INIT_LIST_HEAD(&list);
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;
+	async_error = 0;
 
 	list_for_each_entry(dev, &dpm_list, power.entry) {
 		if (dev->power.status < DPM_OFF)
@@ -862,8 +834,6 @@ static int legacy_suspend(struct device *dev, pm_message_t state,
 	return error;
 }
 
-static int async_error;
-
 /**
  * device_suspend - Execute "suspend" callbacks for given device.
  * @dev: Device to handle.
@@ -873,19 +843,8 @@ static int async_error;
 static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 {
 	int error = 0;
-	struct timer_list timer;
-	struct dpm_drv_wd_data data;
 
 	dpm_wait_for_children(dev, async);
-
-	data.dev = dev;
-	data.tsk = get_current();
-	init_timer_on_stack(&timer);
-	timer.expires = jiffies + HZ * 12;
-	timer.function = dpm_drv_timeout;
-	timer.data = (unsigned long)&data;
-	add_timer(&timer);
-
 	device_lock(dev);
 
 	if (async_error)
@@ -927,11 +886,10 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
  End:
 	device_unlock(dev);
-
-	del_timer_sync(&timer);
-	destroy_timer_on_stack(&timer);
-
 	complete_all(&dev->power.completion);
+
+	if (error)
+		async_error = error;
 
 	return error;
 }
@@ -942,10 +900,8 @@ static void async_suspend(void *data, async_cookie_t cookie)
 	int error;
 
 	error = __device_suspend(dev, pm_transition, true);
-	if (error) {
+	if (error)
 		pm_dev_err(dev, pm_transition, " async", error);
-		async_error = error;
-	}
 
 	put_device(dev);
 }
@@ -1133,8 +1089,9 @@ EXPORT_SYMBOL_GPL(__suspend_report_result);
  * @dev: Device to wait for.
  * @subordinate: Device that needs to wait for @dev.
  */
-void device_pm_wait_for_dev(struct device *subordinate, struct device *dev)
+int device_pm_wait_for_dev(struct device *subordinate, struct device *dev)
 {
 	dpm_wait(dev, subordinate->power.async_suspend);
+	return async_error;
 }
 EXPORT_SYMBOL_GPL(device_pm_wait_for_dev);
