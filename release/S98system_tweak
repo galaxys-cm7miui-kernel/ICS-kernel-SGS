@@ -1,6 +1,6 @@
 #!/system/bin/sh
 #
-# 89system_tweak V54
+# 89system_tweak V56
 # by zacharias.maladroit
 # modifications and ideas taken from: ckMod SSSwitch by voku1987 and "battery tweak" (collin_ph@xda)
 # OOM/LMK settings by Juwe11
@@ -99,8 +99,8 @@ fi;
 echo 0 > /proc/sys/vm/swappiness # 70 for zram, Talon # 0 for CM7 / MIUI (no zram yet)
 echo 3 > /proc/sys/vm/page-cluster # when swapping then hesitate to swap out pages & pull them in again in a fast manner
 
-#echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50
-echo 50 > /proc/sys/vm/vfs_cache_pressure; # same value for both: screen on & off - needs some testing due to RAM filling and OOM killer triggering # 20 (on talon)
+##echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50
+echo 20 > /proc/sys/vm/vfs_cache_pressure; # same value for both: screen on & off - needs some testing due to RAM filling and OOM killer triggering # 20 (on talon & testing)
 
 # make sure we don't use laptop-mode
 echo 0 > /proc/sys/vm/laptop_mode
@@ -114,7 +114,7 @@ echo 0 > /proc/sys/vm/laptop_mode
 		echo 500 > /proc/sys/vm/dirty_writeback_centisecs; # 1000 # 500 is long enough [stability testing]
 		echo 10 > /proc/sys/vm/dirty_background_ratio; # 15 # 10 # 50  
 		echo 80 > /proc/sys/vm/dirty_ratio; # 40 # 90
-		echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50 # 20 [less reclaim]
+#		echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50 # 20 [less reclaim]
 
 
 # =========
@@ -454,7 +454,7 @@ echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 #echo "now disabling NORMALIZED_SLEEPERS"
-echo "NO_NORMALIZED_SLEEPER" > /sys/kernel/debug/sched_features
+echo "NO_NORMALIZED_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 echo "24319" > /proc/sys/kernel/sched_features
@@ -633,3 +633,5 @@ echo "24319" > /proc/sys/kernel/sched_features
 # V52: inherited stuff from the screenstate_scaling script
 # V53: more tweaks in several areas
 # V54: some more tweaks & explanations
+# V55: commented out a superfluous definition/occurence of vfs_cache_pressure - thanks to pikachu01 !
+# V56: fixed a typo in NO_NORMALIZED_SLEEPERS;  no_new_fair_sleepers and no_normalized_sleepers are rather pointless since not available in the kernel but still setting them - just in case ;)
