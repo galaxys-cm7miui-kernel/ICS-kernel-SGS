@@ -93,7 +93,7 @@ struct s5pv210_dvs_conf {
 
 #ifdef CONFIG_DVFS_LIMIT
 static unsigned int g_dvfs_high_lock_token = 0;
-static unsigned int g_dvfs_high_lock_limit = 4;
+static unsigned int g_dvfs_high_lock_limit = 10;
 static unsigned int g_dvfslockval[DVFS_LOCK_TOKEN_NUM];
 //static DEFINE_MUTEX(dvfs_high_lock);
 #endif
@@ -950,7 +950,7 @@ static int __init s5pv210_cpufreq_driver_init(struct cpufreq_policy *policy)
 
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
-	policy->cpuinfo.transition_latency = 35000; /* <1us */
+	policy->cpuinfo.transition_latency = 40000; /* 40 us */
 
 	rate = clk_get_rate(mpu_clk);
 	i = 0;
