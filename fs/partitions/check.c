@@ -286,13 +286,6 @@ ssize_t part_inflight_show(struct device *dev,
 	return sprintf(buf, "%8u %8u\n", p->in_flight[0], p->in_flight[1]);
 }
 
-ssize_t part_partition_name_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct hd_struct *p = dev_to_part(dev);
-	return sprintf(buf, "%s\n", p->partition_name);
-}
-
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 ssize_t part_fail_show(struct device *dev,
 		       struct device_attribute *attr, char *buf)
@@ -324,8 +317,6 @@ static DEVICE_ATTR(discard_alignment, S_IRUGO, part_discard_alignment_show,
 		   NULL);
 static DEVICE_ATTR(stat, S_IRUGO, part_stat_show, NULL);
 static DEVICE_ATTR(inflight, S_IRUGO, part_inflight_show, NULL);
-static DEVICE_ATTR(partition_name, S_IRUGO, part_partition_name_show, NULL);
-
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 static struct device_attribute dev_attr_fail =
 	__ATTR(make-it-fail, S_IRUGO|S_IWUSR, part_fail_show, part_fail_store);
@@ -339,7 +330,6 @@ static struct attribute *part_attrs[] = {
 	&dev_attr_discard_alignment.attr,
 	&dev_attr_stat.attr,
 	&dev_attr_inflight.attr,
-	&dev_attr_partition_name.attr,
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 	&dev_attr_fail.attr,
 #endif
@@ -362,6 +352,7 @@ static void part_release(struct device *dev)
 {
 	struct hd_struct *p = dev_to_part(dev);
 	free_part_stats(p);
+	free_part_info(p);
 	kfree(p);
 }
 
@@ -419,13 +410,9 @@ static ssize_t whole_disk_show(struct device *dev,
 static DEVICE_ATTR(whole_disk, S_IRUSR | S_IRGRP | S_IROTH,
 		   whole_disk_show, NULL);
 
-static void name_partition(struct hd_struct *p, const char *name)
-{
-	strlcpy(p->partition_name, name, GENHD_PART_NAME_SIZE);
-}
-
 struct hd_struct *add_partition(struct gendisk *disk, int partno,
-				sector_t start, sector_t len, int flags)
+				sector_t start, sector_t len, int flags,
+				struct partition_meta_info *info)
 {
 	struct hd_struct *p;
 	dev_t devt = MKDEV(0, 0);
@@ -462,6 +449,14 @@ struct hd_struct *add_partition(struct gendisk *disk, int partno,
 	p->partno = partno;
 	p->policy = get_disk_ro(disk);
 
+	if (info) {
+		struct partition_meta_info *pinfo = alloc_part_info(disk);
+		if (!pinfo)
+			goto out_free_stats;
+		memcpy(pinfo, info, sizeof(*info));
+		p->info = pinfo;
+	}
+
 	dname = dev_name(ddev);
 	if (isdigit(dname[strlen(dname) - 1]))
 		dev_set_name(pdev, "%sp%d", dname, partno);
@@ -475,7 +470,7 @@ struct hd_struct *add_partition(struct gendisk *disk, int partno,
 
 	err = blk_alloc_devt(p, &devt);
 	if (err)
-		goto out_free_stats;
+		goto out_free_info;
 	pdev->devt = devt;
 
 	/* delay uevent until 'holders' subdir is created */
@@ -505,6 +500,8 @@ struct hd_struct *add_partition(struct gendisk *disk, int partno,
 
 	return p;
 
+out_free_info:
+	free_part_info(p);
 out_free_stats:
 	free_part_stats(p);
 out_free:
@@ -537,14 +534,14 @@ void register_disk(struct gendisk *disk)
 
 	if (device_add(ddev))
 		return;
-#ifndef CONFIG_SYSFS_DEPRECATED
-	err = sysfs_create_link(block_depr, &ddev->kobj,
-				kobject_name(&ddev->kobj));
-	if (err) {
-		device_del(ddev);
-		return;
+	if (!sysfs_deprecated) {
+		err = sysfs_create_link(block_depr, &ddev->kobj,
+					kobject_name(&ddev->kobj));
+		if (err) {
+			device_del(ddev);
+			return;
+		}
 	}
-#endif
 	disk->part0.holder_dir = kobject_create_and_add("holders", &ddev->kobj);
 	disk->slave_dir = kobject_create_and_add("slaves", &ddev->kobj);
 
@@ -666,6 +663,7 @@ rescan:
 	/* add partitions */
 	for (p = 1; p < state->limit; p++) {
 		sector_t size, from;
+		struct partition_meta_info *info = NULL;
 
 		size = state->parts[p].size;
 		if (!size)
@@ -699,14 +697,17 @@ rescan:
 				size = get_capacity(disk) - from;
 			}
 		}
+
+		if (state->parts[p].has_info)
+			info = &state->parts[p].info;
 		part = add_partition(disk, p, from, size,
-				     state->parts[p].flags);
+				     state->parts[p].flags,
+				     &state->parts[p].info);
 		if (IS_ERR(part)) {
 			printk(KERN_ERR " %s: p%d could not be added: %ld\n",
 			       disk->disk_name, p, -PTR_ERR(part));
 			continue;
 		}
-		name_partition(part, state->parts[p].name);
 #ifdef CONFIG_BLK_DEV_MD
 		if (state->parts[p].flags & ADDPART_FLAG_RAID)
 			md_autodetect_dev(part_to_dev(part)->devt);
@@ -762,8 +763,7 @@ void del_gendisk(struct gendisk *disk)
 	kobject_put(disk->part0.holder_dir);
 	kobject_put(disk->slave_dir);
 	disk->driverfs_dev = NULL;
-#ifndef CONFIG_SYSFS_DEPRECATED
-	sysfs_remove_link(block_depr, dev_name(disk_to_dev(disk)));
-#endif
+	if (!sysfs_deprecated)
+		sysfs_remove_link(block_depr, dev_name(disk_to_dev(disk)));
 	device_del(disk_to_dev(disk));
 }

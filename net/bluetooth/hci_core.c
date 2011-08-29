@@ -562,7 +562,6 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 	hci_dev_lock_bh(hdev);
 	inquiry_cache_flush(hdev);
 	hci_conn_hash_flush(hdev);
-	hci_blacklist_clear(hdev);
 	hci_dev_unlock_bh(hdev);
 
 	hci_notify(hdev, HCI_DEV_DOWN);
@@ -1609,7 +1608,7 @@ static inline void hci_acldata_packet(struct hci_dev *hdev, struct sk_buff *skb)
 	if (conn) {
 		register struct hci_proto *hp;
 
-		hci_conn_enter_active_mode(conn, bt_cb(skb)->force_active);
+		hci_conn_enter_active_mode(conn, 1);
 
 		/* Send to upper protocol */
 		if ((hp = hci_proto[HCI_PROTO_L2CAP]) && hp->recv_acldata) {
