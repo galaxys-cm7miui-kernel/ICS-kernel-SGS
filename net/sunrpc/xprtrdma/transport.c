@@ -237,7 +237,8 @@ xprt_rdma_destroy(struct rpc_xprt *xprt)
 
 	dprintk("RPC:       %s: called\n", __func__);
 
-	cancel_delayed_work_sync(&r_xprt->rdma_connect);
+	cancel_delayed_work(&r_xprt->rdma_connect);
+	flush_scheduled_work();
 
 	xprt_clear_connected(xprt);
 
@@ -250,7 +251,9 @@ xprt_rdma_destroy(struct rpc_xprt *xprt)
 
 	xprt_rdma_free_addresses(xprt);
 
-	xprt_free(xprt);
+	kfree(xprt->slot);
+	xprt->slot = NULL;
+	kfree(xprt);
 
 	dprintk("RPC:       %s: returning\n", __func__);
 
@@ -282,11 +285,20 @@ xprt_setup_rdma(struct xprt_create *args)
 		return ERR_PTR(-EBADF);
 	}
 
-	xprt = xprt_alloc(args->net, sizeof(struct rpcrdma_xprt),
-			xprt_rdma_slot_table_entries);
+	xprt = kzalloc(sizeof(struct rpcrdma_xprt), GFP_KERNEL);
 	if (xprt == NULL) {
 		dprintk("RPC:       %s: couldn't allocate rpcrdma_xprt\n",
 			__func__);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	xprt->max_reqs = xprt_rdma_slot_table_entries;
+	xprt->slot = kcalloc(xprt->max_reqs,
+				sizeof(struct rpc_rqst), GFP_KERNEL);
+	if (xprt->slot == NULL) {
+		dprintk("RPC:       %s: couldn't allocate %d slots\n",
+			__func__, xprt->max_reqs);
+		kfree(xprt);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -398,7 +410,8 @@ out3:
 out2:
 	rpcrdma_ia_close(&new_xprt->rx_ia);
 out1:
-	xprt_free(xprt);
+	kfree(xprt->slot);
+	kfree(xprt);
 	return ERR_PTR(rc);
 }
 
@@ -447,7 +460,7 @@ xprt_rdma_connect(struct rpc_task *task)
 	} else {
 		schedule_delayed_work(&r_xprt->rdma_connect, 0);
 		if (!RPC_IS_ASYNC(task))
-			flush_delayed_work(&r_xprt->rdma_connect);
+			flush_scheduled_work();
 	}
 }
 

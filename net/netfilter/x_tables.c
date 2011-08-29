@@ -116,8 +116,10 @@ EXPORT_SYMBOL(xt_register_targets);
 void
 xt_unregister_targets(struct xt_target *target, unsigned int n)
 {
-	while (n-- > 0)
-		xt_unregister_target(&target[n]);
+	unsigned int i;
+
+	for (i = 0; i < n; i++)
+		xt_unregister_target(&target[i]);
 }
 EXPORT_SYMBOL(xt_unregister_targets);
 
@@ -172,8 +174,10 @@ EXPORT_SYMBOL(xt_register_matches);
 void
 xt_unregister_matches(struct xt_match *match, unsigned int n)
 {
-	while (n-- > 0)
-		xt_unregister_match(&match[n]);
+	unsigned int i;
+
+	for (i = 0; i < n; i++)
+		xt_unregister_match(&match[i]);
 }
 EXPORT_SYMBOL(xt_unregister_matches);
 

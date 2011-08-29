@@ -5,8 +5,6 @@
  * License terms: GNU General Public License (GPL) version 2
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ":%s(): " fmt, __func__
-
 #include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/init.h>
@@ -29,6 +27,9 @@
 /* 5 sec. connect timeout */
 #define CONNECT_TIMEOUT (5 * HZ)
 #define CAIF_NET_DEFAULT_QUEUE_LEN 500
+
+#undef pr_debug
+#define pr_debug pr_warning
 
 /*This list is protected by the rtnl lock. */
 static LIST_HEAD(chnl_net_list);
@@ -141,7 +142,8 @@ static void chnl_flowctrl_cb(struct cflayer *layr, enum caif_ctrlcmd flow,
 				int phyid)
 {
 	struct chnl_net *priv = container_of(layr, struct chnl_net, chnl);
-	pr_debug("NET flowctrl func called flow: %s\n",
+	pr_debug("CAIF: %s(): NET flowctrl func called flow: %s\n",
+		__func__,
 		flow == CAIF_CTRLCMD_FLOW_ON_IND ? "ON" :
 		flow == CAIF_CTRLCMD_INIT_RSP ? "INIT" :
 		flow == CAIF_CTRLCMD_FLOW_OFF_IND ? "OFF" :
@@ -194,12 +196,12 @@ static int chnl_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	priv = netdev_priv(dev);
 
 	if (skb->len > priv->netdev->mtu) {
-		pr_warn("Size of skb exceeded MTU\n");
+		pr_warning("CAIF: %s(): Size of skb exceeded MTU\n", __func__);
 		return -ENOSPC;
 	}
 
 	if (!priv->flowenabled) {
-		pr_debug("dropping packets flow off\n");
+		pr_debug("CAIF: %s(): dropping packets flow off\n", __func__);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -235,7 +237,7 @@ static int chnl_net_open(struct net_device *dev)
 	ASSERT_RTNL();
 	priv = netdev_priv(dev);
 	if (!priv) {
-		pr_debug("chnl_net_open: no priv\n");
+		pr_debug("CAIF: %s(): chnl_net_open: no priv\n", __func__);
 		return -ENODEV;
 	}
 
@@ -244,17 +246,18 @@ static int chnl_net_open(struct net_device *dev)
 		result = caif_connect_client(&priv->conn_req, &priv->chnl,
 					&llifindex, &headroom, &tailroom);
 		if (result != 0) {
-				pr_debug("err: "
-					 "Unable to register and open device,"
-					 " Err:%d\n",
-					 result);
+				pr_debug("CAIF: %s(): err: "
+					"Unable to register and open device,"
+					" Err:%d\n",
+					__func__,
+					result);
 				goto error;
 		}
 
 		lldev = dev_get_by_index(dev_net(dev), llifindex);
 
 		if (lldev == NULL) {
-			pr_debug("no interface?\n");
+			pr_debug("CAIF: %s(): no interface?\n", __func__);
 			result = -ENODEV;
 			goto error;
 		}
@@ -276,7 +279,9 @@ static int chnl_net_open(struct net_device *dev)
 		dev_put(lldev);
 
 		if (mtu < 100) {
-			pr_warn("CAIF Interface MTU too small (%d)\n", mtu);
+			pr_warning("CAIF: %s(): "
+				"CAIF Interface MTU too small (%d)\n",
+				__func__, mtu);
 			result = -ENODEV;
 			goto error;
 		}
@@ -291,32 +296,33 @@ static int chnl_net_open(struct net_device *dev)
 	rtnl_lock();
 
 	if (result == -ERESTARTSYS) {
-		pr_debug("wait_event_interruptible woken by a signal\n");
+		pr_debug("CAIF: %s(): wait_event_interruptible"
+			 " woken by a signal\n", __func__);
 		result = -ERESTARTSYS;
 		goto error;
 	}
 
 	if (result == 0) {
-		pr_debug("connect timeout\n");
+		pr_debug("CAIF: %s(): connect timeout\n", __func__);
 		caif_disconnect_client(&priv->chnl);
 		priv->state = CAIF_DISCONNECTED;
-		pr_debug("state disconnected\n");
+		pr_debug("CAIF: %s(): state disconnected\n", __func__);
 		result = -ETIMEDOUT;
 		goto error;
 	}
 
 	if (priv->state != CAIF_CONNECTED) {
-		pr_debug("connect failed\n");
+		pr_debug("CAIF: %s(): connect failed\n", __func__);
 		result = -ECONNREFUSED;
 		goto error;
 	}
-	pr_debug("CAIF Netdevice connected\n");
+	pr_debug("CAIF: %s(): CAIF Netdevice connected\n", __func__);
 	return 0;
 
 error:
 	caif_disconnect_client(&priv->chnl);
 	priv->state = CAIF_DISCONNECTED;
-	pr_debug("state disconnected\n");
+	pr_debug("CAIF: %s(): state disconnected\n", __func__);
 	return result;
 
 }
@@ -407,7 +413,7 @@ static void caif_netlink_parms(struct nlattr *data[],
 				struct caif_connect_request *conn_req)
 {
 	if (!data) {
-		pr_warn("no params data found\n");
+		pr_warning("CAIF: %s: no params data found\n", __func__);
 		return;
 	}
 	if (data[IFLA_CAIF_IPV4_CONNID])
@@ -436,7 +442,8 @@ static int ipcaif_newlink(struct net *src_net, struct net_device *dev,
 
 	ret = register_netdevice(dev);
 	if (ret)
-		pr_warn("device rtml registration failed\n");
+		pr_warning("CAIF: %s(): device rtml registration failed\n",
+			   __func__);
 	return ret;
 }
 

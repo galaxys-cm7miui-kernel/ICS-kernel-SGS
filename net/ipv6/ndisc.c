@@ -91,9 +91,7 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv6.h>
 
-static u32 ndisc_hash(const void *pkey,
-		      const struct net_device *dev,
-		      __u32 rnd);
+static u32 ndisc_hash(const void *pkey, const struct net_device *dev);
 static int ndisc_constructor(struct neighbour *neigh);
 static void ndisc_solicit(struct neighbour *neigh, struct sk_buff *skb);
 static void ndisc_error_report(struct neighbour *neigh, struct sk_buff *skb);
@@ -230,12 +228,12 @@ static struct nd_opt_hdr *ndisc_next_option(struct nd_opt_hdr *cur,
 	do {
 		cur = ((void *)cur) + (cur->nd_opt_len << 3);
 	} while(cur < end && cur->nd_opt_type != type);
-	return cur <= end && cur->nd_opt_type == type ? cur : NULL;
+	return (cur <= end && cur->nd_opt_type == type ? cur : NULL);
 }
 
 static inline int ndisc_is_useropt(struct nd_opt_hdr *opt)
 {
-	return opt->nd_opt_type == ND_OPT_RDNSS;
+	return (opt->nd_opt_type == ND_OPT_RDNSS);
 }
 
 static struct nd_opt_hdr *ndisc_next_useropt(struct nd_opt_hdr *cur,
@@ -246,7 +244,7 @@ static struct nd_opt_hdr *ndisc_next_useropt(struct nd_opt_hdr *cur,
 	do {
 		cur = ((void *)cur) + (cur->nd_opt_len << 3);
 	} while(cur < end && !ndisc_is_useropt(cur));
-	return cur <= end && ndisc_is_useropt(cur) ? cur : NULL;
+	return (cur <= end && ndisc_is_useropt(cur) ? cur : NULL);
 }
 
 static struct ndisc_options *ndisc_parse_options(u8 *opt, int opt_len,
@@ -321,7 +319,7 @@ static inline u8 *ndisc_opt_addr_data(struct nd_opt_hdr *p,
 	int prepad = ndisc_addr_option_pad(dev->type);
 	if (lladdrlen != NDISC_OPT_SPACE(dev->addr_len + prepad))
 		return NULL;
-	return lladdr + prepad;
+	return (lladdr + prepad);
 }
 
 int ndisc_mc_map(struct in6_addr *addr, char *buf, struct net_device *dev, int dir)
@@ -352,9 +350,7 @@ int ndisc_mc_map(struct in6_addr *addr, char *buf, struct net_device *dev, int d
 
 EXPORT_SYMBOL(ndisc_mc_map);
 
-static u32 ndisc_hash(const void *pkey,
-		      const struct net_device *dev,
-		      __u32 hash_rnd)
+static u32 ndisc_hash(const void *pkey, const struct net_device *dev)
 {
 	const u32 *p32 = pkey;
 	u32 addr_hash, i;
@@ -363,7 +359,7 @@ static u32 ndisc_hash(const void *pkey,
 	for (i = 0; i < (sizeof(struct in6_addr) / sizeof(u32)); i++)
 		addr_hash ^= *p32++;
 
-	return jhash_2words(addr_hash, dev->ifindex, hash_rnd);
+	return jhash_2words(addr_hash, dev->ifindex, nd_tbl.hash_rnd);
 }
 
 static int ndisc_constructor(struct neighbour *neigh)
@@ -1109,18 +1105,6 @@ errout:
 	rtnl_set_sk_err(net, RTNLGRP_ND_USEROPT, err);
 }
 
-static inline int accept_ra(struct inet6_dev *in6_dev)
-{
-	/*
-	 * If forwarding is enabled, RA are not accepted unless the special
-	 * hybrid mode (accept_ra=2) is enabled.
-	 */
-	if (in6_dev->cnf.forwarding && in6_dev->cnf.accept_ra < 2)
-		return 0;
-
-	return in6_dev->cnf.accept_ra;
-}
-
 static void ndisc_router_discovery(struct sk_buff *skb)
 {
 	struct ra_msg *ra_msg = (struct ra_msg *)skb_transport_header(skb);
@@ -1174,7 +1158,8 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 		return;
 	}
 
-	if (!accept_ra(in6_dev))
+	/* skip route and link configuration on routers */
+	if (in6_dev->cnf.forwarding || !in6_dev->cnf.accept_ra)
 		goto skip_linkparms;
 
 #ifdef CONFIG_IPV6_NDISC_NODETYPE
@@ -1324,7 +1309,8 @@ skip_linkparms:
 			     NEIGH_UPDATE_F_ISROUTER);
 	}
 
-	if (!accept_ra(in6_dev))
+	/* skip route and link configuration on routers */
+	if (in6_dev->cnf.forwarding || !in6_dev->cnf.accept_ra)
 		goto out;
 
 #ifdef CONFIG_IPV6_ROUTE_INFO

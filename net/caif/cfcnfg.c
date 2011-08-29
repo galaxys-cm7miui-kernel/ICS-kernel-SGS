@@ -3,9 +3,6 @@
  * Author:	Sjur Brendeland/sjur.brandeland@stericsson.com
  * License terms: GNU General Public License (GPL) version 2
  */
-
-#define pr_fmt(fmt) KBUILD_MODNAME ":%s(): " fmt, __func__
-
 #include <linux/kernel.h>
 #include <linux/stddef.h>
 #include <linux/slab.h>
@@ -81,7 +78,7 @@ struct cfcnfg *cfcnfg_create(void)
 	/* Initiate this layer */
 	this = kzalloc(sizeof(struct cfcnfg), GFP_ATOMIC);
 	if (!this) {
-		pr_warn("Out of memory\n");
+		pr_warning("CAIF: %s(): Out of memory\n", __func__);
 		return NULL;
 	}
 	this->mux = cfmuxl_create();
@@ -109,7 +106,7 @@ struct cfcnfg *cfcnfg_create(void)
 	layer_set_up(this->ctrl, this);
 	return this;
 out_of_mem:
-	pr_warn("Out of memory\n");
+	pr_warning("CAIF: %s(): Out of memory\n", __func__);
 	kfree(this->mux);
 	kfree(this->ctrl);
 	kfree(this);
@@ -173,15 +170,18 @@ static struct cfcnfg_phyinfo *cfcnfg_get_phyinfo(struct cfcnfg *cnfg,
 	return NULL;
 }
 
-
-int cfcnfg_get_id_from_ifi(struct cfcnfg *cnfg, int ifi)
+int cfcnfg_get_named(struct cfcnfg *cnfg, char *name)
 {
 	int i;
-	for (i = 0; i < MAX_PHY_LAYERS; i++)
-		if (cnfg->phy_layers[i].frm_layer != NULL &&
-				cnfg->phy_layers[i].ifindex == ifi)
-			return i;
-	return -ENODEV;
+
+	/* Try to match with specified name */
+	for (i = 0; i < MAX_PHY_LAYERS; i++) {
+		if (cnfg->phy_layers[i].frm_layer != NULL
+		    && strcmp(cnfg->phy_layers[i].phy_layer->name,
+			      name) == 0)
+			return cnfg->phy_layers[i].frm_layer->id;
+	}
+	return 0;
 }
 
 int cfcnfg_disconn_adapt_layer(struct cfcnfg *cnfg, struct cflayer *adap_layer)
@@ -194,7 +194,7 @@ int cfcnfg_disconn_adapt_layer(struct cfcnfg *cnfg, struct cflayer *adap_layer)
 	caif_assert(adap_layer != NULL);
 	channel_id = adap_layer->id;
 	if (adap_layer->dn == NULL || channel_id == 0) {
-		pr_err("adap_layer->dn == NULL or adap_layer->id is 0\n");
+		pr_err("CAIF: %s():adap_layer->id is 0\n", __func__);
 		ret = -ENOTCONN;
 		goto end;
 	}
@@ -204,8 +204,9 @@ int cfcnfg_disconn_adapt_layer(struct cfcnfg *cnfg, struct cflayer *adap_layer)
 	layer_set_up(servl, NULL);
 	ret = cfctrl_linkdown_req(cnfg->ctrl, channel_id, adap_layer);
 	if (servl == NULL) {
-		pr_err("PROTOCOL ERROR - Error removing service_layer Channel_Id(%d)",
-		       channel_id);
+		pr_err("CAIF: %s(): PROTOCOL ERROR "
+		       "- Error removing service_layer Channel_Id(%d)",
+			__func__, channel_id);
 		ret = -EINVAL;
 		goto end;
 	}
@@ -215,14 +216,18 @@ int cfcnfg_disconn_adapt_layer(struct cfcnfg *cnfg, struct cflayer *adap_layer)
 
 		phyinfo = cfcnfg_get_phyinfo(cnfg, phyid);
 		if (phyinfo == NULL) {
-			pr_warn("No interface to send disconnect to\n");
+			pr_warning("CAIF: %s(): "
+				"No interface to send disconnect to\n",
+				__func__);
 			ret = -ENODEV;
 			goto end;
 		}
 		if (phyinfo->id != phyid ||
 			phyinfo->phy_layer->id != phyid ||
 			phyinfo->frm_layer->id != phyid) {
-			pr_err("Inconsistency in phy registration\n");
+			pr_err("CAIF: %s(): "
+				"Inconsistency in phy registration\n",
+				__func__);
 			ret = -EINVAL;
 			goto end;
 		}
@@ -271,20 +276,21 @@ int cfcnfg_add_adaptation_layer(struct cfcnfg *cnfg,
 {
 	struct cflayer *frml;
 	if (adap_layer == NULL) {
-		pr_err("adap_layer is zero\n");
+		pr_err("CAIF: %s(): adap_layer is zero", __func__);
 		return -EINVAL;
 	}
 	if (adap_layer->receive == NULL) {
-		pr_err("adap_layer->receive is NULL\n");
+		pr_err("CAIF: %s(): adap_layer->receive is NULL", __func__);
 		return -EINVAL;
 	}
 	if (adap_layer->ctrlcmd == NULL) {
-		pr_err("adap_layer->ctrlcmd == NULL\n");
+		pr_err("CAIF: %s(): adap_layer->ctrlcmd == NULL", __func__);
 		return -EINVAL;
 	}
 	frml = cnfg->phy_layers[param->phyid].frm_layer;
 	if (frml == NULL) {
-		pr_err("Specified PHY type does not exist!\n");
+		pr_err("CAIF: %s(): Specified PHY type does not exist!",
+			__func__);
 		return -ENODEV;
 	}
 	caif_assert(param->phyid == cnfg->phy_layers[param->phyid].id);
@@ -324,7 +330,9 @@ cfcnfg_linkup_rsp(struct cflayer *layer, u8 channel_id, enum cfctrl_srv serv,
 	struct net_device *netdev;
 
 	if (adapt_layer == NULL) {
-		pr_debug("link setup response but no client exist, send linkdown back\n");
+		pr_debug("CAIF: %s(): link setup response "
+				"but no client exist, send linkdown back\n",
+				__func__);
 		cfctrl_linkdown_req(cnfg->ctrl, channel_id, NULL);
 		return;
 	}
@@ -366,11 +374,13 @@ cfcnfg_linkup_rsp(struct cflayer *layer, u8 channel_id, enum cfctrl_srv serv,
 		servicel = cfdbgl_create(channel_id, &phyinfo->dev_info);
 		break;
 	default:
-		pr_err("Protocol error. Link setup response - unknown channel type\n");
+		pr_err("CAIF: %s(): Protocol error. "
+			"Link setup response - unknown channel type\n",
+			__func__);
 		return;
 	}
 	if (!servicel) {
-		pr_warn("Out of memory\n");
+		pr_warning("CAIF: %s(): Out of memory\n", __func__);
 		return;
 	}
 	layer_set_dn(servicel, cnfg->mux);
@@ -408,7 +418,7 @@ cfcnfg_add_phy_layer(struct cfcnfg *cnfg, enum cfcnfg_phy_type phy_type,
 		}
 	}
 	if (*phyid == 0) {
-		pr_err("No Available PHY ID\n");
+		pr_err("CAIF: %s(): No Available PHY ID\n", __func__);
 		return;
 	}
 
@@ -417,7 +427,7 @@ cfcnfg_add_phy_layer(struct cfcnfg *cnfg, enum cfcnfg_phy_type phy_type,
 		phy_driver =
 		    cfserl_create(CFPHYTYPE_FRAG, *phyid, stx);
 		if (!phy_driver) {
-			pr_warn("Out of memory\n");
+			pr_warning("CAIF: %s(): Out of memory\n", __func__);
 			return;
 		}
 
@@ -426,7 +436,7 @@ cfcnfg_add_phy_layer(struct cfcnfg *cnfg, enum cfcnfg_phy_type phy_type,
 		phy_driver = NULL;
 		break;
 	default:
-		pr_err("%d\n", phy_type);
+		pr_err("CAIF: %s(): %d", __func__, phy_type);
 		return;
 		break;
 	}
@@ -445,7 +455,7 @@ cfcnfg_add_phy_layer(struct cfcnfg *cnfg, enum cfcnfg_phy_type phy_type,
 	phy_layer->type = phy_type;
 	frml = cffrml_create(*phyid, fcs);
 	if (!frml) {
-		pr_warn("Out of memory\n");
+		pr_warning("CAIF: %s(): Out of memory\n", __func__);
 		return;
 	}
 	cnfg->phy_layers[*phyid].frm_layer = frml;

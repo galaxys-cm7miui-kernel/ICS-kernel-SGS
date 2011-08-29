@@ -4,8 +4,6 @@
  * License terms: GNU General Public License (GPL) version 2
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ":%s(): " fmt, __func__
-
 #include <linux/stddef.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
@@ -36,7 +34,7 @@ struct cflayer *cfserl_create(int type, int instance, bool use_stx)
 {
 	struct cfserl *this = kmalloc(sizeof(struct cfserl), GFP_ATOMIC);
 	if (!this) {
-		pr_warn("Out of memory\n");
+		pr_warning("CAIF: %s(): Out of memory\n", __func__);
 		return NULL;
 	}
 	caif_assert(offsetof(struct cfserl, layer) == 0);

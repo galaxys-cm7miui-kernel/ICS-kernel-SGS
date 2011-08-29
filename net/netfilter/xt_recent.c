@@ -567,7 +567,6 @@ static const struct file_operations recent_mt_fops = {
 	.write   = recent_mt_proc_write,
 	.release = seq_release_private,
 	.owner   = THIS_MODULE,
-	.llseek = seq_lseek,
 };
 
 static int __net_init recent_proc_net_init(struct net *net)

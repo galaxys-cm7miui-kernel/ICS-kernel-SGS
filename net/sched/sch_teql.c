@@ -241,11 +241,11 @@ __teql_resolve(struct sk_buff *skb, struct sk_buff *skb_res, struct net_device *
 	}
 	if (neigh_event_send(n, skb_res) == 0) {
 		int err;
-		char haddr[MAX_ADDR_LEN];
 
-		neigh_ha_snapshot(haddr, n, dev);
-		err = dev_hard_header(skb, dev, ntohs(skb->protocol), haddr,
-				      NULL, skb->len);
+		read_lock(&n->lock);
+		err = dev_hard_header(skb, dev, ntohs(skb->protocol),
+				      n->ha, NULL, skb->len);
+		read_unlock(&n->lock);
 
 		if (err < 0) {
 			neigh_release(n);

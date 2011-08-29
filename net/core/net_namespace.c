@@ -42,9 +42,7 @@ static int net_assign_generic(struct net *net, int id, void *data)
 	BUG_ON(!mutex_is_locked(&net_mutex));
 	BUG_ON(id == 0);
 
-	old_ng = rcu_dereference_protected(net->gen,
-					   lockdep_is_held(&net_mutex));
-	ng = old_ng;
+	ng = old_ng = net->gen;
 	if (old_ng->len >= id)
 		goto assign;
 

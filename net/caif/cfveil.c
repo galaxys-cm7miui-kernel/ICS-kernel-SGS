@@ -4,8 +4,6 @@
  * License terms: GNU General Public License (GPL) version 2
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ":%s(): " fmt, __func__
-
 #include <linux/stddef.h>
 #include <linux/slab.h>
 #include <net/caif/caif_layer.h>
@@ -27,7 +25,7 @@ struct cflayer *cfvei_create(u8 channel_id, struct dev_info *dev_info)
 {
 	struct cfsrvl *vei = kmalloc(sizeof(struct cfsrvl), GFP_ATOMIC);
 	if (!vei) {
-		pr_warn("Out of memory\n");
+		pr_warning("CAIF: %s(): Out of memory\n", __func__);
 		return NULL;
 	}
 	caif_assert(offsetof(struct cfsrvl, layer) == 0);
@@ -49,7 +47,7 @@ static int cfvei_receive(struct cflayer *layr, struct cfpkt *pkt)
 
 
 	if (cfpkt_extr_head(pkt, &cmd, 1) < 0) {
-		pr_err("Packet is erroneous!\n");
+		pr_err("CAIF: %s(): Packet is erroneous!\n", __func__);
 		cfpkt_destroy(pkt);
 		return -EPROTO;
 	}
@@ -69,7 +67,8 @@ static int cfvei_receive(struct cflayer *layr, struct cfpkt *pkt)
 		cfpkt_destroy(pkt);
 		return 0;
 	default:		/* SET RS232 PIN */
-		pr_warn("Unknown VEI control packet %d (0x%x)!\n", cmd, cmd);
+		pr_warning("CAIF: %s():Unknown VEI control packet %d (0x%x)!\n",
+			   __func__, cmd, cmd);
 		cfpkt_destroy(pkt);
 		return -EPROTO;
 	}
@@ -87,7 +86,7 @@ static int cfvei_transmit(struct cflayer *layr, struct cfpkt *pkt)
 	caif_assert(layr->dn->transmit != NULL);
 
 	if (cfpkt_add_head(pkt, &tmp, 1) < 0) {
-		pr_err("Packet is erroneous!\n");
+		pr_err("CAIF: %s(): Packet is erroneous!\n", __func__);
 		return -EPROTO;
 	}
 

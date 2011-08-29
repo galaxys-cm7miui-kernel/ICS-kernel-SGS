@@ -47,8 +47,6 @@
  * be incorporated into the next SCTP release.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/skbuff.h>
 #include <linux/types.h>
 #include <linux/socket.h>
@@ -1148,23 +1146,26 @@ static int sctp_side_effects(sctp_event_t event_type, sctp_subtype_t subtype,
 
 	case SCTP_DISPOSITION_VIOLATION:
 		if (net_ratelimit())
-			pr_err("protocol violation state %d chunkid %d\n",
-			       state, subtype.chunk);
+			printk(KERN_ERR "sctp protocol violation state %d "
+			       "chunkid %d\n", state, subtype.chunk);
 		break;
 
 	case SCTP_DISPOSITION_NOT_IMPL:
-		pr_warn("unimplemented feature in state %d, event_type %d, event_id %d\n",
-			state, event_type, subtype.chunk);
+		printk(KERN_WARNING "sctp unimplemented feature in state %d, "
+		       "event_type %d, event_id %d\n",
+		       state, event_type, subtype.chunk);
 		break;
 
 	case SCTP_DISPOSITION_BUG:
-		pr_err("bug in state %d, event_type %d, event_id %d\n",
+		printk(KERN_ERR "sctp bug in state %d, "
+		       "event_type %d, event_id %d\n",
 		       state, event_type, subtype.chunk);
 		BUG();
 		break;
 
 	default:
-		pr_err("impossible disposition %d in state %d, event_type %d, event_id %d\n",
+		printk(KERN_ERR "sctp impossible disposition %d "
+		       "in state %d, event_type %d, event_id %d\n",
 		       status, state, event_type, subtype.chunk);
 		BUG();
 		break;
@@ -1678,8 +1679,8 @@ static int sctp_cmd_interpreter(sctp_event_t event_type,
 			sctp_cmd_send_asconf(asoc);
 			break;
 		default:
-			pr_warn("Impossible command: %u, %p\n",
-				cmd->verb, cmd->obj.ptr);
+			printk(KERN_WARNING "Impossible command: %u, %p\n",
+			       cmd->verb, cmd->obj.ptr);
 			break;
 		}
 

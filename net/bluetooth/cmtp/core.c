@@ -321,9 +321,13 @@ static int cmtp_session(void *arg)
 int cmtp_add_connection(struct cmtp_connadd_req *req, struct socket *sock)
 {
 	struct cmtp_session *session, *s;
+	bdaddr_t src, dst;
 	int i, err;
 
 	BT_DBG("");
+
+	baswap(&src, &bt_sk(sock->sk)->src);
+	baswap(&dst, &bt_sk(sock->sk)->dst);
 
 	session = kzalloc(sizeof(struct cmtp_session), GFP_KERNEL);
 	if (!session)
@@ -343,7 +347,7 @@ int cmtp_add_connection(struct cmtp_connadd_req *req, struct socket *sock)
 
 	BT_DBG("mtu %d", session->mtu);
 
-	sprintf(session->name, "%s", batostr(&bt_sk(sock->sk)->dst));
+	sprintf(session->name, "%s", batostr(&dst));
 
 	session->sock  = sock;
 	session->state = BT_CONFIG;

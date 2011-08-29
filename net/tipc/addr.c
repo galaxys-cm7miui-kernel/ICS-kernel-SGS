@@ -41,6 +41,11 @@
 #include "cluster.h"
 #include "net.h"
 
+u32 tipc_get_addr(void)
+{
+	return tipc_own_addr;
+}
+
 /**
  * tipc_addr_domain_valid - validates a network domain address
  *
@@ -84,7 +89,7 @@ int tipc_addr_domain_valid(u32 addr)
 
 int tipc_addr_node_valid(u32 addr)
 {
-	return tipc_addr_domain_valid(addr) && tipc_node(addr);
+	return (tipc_addr_domain_valid(addr) && tipc_node(addr));
 }
 
 int tipc_in_scope(u32 domain, u32 addr)

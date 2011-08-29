@@ -415,9 +415,6 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 		    !icsk->icsk_backoff)
 			break;
 
-		if (sock_owned_by_user(sk))
-			break;
-
 		icsk->icsk_backoff--;
 		inet_csk(sk)->icsk_rto = __tcp_set_rto(tp) <<
 					 icsk->icsk_backoff;
@@ -432,6 +429,11 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 		if (remaining) {
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
 						  remaining, TCP_RTO_MAX);
+		} else if (sock_owned_by_user(sk)) {
+			/* RTO revert clocked out retransmission,
+			 * but socket is locked. Will defer. */
+			inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
+						  HZ/20, TCP_RTO_MAX);
 		} else {
 			/* RTO revert clocked out retransmission.
 			 * Will retransmit now */
@@ -1420,7 +1422,7 @@ struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 
 	newsk = tcp_create_openreq_child(sk, req, skb);
 	if (!newsk)
-		goto exit_nonewsk;
+		goto exit;
 
 	newsk->sk_gso_type = SKB_GSO_TCPV4;
 	sk_setup_caps(newsk, dst);
@@ -1467,20 +1469,16 @@ struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 	}
 #endif
 
-	if (__inet_inherit_port(sk, newsk) < 0) {
-		sock_put(newsk);
-		goto exit;
-	}
 	__inet_hash_nolisten(newsk, NULL);
+	__inet_inherit_port(sk, newsk);
 
 	return newsk;
 
 exit_overflow:
 	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
-exit_nonewsk:
-	dst_release(dst);
 exit:
 	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_LISTENDROPS);
+	dst_release(dst);
 	return NULL;
 }
 EXPORT_SYMBOL(tcp_v4_syn_recv_sock);
@@ -1971,49 +1969,6 @@ void tcp_v4_destroy_sock(struct sock *sk)
 }
 EXPORT_SYMBOL(tcp_v4_destroy_sock);
 
-/*
- * tcp_v4_nuke_addr - destroy all sockets on the given local address
- */
-void tcp_v4_nuke_addr(__u32 saddr)
-{
-	unsigned int bucket;
-
-	for (bucket = 0; bucket < tcp_hashinfo.ehash_mask; bucket++) {
-		struct hlist_nulls_node *node;
-		struct sock *sk;
-		spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
-
-restart:
-		spin_lock_bh(lock);
-		sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
-			struct inet_sock *inet = inet_sk(sk);
-
-			if (inet->inet_rcv_saddr != saddr)
-				continue;
-			if (sysctl_ip_dynaddr && sk->sk_state == TCP_SYN_SENT)
-				continue;
-			if (sock_flag(sk, SOCK_DEAD))
-				continue;
-
-			sock_hold(sk);
-			spin_unlock_bh(lock);
-
-			local_bh_disable();
-			bh_lock_sock(sk);
-			sk->sk_err = ETIMEDOUT;
-			sk->sk_error_report(sk);
-
-			tcp_done(sk);
-			bh_unlock_sock(sk);
-			local_bh_enable();
-			sock_put(sk);
-
-			goto restart;
-		}
-		spin_unlock_bh(lock);
-	}
-}
-
 #ifdef CONFIG_PROC_FS
 /* Proc filesystem TCP sock list dumping. */
 
@@ -2073,7 +2028,7 @@ static void *listening_get_next(struct seq_file *seq, void *cur)
 get_req:
 			req = icsk->icsk_accept_queue.listen_opt->syn_table[st->sbucket];
 		}
-		sk	  = sk_nulls_next(st->syn_wait_sk);
+		sk	  = sk_next(st->syn_wait_sk);
 		st->state = TCP_SEQ_STATE_LISTENING;
 		read_unlock_bh(&icsk->icsk_accept_queue.syn_wait_lock);
 	} else {
@@ -2082,13 +2037,11 @@ get_req:
 		if (reqsk_queue_len(&icsk->icsk_accept_queue))
 			goto start_req;
 		read_unlock_bh(&icsk->icsk_accept_queue.syn_wait_lock);
-		sk = sk_nulls_next(sk);
+		sk = sk_next(sk);
 	}
 get_sk:
 	sk_nulls_for_each_from(sk, node) {
-		if (!net_eq(sock_net(sk), net))
-			continue;
-		if (sk->sk_family == st->family) {
+		if (sk->sk_family == st->family && net_eq(sock_net(sk), net)) {
 			cur = sk;
 			goto out;
 		}
@@ -2618,6 +2571,7 @@ struct sk_buff **tcp4_gro_receive(struct sk_buff **head, struct sk_buff *skb)
 
 	return tcp_gro_receive(head, skb);
 }
+EXPORT_SYMBOL(tcp4_gro_receive);
 
 int tcp4_gro_complete(struct sk_buff *skb)
 {
@@ -2630,6 +2584,7 @@ int tcp4_gro_complete(struct sk_buff *skb)
 
 	return tcp_gro_complete(skb);
 }
+EXPORT_SYMBOL(tcp4_gro_complete);
 
 struct proto tcp_prot = {
 	.name			= "TCP",

@@ -30,9 +30,9 @@
 static int mmc_prep_request(struct request_queue *q, struct request *req)
 {
 	/*
-	 * We only like normal block requests and discards.
+	 * We only like normal block requests.
 	 */
-	if (req->cmd_type != REQ_TYPE_FS && !(req->cmd_flags & REQ_DISCARD)) {
+	if (req->cmd_type != REQ_TYPE_FS) {
 		blk_dump_rq_flags(req, "MMC bad request");
 		return BLKPREP_KILL;
 	}
@@ -128,25 +128,11 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock
 	mq->req = NULL;
 
 	blk_queue_prep_rq(mq->queue, mmc_prep_request);
+	blk_queue_ordered(mq->queue, QUEUE_ORDERED_DRAIN);
 	queue_flag_set_unlocked(QUEUE_FLAG_NONROT, mq->queue);
-	if (mmc_can_erase(card)) {
-		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, mq->queue);
-		mq->queue->limits.max_discard_sectors = UINT_MAX;
-		if (card->erased_byte == 0)
-			mq->queue->limits.discard_zeroes_data = 1;
-		if (!mmc_can_trim(card) && is_power_of_2(card->erase_size)) {
-			mq->queue->limits.discard_granularity =
-							card->erase_size << 9;
-			mq->queue->limits.discard_alignment =
-							card->erase_size << 9;
-		}
-		if (mmc_can_secure_erase_trim(card))
-			queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD,
-						mq->queue);
-	}
 
 #ifdef CONFIG_MMC_BLOCK_BOUNCE
-	if (host->max_segs == 1) {
+	if (host->max_hw_segs == 1) {
 		unsigned int bouncesz;
 
 		bouncesz = MMC_QUEUE_BOUNCESZ;
@@ -196,23 +182,21 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock
 		blk_queue_bounce_limit(mq->queue, limit);
 		blk_queue_max_hw_sectors(mq->queue,
 			min(host->max_blk_count, host->max_req_size / 512));
-		blk_queue_max_segments(mq->queue, host->max_segs);
+		blk_queue_max_segments(mq->queue, host->max_hw_segs);
 		blk_queue_max_segment_size(mq->queue, host->max_seg_size);
 
 		mq->sg = kmalloc(sizeof(struct scatterlist) *
-			host->max_segs, GFP_KERNEL);
+			host->max_phys_segs, GFP_KERNEL);
 		if (!mq->sg) {
 			ret = -ENOMEM;
 			goto cleanup_queue;
 		}
-		sg_init_table(mq->sg, host->max_segs);
+		sg_init_table(mq->sg, host->max_phys_segs);
 	}
 
-	sema_init(&mq->thread_sem, 1);
+	init_MUTEX(&mq->thread_sem);
 
-	mq->thread = kthread_run(mmc_queue_thread, mq, "mmcqd/%d",
-		host->index);
-
+	mq->thread = kthread_run(mmc_queue_thread, mq, "mmcqd");
 	if (IS_ERR(mq->thread)) {
 		ret = PTR_ERR(mq->thread);
 		goto free_bounce_sg;

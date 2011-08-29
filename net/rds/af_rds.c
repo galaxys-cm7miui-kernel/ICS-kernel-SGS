@@ -39,15 +39,7 @@
 #include <net/sock.h>
 
 #include "rds.h"
-
-char *rds_str_array(char **array, size_t elements, size_t index)
-{
-	if ((index < elements) && array[index])
-		return array[index];
-	else
-		return "unknown";
-}
-EXPORT_SYMBOL(rds_str_array);
+#include "rdma.h"
 
 /* this is just used for stats gathering :/ */
 static DEFINE_SPINLOCK(rds_sock_lock);
@@ -70,7 +62,7 @@ static int rds_release(struct socket *sock)
 	struct rds_sock *rs;
 	unsigned long flags;
 
-	if (!sk)
+	if (sk == NULL)
 		goto out;
 
 	rs = rds_sk_to_rs(sk);
@@ -81,15 +73,7 @@ static int rds_release(struct socket *sock)
 	 * with the socket. */
 	rds_clear_recv_queue(rs);
 	rds_cong_remove_socket(rs);
-
-	/*
-	 * the binding lookup hash uses rcu, we need to
-	 * make sure we sychronize_rcu before we free our
-	 * entry
-	 */
 	rds_remove_bound(rs);
-	synchronize_rcu();
-
 	rds_send_drop_to(rs, NULL);
 	rds_rdma_drop_keys(rs);
 	rds_notify_queue_get(rs, NULL);
@@ -98,8 +82,6 @@ static int rds_release(struct socket *sock)
 	list_del_init(&rs->rs_item);
 	rds_sock_count--;
 	spin_unlock_irqrestore(&rds_sock_lock, flags);
-
-	rds_trans_put(rs->rs_transport);
 
 	sock->sk = NULL;
 	sock_put(sk);
@@ -532,7 +514,7 @@ out:
 	spin_unlock_irqrestore(&rds_sock_lock, flags);
 }
 
-static void rds_exit(void)
+static void __exit rds_exit(void)
 {
 	sock_unregister(rds_family_ops.family);
 	proto_unregister(&rds_proto);
@@ -547,7 +529,7 @@ static void rds_exit(void)
 }
 module_exit(rds_exit);
 
-static int rds_init(void)
+static int __init rds_init(void)
 {
 	int ret;
 

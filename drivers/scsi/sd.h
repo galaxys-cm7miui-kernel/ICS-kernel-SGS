@@ -19,7 +19,6 @@
  */
 #define SD_TIMEOUT		(30 * HZ)
 #define SD_MOD_TIMEOUT		(75 * HZ)
-#define SD_FLUSH_TIMEOUT	(60 * HZ)
 
 /*
  * Number of allowed retries
@@ -51,7 +50,7 @@ struct scsi_disk {
 	atomic_t	openers;
 	sector_t	capacity;	/* size in 512-byte sectors */
 	u32		index;
-	unsigned int	physical_block_size;
+	unsigned short	hw_sector_size;
 	u8		media_present;
 	u8		write_prot;
 	u8		protection_type;/* Data Integrity Field */
@@ -63,9 +62,6 @@ struct scsi_disk {
 	unsigned	first_scan : 1;
 	unsigned	thin_provisioning : 1;
 	unsigned	unmap : 1;
-	unsigned	tpws : 1;
-	unsigned	tpu : 1;
-	unsigned	tpvpd : 1;
 };
 #define to_scsi_disk(obj) container_of(obj,struct scsi_disk,dev)
 

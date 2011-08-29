@@ -360,8 +360,7 @@ int inet6_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 			 */
 			v4addr = LOOPBACK4_IPV6;
 			if (!(addr_type & IPV6_ADDR_MULTICAST))	{
-				if (!inet->transparent &&
-				    !ipv6_chk_addr(net, &addr->sin6_addr,
+				if (!ipv6_chk_addr(net, &addr->sin6_addr,
 						   dev, 0)) {
 					err = -EADDRNOTAVAIL;
 					goto out_unlock;
@@ -485,10 +484,25 @@ int inet6_getname(struct socket *sock, struct sockaddr *uaddr,
 	if (ipv6_addr_type(&sin->sin6_addr) & IPV6_ADDR_LINKLOCAL)
 		sin->sin6_scope_id = sk->sk_bound_dev_if;
 	*uaddr_len = sizeof(*sin);
-	return 0;
+	return(0);
 }
 
 EXPORT_SYMBOL(inet6_getname);
+
+int inet6_killaddr_ioctl(struct net *net, void __user *arg) {
+	struct in6_ifreq ireq;
+	struct sockaddr_in6 sin6;
+
+	if (!capable(CAP_NET_ADMIN))
+		return -EACCES;
+
+	if (copy_from_user(&ireq, arg, sizeof(struct in6_ifreq)))
+		return -EFAULT;
+
+	sin6.sin6_family = AF_INET6;
+	ipv6_addr_copy(&sin6.sin6_addr, &ireq.ifr6_addr);
+	return tcp_nuke_addr(net, (struct sockaddr *) &sin6);
+}
 
 int inet6_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
@@ -506,7 +520,7 @@ int inet6_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	case SIOCADDRT:
 	case SIOCDELRT:
 
-		return ipv6_route_ioctl(net, cmd, (void __user *)arg);
+		return(ipv6_route_ioctl(net, cmd, (void __user *)arg));
 
 	case SIOCSIFADDR:
 		return addrconf_add_ifaddr(net, (void __user *) arg);
@@ -514,13 +528,15 @@ int inet6_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		return addrconf_del_ifaddr(net, (void __user *) arg);
 	case SIOCSIFDSTADDR:
 		return addrconf_set_dstaddr(net, (void __user *) arg);
+	case SIOCKILLADDR:
+		return inet6_killaddr_ioctl(net, (void __user *) arg);
 	default:
 		if (!sk->sk_prot->ioctl)
 			return -ENOIOCTLCMD;
 		return sk->sk_prot->ioctl(sk, cmd, arg);
 	}
 	/*NOTREACHED*/
-	return 0;
+	return(0);
 }
 
 EXPORT_SYMBOL(inet6_ioctl);

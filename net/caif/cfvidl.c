@@ -4,8 +4,6 @@
  * License terms: GNU General Public License (GPL) version 2
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ":%s(): " fmt, __func__
-
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/slab.h>
@@ -23,7 +21,7 @@ struct cflayer *cfvidl_create(u8 channel_id, struct dev_info *dev_info)
 {
 	struct cfsrvl *vid = kmalloc(sizeof(struct cfsrvl), GFP_ATOMIC);
 	if (!vid) {
-		pr_warn("Out of memory\n");
+		pr_warning("CAIF: %s(): Out of memory\n", __func__);
 		return NULL;
 	}
 	caif_assert(offsetof(struct cfsrvl, layer) == 0);
@@ -40,7 +38,7 @@ static int cfvidl_receive(struct cflayer *layr, struct cfpkt *pkt)
 {
 	u32 videoheader;
 	if (cfpkt_extr_head(pkt, &videoheader, 4) < 0) {
-		pr_err("Packet is erroneous!\n");
+		pr_err("CAIF: %s(): Packet is erroneous!\n", __func__);
 		cfpkt_destroy(pkt);
 		return -EPROTO;
 	}

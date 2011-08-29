@@ -40,8 +40,7 @@ struct rds_page_remainder {
 	unsigned long	r_offset;
 };
 
-static DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_page_remainder,
-				     rds_page_remainders);
+DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_page_remainder, rds_page_remainders);
 
 /*
  * returns 0 on success or -errno on failure.
@@ -104,7 +103,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 	/* jump straight to allocation if we're trying for a huge page */
 	if (bytes >= PAGE_SIZE) {
 		page = alloc_page(gfp);
-		if (!page) {
+		if (page == NULL) {
 			ret = -ENOMEM;
 		} else {
 			sg_set_page(scat, page, PAGE_SIZE, 0);
@@ -150,7 +149,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 		rem = &per_cpu(rds_page_remainders, get_cpu());
 		local_irq_save(flags);
 
-		if (!page) {
+		if (page == NULL) {
 			ret = -ENOMEM;
 			break;
 		}
@@ -174,7 +173,6 @@ out:
 		 ret ? 0 : scat->length);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(rds_page_remainder_alloc);
 
 static int rds_page_remainder_cpu_notify(struct notifier_block *self,
 					 unsigned long action, void *hcpu)

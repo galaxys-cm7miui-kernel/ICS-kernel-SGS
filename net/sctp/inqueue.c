@@ -43,8 +43,6 @@
  * be incorporated into the next SCTP release.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
 #include <linux/interrupt.h>

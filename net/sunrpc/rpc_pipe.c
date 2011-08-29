@@ -27,8 +27,9 @@
 #include <linux/workqueue.h>
 #include <linux/sunrpc/rpc_pipe_fs.h>
 #include <linux/sunrpc/cache.h>
+#include <linux/smp_lock.h>
 
-static struct vfsmount *rpc_mnt __read_mostly;
+static struct vfsmount *rpc_mount __read_mostly;
 static int rpc_mount_count;
 
 static struct file_system_type rpc_pipe_fs_type;
@@ -203,7 +204,7 @@ rpc_pipe_release(struct inode *inode, struct file *filp)
 	mutex_lock(&inode->i_mutex);
 	if (rpci->ops == NULL)
 		goto out;
-	msg = filp->private_data;
+	msg = (struct rpc_pipe_msg *)filp->private_data;
 	if (msg != NULL) {
 		spin_lock(&inode->i_lock);
 		msg->errno = -EAGAIN;
@@ -308,31 +309,38 @@ rpc_pipe_poll(struct file *filp, struct poll_table_struct *wait)
 	return mask;
 }
 
-static long
-rpc_pipe_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+static int
+rpc_pipe_ioctl_unlocked(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-	struct inode *inode = filp->f_path.dentry->d_inode;
-	struct rpc_inode *rpci = RPC_I(inode);
+	struct rpc_inode *rpci = RPC_I(filp->f_path.dentry->d_inode);
 	int len;
 
 	switch (cmd) {
 	case FIONREAD:
-		spin_lock(&inode->i_lock);
-		if (rpci->ops == NULL) {
-			spin_unlock(&inode->i_lock);
+		if (rpci->ops == NULL)
 			return -EPIPE;
-		}
 		len = rpci->pipelen;
 		if (filp->private_data) {
 			struct rpc_pipe_msg *msg;
-			msg = filp->private_data;
+			msg = (struct rpc_pipe_msg *)filp->private_data;
 			len += msg->len - msg->copied;
 		}
-		spin_unlock(&inode->i_lock);
 		return put_user(len, (int __user *)arg);
 	default:
 		return -EINVAL;
 	}
+}
+
+static long
+rpc_pipe_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	long ret;
+
+	lock_kernel();
+	ret = rpc_pipe_ioctl_unlocked(filp, cmd, arg);
+	unlock_kernel();
+
+	return ret;
 }
 
 static const struct file_operations rpc_pipe_fops = {
@@ -417,16 +425,16 @@ struct vfsmount *rpc_get_mount(void)
 {
 	int err;
 
-	err = simple_pin_fs(&rpc_pipe_fs_type, &rpc_mnt, &rpc_mount_count);
+	err = simple_pin_fs(&rpc_pipe_fs_type, &rpc_mount, &rpc_mount_count);
 	if (err != 0)
 		return ERR_PTR(err);
-	return rpc_mnt;
+	return rpc_mount;
 }
 EXPORT_SYMBOL_GPL(rpc_get_mount);
 
 void rpc_put_mount(void)
 {
-	simple_release_fs(&rpc_mnt, &rpc_mount_count);
+	simple_release_fs(&rpc_mount, &rpc_mount_count);
 }
 EXPORT_SYMBOL_GPL(rpc_put_mount);
 
@@ -445,7 +453,6 @@ rpc_get_inode(struct super_block *sb, umode_t mode)
 	struct inode *inode = new_inode(sb);
 	if (!inode)
 		return NULL;
-	inode->i_ino = get_next_ino();
 	inode->i_mode = mode;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	switch(mode & S_IFMT) {
@@ -1018,17 +1025,17 @@ rpc_fill_super(struct super_block *sb, void *data, int silent)
 	return 0;
 }
 
-static struct dentry *
-rpc_mount(struct file_system_type *fs_type,
-		int flags, const char *dev_name, void *data)
+static int
+rpc_get_sb(struct file_system_type *fs_type,
+		int flags, const char *dev_name, void *data, struct vfsmount *mnt)
 {
-	return mount_single(fs_type, flags, data, rpc_fill_super);
+	return get_sb_single(fs_type, flags, data, rpc_fill_super, mnt);
 }
 
 static struct file_system_type rpc_pipe_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "rpc_pipefs",
-	.mount		= rpc_mount,
+	.get_sb		= rpc_get_sb,
 	.kill_sb	= kill_litter_super,
 };
 

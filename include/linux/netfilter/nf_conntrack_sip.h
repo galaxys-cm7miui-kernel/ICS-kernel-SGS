@@ -89,7 +89,6 @@ enum sip_header_types {
 	SIP_HDR_VIA_TCP,
 	SIP_HDR_EXPIRES,
 	SIP_HDR_CONTENT_LENGTH,
-	SIP_HDR_CALL_ID,
 };
 
 enum sdp_header_types {

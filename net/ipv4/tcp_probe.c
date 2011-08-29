@@ -214,7 +214,6 @@ static const struct file_operations tcpprobe_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = tcpprobe_open,
 	.read    = tcpprobe_read,
-	.llseek  = noop_llseek,
 };
 
 static __init int tcpprobe_init(void)

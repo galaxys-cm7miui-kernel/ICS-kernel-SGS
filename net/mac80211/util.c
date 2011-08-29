@@ -283,11 +283,8 @@ static void __ieee80211_wake_queue(struct ieee80211_hw *hw, int queue,
 
 	if (skb_queue_empty(&local->pending[queue])) {
 		rcu_read_lock();
-		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-			if (test_bit(SDATA_STATE_OFFCHANNEL, &sdata->state))
-				continue;
-			netif_wake_subqueue(sdata->dev, queue);
-		}
+		list_for_each_entry_rcu(sdata, &local->interfaces, list)
+			netif_tx_wake_queue(netdev_get_tx_queue(sdata->dev, queue));
 		rcu_read_unlock();
 	} else
 		tasklet_schedule(&local->tx_pending_tasklet);
@@ -326,7 +323,7 @@ static void __ieee80211_stop_queue(struct ieee80211_hw *hw, int queue,
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(sdata, &local->interfaces, list)
-		netif_stop_subqueue(sdata->dev, queue);
+		netif_tx_stop_queue(netdev_get_tx_queue(sdata->dev, queue));
 	rcu_read_unlock();
 }
 
@@ -474,10 +471,16 @@ void ieee80211_iterate_active_interfaces(
 
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		switch (sdata->vif.type) {
+		case __NL80211_IFTYPE_AFTER_LAST:
+		case NL80211_IFTYPE_UNSPECIFIED:
 		case NL80211_IFTYPE_MONITOR:
 		case NL80211_IFTYPE_AP_VLAN:
 			continue;
-		default:
+		case NL80211_IFTYPE_AP:
+		case NL80211_IFTYPE_STATION:
+		case NL80211_IFTYPE_ADHOC:
+		case NL80211_IFTYPE_WDS:
+		case NL80211_IFTYPE_MESH_POINT:
 			break;
 		}
 		if (ieee80211_sdata_running(sdata))
@@ -502,10 +505,16 @@ void ieee80211_iterate_active_interfaces_atomic(
 
 	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
 		switch (sdata->vif.type) {
+		case __NL80211_IFTYPE_AFTER_LAST:
+		case NL80211_IFTYPE_UNSPECIFIED:
 		case NL80211_IFTYPE_MONITOR:
 		case NL80211_IFTYPE_AP_VLAN:
 			continue;
-		default:
+		case NL80211_IFTYPE_AP:
+		case NL80211_IFTYPE_STATION:
+		case NL80211_IFTYPE_ADHOC:
+		case NL80211_IFTYPE_WDS:
+		case NL80211_IFTYPE_MESH_POINT:
 			break;
 		}
 		if (ieee80211_sdata_running(sdata))
@@ -895,34 +904,26 @@ void ieee80211_send_auth(struct ieee80211_sub_if_data *sdata,
 
 int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
 			     const u8 *ie, size_t ie_len,
-			     enum ieee80211_band band, u32 rate_mask,
-			     u8 channel)
+			     enum ieee80211_band band)
 {
 	struct ieee80211_supported_band *sband;
 	u8 *pos;
 	size_t offset = 0, noffset;
 	int supp_rates_len, i;
-	u8 rates[32];
-	int num_rates;
-	int ext_rates_len;
 
 	sband = local->hw.wiphy->bands[band];
 
 	pos = buffer;
 
-	num_rates = 0;
-	for (i = 0; i < sband->n_bitrates; i++) {
-		if ((BIT(i) & rate_mask) == 0)
-			continue; /* skip rate */
-		rates[num_rates++] = (u8) (sband->bitrates[i].bitrate / 5);
-	}
-
-	supp_rates_len = min_t(int, num_rates, 8);
+	supp_rates_len = min_t(int, sband->n_bitrates, 8);
 
 	*pos++ = WLAN_EID_SUPP_RATES;
 	*pos++ = supp_rates_len;
-	memcpy(pos, rates, supp_rates_len);
-	pos += supp_rates_len;
+
+	for (i = 0; i < supp_rates_len; i++) {
+		int rate = sband->bitrates[i].bitrate;
+		*pos++ = (u8) (rate / 5);
+	}
 
 	/* insert "request information" if in custom IEs */
 	if (ie && ie_len) {
@@ -940,18 +941,14 @@ int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
 		offset = noffset;
 	}
 
-	ext_rates_len = num_rates - supp_rates_len;
-	if (ext_rates_len > 0) {
+	if (sband->n_bitrates > i) {
 		*pos++ = WLAN_EID_EXT_SUPP_RATES;
-		*pos++ = ext_rates_len;
-		memcpy(pos, rates + supp_rates_len, ext_rates_len);
-		pos += ext_rates_len;
-	}
+		*pos++ = sband->n_bitrates - i;
 
-	if (channel && sband->band == IEEE80211_BAND_2GHZ) {
-		*pos++ = WLAN_EID_DS_PARAMS;
-		*pos++ = 1;
-		*pos++ = channel;
+		for (; i < sband->n_bitrates; i++) {
+			int rate = sband->bitrates[i].bitrate;
+			*pos++ = (u8) (rate / 5);
+		}
 	}
 
 	/* insert custom IEs that go before HT */
@@ -1020,7 +1017,6 @@ void ieee80211_send_probe_req(struct ieee80211_sub_if_data *sdata, u8 *dst,
 	struct ieee80211_mgmt *mgmt;
 	size_t buf_len;
 	u8 *buf;
-	u8 chan;
 
 	/* FIXME: come up with a proper value */
 	buf = kmalloc(200 + ie_len, GFP_KERNEL);
@@ -1030,14 +1026,8 @@ void ieee80211_send_probe_req(struct ieee80211_sub_if_data *sdata, u8 *dst,
 		return;
 	}
 
-	chan = ieee80211_frequency_to_channel(
-		local->hw.conf.channel->center_freq);
-
 	buf_len = ieee80211_build_preq_ies(local, buf, ie, ie_len,
-					   local->hw.conf.channel->band,
-					   sdata->rc_rateidx_mask
-					   [local->hw.conf.channel->band],
-					   chan);
+					   local->hw.conf.channel->band);
 
 	skb = ieee80211_probereq_get(&local->hw, &sdata->vif,
 				     ssid, ssid_len,
@@ -1199,9 +1189,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 			/* ignore virtual */
 			break;
 		case NL80211_IFTYPE_UNSPECIFIED:
-		case NUM_NL80211_IFTYPES:
-		case NL80211_IFTYPE_P2P_CLIENT:
-		case NL80211_IFTYPE_P2P_GO:
+		case __NL80211_IFTYPE_AFTER_LAST:
 			WARN_ON(1);
 			break;
 		}
@@ -1221,7 +1209,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 		mutex_lock(&local->sta_mtx);
 
 		list_for_each_entry(sta, &local->sta_list, list) {
-			ieee80211_sta_tear_down_BA_sessions(sta, true);
+			ieee80211_sta_tear_down_BA_sessions(sta);
 			clear_sta_flags(sta, WLAN_STA_BLOCK_BA);
 		}
 
@@ -1297,13 +1285,17 @@ static int check_mgd_smps(struct ieee80211_if_managed *ifmgd,
 }
 
 /* must hold iflist_mtx */
-void ieee80211_recalc_smps(struct ieee80211_local *local)
+void ieee80211_recalc_smps(struct ieee80211_local *local,
+			   struct ieee80211_sub_if_data *forsdata)
 {
 	struct ieee80211_sub_if_data *sdata;
 	enum ieee80211_smps_mode smps_mode = IEEE80211_SMPS_OFF;
 	int count = 0;
 
-	lockdep_assert_held(&local->iflist_mtx);
+	if (forsdata)
+		WARN_ON(!mutex_is_locked(&forsdata->u.mgd.mtx));
+
+	WARN_ON(!mutex_is_locked(&local->iflist_mtx));
 
 	/*
 	 * This function could be improved to handle multiple
@@ -1316,12 +1308,22 @@ void ieee80211_recalc_smps(struct ieee80211_local *local)
 	 */
 
 	list_for_each_entry(sdata, &local->interfaces, list) {
-		if (!ieee80211_sdata_running(sdata))
+		if (!netif_running(sdata->dev))
 			continue;
 		if (sdata->vif.type != NL80211_IFTYPE_STATION)
 			goto set;
-
-		count += check_mgd_smps(&sdata->u.mgd, &smps_mode);
+		if (sdata != forsdata) {
+			/*
+			 * This nested is ok -- we are holding the iflist_mtx
+			 * so can't get here twice or so. But it's required
+			 * since normally we acquire it first and then the
+			 * iflist_mtx.
+			 */
+			mutex_lock_nested(&sdata->u.mgd.mtx, SINGLE_DEPTH_NESTING);
+			count += check_mgd_smps(&sdata->u.mgd, &smps_mode);
+			mutex_unlock(&sdata->u.mgd.mtx);
+		} else
+			count += check_mgd_smps(&sdata->u.mgd, &smps_mode);
 
 		if (count > 1) {
 			smps_mode = IEEE80211_SMPS_OFF;

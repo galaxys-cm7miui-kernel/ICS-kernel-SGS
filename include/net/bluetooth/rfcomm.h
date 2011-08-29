@@ -29,7 +29,6 @@
 #define RFCOMM_CONN_TIMEOUT (HZ * 30)
 #define RFCOMM_DISC_TIMEOUT (HZ * 20)
 #define RFCOMM_AUTH_TIMEOUT (HZ * 25)
-#define RFCOMM_IDLE_TIMEOUT (HZ * 2)
 
 #define RFCOMM_DEFAULT_MTU	127
 #define RFCOMM_DEFAULT_CREDITS	7
@@ -155,7 +154,6 @@ struct rfcomm_msc {
 struct rfcomm_session {
 	struct list_head list;
 	struct socket   *sock;
-	struct timer_list timer;
 	unsigned long    state;
 	unsigned long    flags;
 	atomic_t         refcnt;
@@ -213,6 +211,11 @@ struct rfcomm_dlc {
 #define RFCOMM_DEFER_SETUP  8
 
 /* Scheduling flags and events */
+#define RFCOMM_SCHED_STATE  0
+#define RFCOMM_SCHED_RX     1
+#define RFCOMM_SCHED_TX     2
+#define RFCOMM_SCHED_TIMEO  3
+#define RFCOMM_SCHED_AUTH   4
 #define RFCOMM_SCHED_WAKEUP 31
 
 /* MSC exchange flags */

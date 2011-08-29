@@ -46,8 +46,6 @@
  * be incorporated into the next SCTP release.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/types.h>
 #include <linux/list.h>   /* For struct list_head */
 #include <linux/socket.h>
@@ -1465,23 +1463,23 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 					/* Display the end of the
 					 * current range.
 					 */
-					SCTP_DEBUG_PRINTK_CONT("-%08x",
-							       dbg_last_ack_tsn);
+					SCTP_DEBUG_PRINTK("-%08x",
+							  dbg_last_ack_tsn);
 				}
 
 				/* Start a new range.  */
-				SCTP_DEBUG_PRINTK_CONT(",%08x", tsn);
+				SCTP_DEBUG_PRINTK(",%08x", tsn);
 				dbg_ack_tsn = tsn;
 				break;
 
 			case 1:	/* The last TSN was NOT ACKed. */
 				if (dbg_last_kept_tsn != dbg_kept_tsn) {
 					/* Display the end of current range. */
-					SCTP_DEBUG_PRINTK_CONT("-%08x",
-							       dbg_last_kept_tsn);
+					SCTP_DEBUG_PRINTK("-%08x",
+							  dbg_last_kept_tsn);
 				}
 
-				SCTP_DEBUG_PRINTK_CONT("\n");
+				SCTP_DEBUG_PRINTK("\n");
 
 				/* FALL THROUGH... */
 			default:
@@ -1528,18 +1526,18 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 					break;
 
 				if (dbg_last_kept_tsn != dbg_kept_tsn)
-					SCTP_DEBUG_PRINTK_CONT("-%08x",
-							       dbg_last_kept_tsn);
+					SCTP_DEBUG_PRINTK("-%08x",
+							  dbg_last_kept_tsn);
 
-				SCTP_DEBUG_PRINTK_CONT(",%08x", tsn);
+				SCTP_DEBUG_PRINTK(",%08x", tsn);
 				dbg_kept_tsn = tsn;
 				break;
 
 			case 0:
 				if (dbg_last_ack_tsn != dbg_ack_tsn)
-					SCTP_DEBUG_PRINTK_CONT("-%08x",
-							       dbg_last_ack_tsn);
-				SCTP_DEBUG_PRINTK_CONT("\n");
+					SCTP_DEBUG_PRINTK("-%08x",
+							  dbg_last_ack_tsn);
+				SCTP_DEBUG_PRINTK("\n");
 
 				/* FALL THROUGH... */
 			default:
@@ -1558,17 +1556,17 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 	switch (dbg_prt_state) {
 	case 0:
 		if (dbg_last_ack_tsn != dbg_ack_tsn) {
-			SCTP_DEBUG_PRINTK_CONT("-%08x\n", dbg_last_ack_tsn);
+			SCTP_DEBUG_PRINTK("-%08x\n", dbg_last_ack_tsn);
 		} else {
-			SCTP_DEBUG_PRINTK_CONT("\n");
+			SCTP_DEBUG_PRINTK("\n");
 		}
 	break;
 
 	case 1:
 		if (dbg_last_kept_tsn != dbg_kept_tsn) {
-			SCTP_DEBUG_PRINTK_CONT("-%08x\n", dbg_last_kept_tsn);
+			SCTP_DEBUG_PRINTK("-%08x\n", dbg_last_kept_tsn);
 		} else {
-			SCTP_DEBUG_PRINTK_CONT("\n");
+			SCTP_DEBUG_PRINTK("\n");
 		}
 	}
 #endif /* SCTP_DEBUG */

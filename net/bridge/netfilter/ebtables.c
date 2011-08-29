@@ -124,23 +124,16 @@ ebt_dev_check(const char *entry, const struct net_device *device)
 #define FWINV2(bool,invflg) ((bool) ^ !!(e->invflags & invflg))
 /* process standard matches */
 static inline int
-ebt_basic_match(const struct ebt_entry *e, const struct sk_buff *skb,
+ebt_basic_match(const struct ebt_entry *e, const struct ethhdr *h,
                 const struct net_device *in, const struct net_device *out)
 {
-	const struct ethhdr *h = eth_hdr(skb);
-	__be16 ethproto;
 	int verdict, i;
 
-	if (vlan_tx_tag_present(skb))
-		ethproto = htons(ETH_P_8021Q);
-	else
-		ethproto = h->h_proto;
-
 	if (e->bitmask & EBT_802_3) {
-		if (FWINV2(ntohs(ethproto) >= 1536, EBT_IPROTO))
+		if (FWINV2(ntohs(h->h_proto) >= 1536, EBT_IPROTO))
 			return 1;
 	} else if (!(e->bitmask & EBT_NOPROTO) &&
-	   FWINV2(e->ethproto != ethproto, EBT_IPROTO))
+	   FWINV2(e->ethproto != h->h_proto, EBT_IPROTO))
 		return 1;
 
 	if (FWINV2(ebt_dev_check(e->in, in), EBT_IIN))
@@ -220,7 +213,7 @@ unsigned int ebt_do_table (unsigned int hook, struct sk_buff *skb,
 	base = private->entries;
 	i = 0;
 	while (i < nentries) {
-		if (ebt_basic_match(point, skb, in, out))
+		if (ebt_basic_match(point, eth_hdr(skb), in, out))
 			goto letscontinue;
 
 		if (EBT_MATCH_ITERATE(point, ebt_do_match, skb, &acpar) != 0)

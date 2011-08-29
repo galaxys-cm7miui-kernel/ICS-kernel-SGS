@@ -4,8 +4,6 @@
  * License terms: GNU General Public License (GPL) version 2
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ":%s(): " fmt, __func__
-
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/errno.h>
@@ -81,7 +79,8 @@ static void cfservl_ctrlcmd(struct cflayer *layr, enum caif_ctrlcmd ctrl,
 		layr->up->ctrlcmd(layr->up, ctrl, phyid);
 		break;
 	default:
-		pr_warn("Unexpected ctrl in cfsrvl (%d)\n", ctrl);
+		pr_warning("CAIF: %s(): "
+			   "Unexpected ctrl in cfsrvl (%d)\n", __func__, ctrl);
 		/* We have both modem and phy flow on, send flow on */
 		layr->up->ctrlcmd(layr->up, ctrl, phyid);
 		service->phy_flow_on = true;
@@ -108,12 +107,14 @@ static int cfservl_modemcmd(struct cflayer *layr, enum caif_modemcmd ctrl)
 			u8 flow_on = SRVL_FLOW_ON;
 			pkt = cfpkt_create(SRVL_CTRL_PKT_SIZE);
 			if (!pkt) {
-				pr_warn("Out of memory\n");
+				pr_warning("CAIF: %s(): Out of memory\n",
+					__func__);
 				return -ENOMEM;
 			}
 
 			if (cfpkt_add_head(pkt, &flow_on, 1) < 0) {
-				pr_err("Packet is erroneous!\n");
+				pr_err("CAIF: %s(): Packet is erroneous!\n",
+					__func__);
 				cfpkt_destroy(pkt);
 				return -EPROTO;
 			}
@@ -130,12 +131,14 @@ static int cfservl_modemcmd(struct cflayer *layr, enum caif_modemcmd ctrl)
 			u8 flow_off = SRVL_FLOW_OFF;
 			pkt = cfpkt_create(SRVL_CTRL_PKT_SIZE);
 			if (!pkt) {
-				pr_warn("Out of memory\n");
+				pr_warning("CAIF: %s(): Out of memory\n",
+					__func__);
 				return -ENOMEM;
 			}
 
 			if (cfpkt_add_head(pkt, &flow_off, 1) < 0) {
-				pr_err("Packet is erroneous!\n");
+				pr_err("CAIF: %s(): Packet is erroneous!\n",
+					__func__);
 				cfpkt_destroy(pkt);
 				return -EPROTO;
 			}

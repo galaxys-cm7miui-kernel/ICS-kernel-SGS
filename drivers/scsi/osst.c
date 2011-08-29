@@ -51,7 +51,7 @@ static const char * osst_version = "0.99.4";
 #include <linux/moduleparam.h>
 #include <linux/delay.h>
 #include <linux/jiffies.h>
-#include <linux/mutex.h>
+#include <linux/smp_lock.h>
 #include <asm/uaccess.h>
 #include <asm/dma.h>
 #include <asm/system.h>
@@ -80,7 +80,6 @@ static const char * osst_version = "0.99.4";
 #include "osst_options.h"
 #include "osst_detect.h"
 
-static DEFINE_MUTEX(osst_int_mutex);
 static int max_dev = 0;
 static int write_threshold_kbs = 0;
 static int max_sg_segs = 0;
@@ -4808,9 +4807,9 @@ static int os_scsi_tape_open(struct inode * inode, struct file * filp)
 {
 	int ret;
 
-	mutex_lock(&osst_int_mutex);
+	lock_kernel();
 	ret = __os_scsi_tape_open(inode, filp);
-	mutex_unlock(&osst_int_mutex);
+	unlock_kernel();
 	return ret;
 }
 
@@ -4944,9 +4943,9 @@ static long osst_ioctl(struct file * file,
 	char		    * name  = tape_name(STp);
 	void	    __user  * p     = (void __user *)arg;
 
-	mutex_lock(&osst_int_mutex);
+	lock_kernel();
 	if (mutex_lock_interruptible(&STp->lock)) {
-		mutex_unlock(&osst_int_mutex);
+		unlock_kernel();
 		return -ERESTARTSYS;
 	}
 
@@ -5261,14 +5260,14 @@ static long osst_ioctl(struct file * file,
 	mutex_unlock(&STp->lock);
 
 	retval = scsi_ioctl(STp->device, cmd_in, p);
-	mutex_unlock(&osst_int_mutex);
+	unlock_kernel();
 	return retval;
 
 out:
 	if (SRpnt) osst_release_request(SRpnt);
 
 	mutex_unlock(&STp->lock);
-	mutex_unlock(&osst_int_mutex);
+	unlock_kernel();
 
 	return retval;
 }
@@ -5869,8 +5868,7 @@ static int osst_probe(struct device *dev)
 	}
 
 	/* find a free minor number */
-	for (i = 0; i < osst_max_dev && os_scsi_tapes[i]; i++)
-		;
+	for (i=0; os_scsi_tapes[i] && i<osst_max_dev; i++);
 	if(i >= osst_max_dev) panic ("Scsi_devices corrupt (osst)");
 	dev_num = i;
 

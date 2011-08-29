@@ -16,12 +16,11 @@
  */
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/mutex.h>
+#include <linux/smp_lock.h>
 #include "megaraid_mm.h"
 
 
 // Entry points for char node driver
-static DEFINE_MUTEX(mraid_mm_mutex);
 static int mraid_mm_open(struct inode *, struct file *);
 static long mraid_mm_unlocked_ioctl(struct file *, uint, unsigned long);
 
@@ -76,7 +75,6 @@ static const struct file_operations lsi_fops = {
 	.compat_ioctl = mraid_mm_compat_ioctl,
 #endif
 	.owner	= THIS_MODULE,
-	.llseek = noop_llseek,
 };
 
 static struct miscdevice megaraid_mm_dev = {
@@ -100,6 +98,7 @@ mraid_mm_open(struct inode *inode, struct file *filep)
 	 */
 	if (!capable(CAP_SYS_ADMIN)) return (-EACCES);
 
+	cycle_kernel_lock();
 	return 0;
 }
 
@@ -225,9 +224,9 @@ mraid_mm_unlocked_ioctl(struct file *filep, unsigned int cmd,
 	int err;
 
 	/* inconsistant: mraid_mm_compat_ioctl doesn't take the BKL */
-	mutex_lock(&mraid_mm_mutex);
+	lock_kernel();
 	err = mraid_mm_ioctl(filep, cmd, arg);
-	mutex_unlock(&mraid_mm_mutex);
+	unlock_kernel();
 
 	return err;
 }

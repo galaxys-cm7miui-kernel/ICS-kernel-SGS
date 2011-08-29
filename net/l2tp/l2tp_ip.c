@@ -65,7 +65,9 @@ static struct sock *__l2tp_ip_bind_lookup(struct net *net, __be32 laddr, int dif
 			continue;
 
 		if ((l2tp->conn_id == tunnel_id) &&
-		    net_eq(sock_net(sk), net) &&
+#ifdef CONFIG_NET_NS
+		    (sk->sk_net == net) &&
+#endif
 		    !(inet->inet_rcv_saddr && inet->inet_rcv_saddr != laddr) &&
 		    !(sk->sk_bound_dev_if && sk->sk_bound_dev_if != dif))
 			goto found;
@@ -576,7 +578,7 @@ out:
 	return copied;
 }
 
-static struct proto l2tp_ip_prot = {
+struct proto l2tp_ip_prot = {
 	.name		   = "L2TP/IP",
 	.owner		   = THIS_MODULE,
 	.init		   = l2tp_ip_open,
@@ -674,8 +676,4 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("James Chapman <jchapman@katalix.com>");
 MODULE_DESCRIPTION("L2TP over IP");
 MODULE_VERSION("1.0");
-
-/* Use the value of SOCK_DGRAM (2) directory, because __stringify does't like
- * enums
- */
-MODULE_ALIAS_NET_PF_PROTO_TYPE(PF_INET, 2, IPPROTO_L2TP);
+MODULE_ALIAS_NET_PF_PROTO_TYPE(PF_INET, SOCK_DGRAM, IPPROTO_L2TP);

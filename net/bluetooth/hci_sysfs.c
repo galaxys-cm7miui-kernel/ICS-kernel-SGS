@@ -37,7 +37,9 @@ static ssize_t show_link_type(struct device *dev, struct device_attribute *attr,
 static ssize_t show_link_address(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct hci_conn *conn = dev_get_drvdata(dev);
-	return sprintf(buf, "%s\n", batostr(&conn->dst));
+	bdaddr_t bdaddr;
+	baswap(&bdaddr, &conn->dst);
+	return sprintf(buf, "%s\n", batostr(&bdaddr));
 }
 
 static ssize_t show_link_features(struct device *dev, struct device_attribute *attr, char *buf)
@@ -194,8 +196,8 @@ static inline char *host_typetostr(int type)
 	switch (type) {
 	case HCI_BREDR:
 		return "BR/EDR";
-	case HCI_AMP:
-		return "AMP";
+	case HCI_80211:
+		return "802.11";
 	default:
 		return "UNKNOWN";
 	}
@@ -236,7 +238,9 @@ static ssize_t show_class(struct device *dev, struct device_attribute *attr, cha
 static ssize_t show_address(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct hci_dev *hdev = dev_get_drvdata(dev);
-	return sprintf(buf, "%s\n", batostr(&hdev->bdaddr));
+	bdaddr_t bdaddr;
+	baswap(&bdaddr, &hdev->bdaddr);
+	return sprintf(buf, "%s\n", batostr(&bdaddr));
 }
 
 static ssize_t show_features(struct device *dev, struct device_attribute *attr, char *buf)
@@ -404,8 +408,10 @@ static int inquiry_cache_show(struct seq_file *f, void *p)
 
 	for (e = cache->list; e; e = e->next) {
 		struct inquiry_data *data = &e->data;
+		bdaddr_t bdaddr;
+		baswap(&bdaddr, &data->bdaddr);
 		seq_printf(f, "%s %d %d %d 0x%.2x%.2x%.2x 0x%.4x %d %d %u\n",
-			   batostr(&data->bdaddr),
+			   batostr(&bdaddr),
 			   data->pscan_rep_mode, data->pscan_period_mode,
 			   data->pscan_mode, data->dev_class[2],
 			   data->dev_class[1], data->dev_class[0],
@@ -439,10 +445,13 @@ static int blacklist_show(struct seq_file *f, void *p)
 
 	list_for_each(l, &hdev->blacklist) {
 		struct bdaddr_list *b;
+		bdaddr_t bdaddr;
 
 		b = list_entry(l, struct bdaddr_list, list);
 
-		seq_printf(f, "%s\n", batostr(&b->bdaddr));
+		baswap(&bdaddr, &b->bdaddr);
+
+		seq_printf(f, "%s\n", batostr(&bdaddr));
 	}
 
 	hci_dev_unlock_bh(hdev);

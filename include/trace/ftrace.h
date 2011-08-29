@@ -142,7 +142,7 @@
  *	struct trace_seq *s = &iter->seq;
  *	struct ftrace_raw_<call> *field; <-- defined in stage 1
  *	struct trace_entry *entry;
- *	struct trace_seq *p = &iter->tmp_seq;
+ *	struct trace_seq *p;
  *	int ret;
  *
  *	entry = iter->ent;
@@ -154,10 +154,12 @@
  *
  *	field = (typeof(field))entry;
  *
+ *	p = &get_cpu_var(ftrace_event_seq);
  *	trace_seq_init(p);
  *	ret = trace_seq_printf(s, "%s: ", <call>);
  *	if (ret)
  *		ret = trace_seq_printf(s, <TP_printk> "\n");
+ *	put_cpu();
  *	if (!ret)
  *		return TRACE_TYPE_PARTIAL_LINE;
  *
@@ -211,7 +213,7 @@ ftrace_raw_output_##call(struct trace_iterator *iter, int flags,	\
 	struct trace_seq *s = &iter->seq;				\
 	struct ftrace_raw_##call *field;				\
 	struct trace_entry *entry;					\
-	struct trace_seq *p = &iter->tmp_seq;				\
+	struct trace_seq *p;						\
 	int ret;							\
 									\
 	event = container_of(trace_event, struct ftrace_event_call,	\
@@ -226,10 +228,12 @@ ftrace_raw_output_##call(struct trace_iterator *iter, int flags,	\
 									\
 	field = (typeof(field))entry;					\
 									\
+	p = &get_cpu_var(ftrace_event_seq);				\
 	trace_seq_init(p);						\
 	ret = trace_seq_printf(s, "%s: ", event->name);			\
 	if (ret)							\
 		ret = trace_seq_printf(s, print);			\
+	put_cpu();							\
 	if (!ret)							\
 		return TRACE_TYPE_PARTIAL_LINE;				\
 									\
@@ -248,7 +252,7 @@ ftrace_raw_output_##call(struct trace_iterator *iter, int flags,	\
 	struct trace_seq *s = &iter->seq;				\
 	struct ftrace_raw_##template *field;				\
 	struct trace_entry *entry;					\
-	struct trace_seq *p = &iter->tmp_seq;				\
+	struct trace_seq *p;						\
 	int ret;							\
 									\
 	entry = iter->ent;						\
@@ -260,10 +264,12 @@ ftrace_raw_output_##call(struct trace_iterator *iter, int flags,	\
 									\
 	field = (typeof(field))entry;					\
 									\
+	p = &get_cpu_var(ftrace_event_seq);				\
 	trace_seq_init(p);						\
 	ret = trace_seq_printf(s, "%s: ", #call);			\
 	if (ret)							\
 		ret = trace_seq_printf(s, print);			\
+	put_cpu();							\
 	if (!ret)							\
 		return TRACE_TYPE_PARTIAL_LINE;				\
 									\
@@ -430,7 +436,6 @@ static inline notrace int ftrace_get_offsets_##call(			\
  *	.fields			= LIST_HEAD_INIT(event_class_##call.fields),
  *	.raw_init		= trace_event_raw_init,
  *	.probe			= ftrace_raw_event_##call,
- *	.reg			= ftrace_event_reg,
  * };
  *
  * static struct ftrace_event_call __used
@@ -559,7 +564,6 @@ static struct ftrace_event_class __used event_class_##call = {		\
 	.fields			= LIST_HEAD_INIT(event_class_##call.fields),\
 	.raw_init		= trace_event_raw_init,			\
 	.probe			= ftrace_raw_event_##call,		\
-	.reg			= ftrace_event_reg,			\
 	_TRACE_PERF_INIT(call)						\
 };
 
@@ -698,7 +702,7 @@ perf_trace_##call(void *__data, proto)					\
 	int __data_size;						\
 	int rctx;							\
 									\
-	perf_fetch_caller_regs(&__regs);				\
+	perf_fetch_caller_regs(&__regs, 1);				\
 									\
 	__data_size = ftrace_get_offsets_##call(&__data_offsets, args); \
 	__entry_size = ALIGN(__data_size + sizeof(*entry) + sizeof(u32),\

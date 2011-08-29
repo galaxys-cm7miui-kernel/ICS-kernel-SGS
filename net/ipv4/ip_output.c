@@ -487,7 +487,7 @@ int ip_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
 	 * LATER: this step can be merged to real generation of fragments,
 	 * we can switch to copy when see the first bad fragment.
 	 */
-	if (skb_has_frag_list(skb)) {
+	if (skb_has_frags(skb)) {
 		struct sk_buff *frag, *frag2;
 		int first_len = skb_pagelen(skb);
 
@@ -844,9 +844,10 @@ int ip_append_data(struct sock *sk,
 		inet->cork.length = 0;
 		sk->sk_sndmsg_page = NULL;
 		sk->sk_sndmsg_off = 0;
-		exthdrlen = rt->dst.header_len;
-		length += exthdrlen;
-		transhdrlen += exthdrlen;
+		if ((exthdrlen = rt->dst.header_len) != 0) {
+			length += exthdrlen;
+			transhdrlen += exthdrlen;
+		}
 	} else {
 		rt = (struct rtable *)inet->cork.dst;
 		if (inet->cork.flags & IPCORK_OPT)
@@ -933,19 +934,16 @@ alloc_new_skb:
 			    !(rt->dst.dev->features&NETIF_F_SG))
 				alloclen = mtu;
 			else
-				alloclen = fraglen;
+				alloclen = datalen + fragheaderlen;
 
 			/* The last fragment gets additional space at tail.
 			 * Note, with MSG_MORE we overallocate on fragments,
 			 * because we have no idea what fragment will be
 			 * the last.
 			 */
-			if (datalen == length + fraggap) {
+			if (datalen == length + fraggap)
 				alloclen += rt->dst.trailer_len;
-				/* make sure mtu is not reached */
-				if (datalen > mtu - fragheaderlen - rt->dst.trailer_len)
-					datalen -= ALIGN(rt->dst.trailer_len, 8);
-			}
+
 			if (transhdrlen) {
 				skb = sock_alloc_send_skb(sk,
 						alloclen + hh_len + 15,
@@ -962,7 +960,7 @@ alloc_new_skb:
 				else
 					/* only the initial fragment is
 					   time stamped */
-					ipc->tx_flags = 0;
+					ipc->shtx.flags = 0;
 			}
 			if (skb == NULL)
 				goto error;
@@ -973,7 +971,7 @@ alloc_new_skb:
 			skb->ip_summed = csummode;
 			skb->csum = 0;
 			skb_reserve(skb, hh_len);
-			skb_shinfo(skb)->tx_flags = ipc->tx_flags;
+			*skb_tx(skb) = ipc->shtx;
 
 			/*
 			 *	Find where to start putting bytes.
@@ -1393,7 +1391,7 @@ void ip_send_reply(struct sock *sk, struct sk_buff *skb, struct ip_reply_arg *ar
 
 	daddr = ipc.addr = rt->rt_src;
 	ipc.opt = NULL;
-	ipc.tx_flags = 0;
+	ipc.shtx.flags = 0;
 
 	if (replyopts.opt.optlen) {
 		ipc.opt = &replyopts.opt;

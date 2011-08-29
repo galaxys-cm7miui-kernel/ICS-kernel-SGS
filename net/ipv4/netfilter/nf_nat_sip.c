@@ -307,16 +307,9 @@ static unsigned int ip_nat_sip_expect(struct sk_buff *skb, unsigned int dataoff,
 	exp->expectfn = ip_nat_sip_expected;
 
 	for (; port != 0; port++) {
-		int ret;
-
 		exp->tuple.dst.u.udp.port = htons(port);
-		ret = nf_ct_expect_related(exp);
-		if (ret == 0)
+		if (nf_ct_expect_related(exp) == 0)
 			break;
-		else if (ret != -EBUSY) {
-			port = 0;
-			break;
-		}
 	}
 
 	if (port == 0)
@@ -487,25 +480,13 @@ static unsigned int ip_nat_sdp_media(struct sk_buff *skb, unsigned int dataoff,
 	/* Try to get same pair of ports: if not, try to change them. */
 	for (port = ntohs(rtp_exp->tuple.dst.u.udp.port);
 	     port != 0; port += 2) {
-		int ret;
-
 		rtp_exp->tuple.dst.u.udp.port = htons(port);
-		ret = nf_ct_expect_related(rtp_exp);
-		if (ret == -EBUSY)
+		if (nf_ct_expect_related(rtp_exp) != 0)
 			continue;
-		else if (ret < 0) {
-			port = 0;
-			break;
-		}
 		rtcp_exp->tuple.dst.u.udp.port = htons(port + 1);
-		ret = nf_ct_expect_related(rtcp_exp);
-		if (ret == 0)
+		if (nf_ct_expect_related(rtcp_exp) == 0)
 			break;
-		else if (ret != -EBUSY) {
-			nf_ct_unexpect_related(rtp_exp);
-			port = 0;
-			break;
-		}
+		nf_ct_unexpect_related(rtp_exp);
 	}
 
 	if (port == 0)

@@ -1768,7 +1768,7 @@ static const struct proto_ops pppol2tp_ops = {
 	.ioctl		= pppox_ioctl,
 };
 
-static const struct pppox_proto pppol2tp_proto = {
+static struct pppox_proto pppol2tp_proto = {
 	.create		= pppol2tp_create,
 	.ioctl		= pppol2tp_ioctl
 };

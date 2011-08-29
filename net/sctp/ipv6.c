@@ -47,8 +47,6 @@
  * be incorporated into the next SCTP release.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/types.h>
@@ -338,7 +336,7 @@ static void sctp_v6_get_saddr(struct sctp_sock *sk,
 		memcpy(saddr, baddr, sizeof(union sctp_addr));
 		SCTP_DEBUG_PRINTK("saddr: %pI6\n", &saddr->v6.sin6_addr);
 	} else {
-		pr_err("%s: asoc:%p Could not find a valid source "
+		printk(KERN_ERR "%s: asoc:%p Could not find a valid source "
 		       "address for the dest:%pI6\n",
 		       __func__, asoc, &daddr->v6.sin6_addr);
 	}

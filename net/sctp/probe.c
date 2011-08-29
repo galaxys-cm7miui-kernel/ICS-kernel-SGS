@@ -22,8 +22,6 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/socket.h>
@@ -119,7 +117,6 @@ static const struct file_operations sctpprobe_fops = {
 	.owner	= THIS_MODULE,
 	.open	= sctpprobe_open,
 	.read	= sctpprobe_read,
-	.llseek = noop_llseek,
 };
 
 sctp_disposition_t jsctp_sf_eat_sack(const struct sctp_endpoint *ep,
@@ -195,7 +192,7 @@ static __init int sctpprobe_init(void)
 	if (ret)
 		goto remove_proc;
 
-	pr_info("probe registered (port=%d)\n", port);
+	pr_info("SCTP probe registered (port=%d)\n", port);
 
 	return 0;
 

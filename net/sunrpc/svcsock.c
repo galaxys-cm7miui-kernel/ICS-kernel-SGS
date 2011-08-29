@@ -64,8 +64,7 @@ static void		svc_tcp_sock_detach(struct svc_xprt *);
 static void		svc_sock_free(struct svc_xprt *);
 
 static struct svc_xprt *svc_create_socket(struct svc_serv *, int,
-					  struct net *, struct sockaddr *,
-					  int, int);
+					  struct sockaddr *, int, int);
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 static struct lock_class_key svc_key[2];
 static struct lock_class_key svc_slock_key[2];
@@ -658,11 +657,10 @@ static struct svc_xprt *svc_udp_accept(struct svc_xprt *xprt)
 }
 
 static struct svc_xprt *svc_udp_create(struct svc_serv *serv,
-				       struct net *net,
 				       struct sockaddr *sa, int salen,
 				       int flags)
 {
-	return svc_create_socket(serv, IPPROTO_UDP, net, sa, salen, flags);
+	return svc_create_socket(serv, IPPROTO_UDP, sa, salen, flags);
 }
 
 static struct svc_xprt_ops svc_udp_ops = {
@@ -1135,6 +1133,9 @@ static int svc_tcp_sendto(struct svc_rqst *rqstp)
 	reclen = htonl(0x80000000|((xbufp->len ) - 4));
 	memcpy(xbufp->head[0].iov_base, &reclen, 4);
 
+	if (test_bit(XPT_DEAD, &rqstp->rq_xprt->xpt_flags))
+		return -ENOTCONN;
+
 	sent = svc_sendto(rqstp, &rqstp->rq_res);
 	if (sent != xbufp->len) {
 		printk(KERN_NOTICE
@@ -1177,11 +1178,10 @@ static int svc_tcp_has_wspace(struct svc_xprt *xprt)
 }
 
 static struct svc_xprt *svc_tcp_create(struct svc_serv *serv,
-				       struct net *net,
 				       struct sockaddr *sa, int salen,
 				       int flags)
 {
-	return svc_create_socket(serv, IPPROTO_TCP, net, sa, salen, flags);
+	return svc_create_socket(serv, IPPROTO_TCP, sa, salen, flags);
 }
 
 static struct svc_xprt_ops svc_tcp_ops = {
@@ -1258,13 +1258,19 @@ void svc_sock_update_bufs(struct svc_serv *serv)
 	 * The number of server threads has changed. Update
 	 * rcvbuf and sndbuf accordingly on all sockets
 	 */
-	struct svc_sock *svsk;
+	struct list_head *le;
 
 	spin_lock_bh(&serv->sv_lock);
-	list_for_each_entry(svsk, &serv->sv_permsocks, sk_xprt.xpt_list)
+	list_for_each(le, &serv->sv_permsocks) {
+		struct svc_sock *svsk =
+			list_entry(le, struct svc_sock, sk_xprt.xpt_list);
 		set_bit(XPT_CHNGBUF, &svsk->sk_xprt.xpt_flags);
-	list_for_each_entry(svsk, &serv->sv_tempsocks, sk_xprt.xpt_list)
+	}
+	list_for_each(le, &serv->sv_tempsocks) {
+		struct svc_sock *svsk =
+			list_entry(le, struct svc_sock, sk_xprt.xpt_list);
 		set_bit(XPT_CHNGBUF, &svsk->sk_xprt.xpt_flags);
+	}
 	spin_unlock_bh(&serv->sv_lock);
 }
 EXPORT_SYMBOL_GPL(svc_sock_update_bufs);
@@ -1379,7 +1385,6 @@ EXPORT_SYMBOL_GPL(svc_addsock);
  */
 static struct svc_xprt *svc_create_socket(struct svc_serv *serv,
 					  int protocol,
-					  struct net *net,
 					  struct sockaddr *sin, int len,
 					  int flags)
 {
@@ -1416,7 +1421,7 @@ static struct svc_xprt *svc_create_socket(struct svc_serv *serv,
 		return ERR_PTR(-EINVAL);
 	}
 
-	error = __sock_create(net, family, type, protocol, &sock, 1);
+	error = sock_create_kern(family, type, protocol, &sock);
 	if (error < 0)
 		return ERR_PTR(error);
 

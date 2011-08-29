@@ -26,10 +26,12 @@ static struct vfsmount *anon_inode_mnt __read_mostly;
 static struct inode *anon_inode_inode;
 static const struct file_operations anon_inode_fops;
 
-static struct dentry *anon_inodefs_mount(struct file_system_type *fs_type,
-				int flags, const char *dev_name, void *data)
+static int anon_inodefs_get_sb(struct file_system_type *fs_type, int flags,
+			       const char *dev_name, void *data,
+			       struct vfsmount *mnt)
 {
-	return mount_pseudo(fs_type, "anon_inode:", NULL, ANON_INODE_FS_MAGIC);
+	return get_sb_pseudo(fs_type, "anon_inode:", NULL, ANON_INODE_FS_MAGIC,
+			     mnt);
 }
 
 /*
@@ -43,7 +45,7 @@ static char *anon_inodefs_dname(struct dentry *dentry, char *buffer, int buflen)
 
 static struct file_system_type anon_inode_fs_type = {
 	.name		= "anon_inodefs",
-	.mount		= anon_inodefs_mount,
+	.get_sb		= anon_inodefs_get_sb,
 	.kill_sb	= kill_anon_super,
 };
 static const struct dentry_operations anon_inodefs_dentry_operations = {
@@ -109,9 +111,10 @@ struct file *anon_inode_getfile(const char *name,
 	path.mnt = mntget(anon_inode_mnt);
 	/*
 	 * We know the anon_inode inode count is always greater than zero,
-	 * so ihold() is safe.
+	 * so we can avoid doing an igrab() and we can use an open-coded
+	 * atomic_inc().
 	 */
-	ihold(anon_inode_inode);
+	atomic_inc(&anon_inode_inode->i_count);
 
 	path.dentry->d_op = &anon_inodefs_dentry_operations;
 	d_instantiate(path.dentry, anon_inode_inode);
@@ -191,7 +194,6 @@ static struct inode *anon_inode_mkinode(void)
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
-	inode->i_ino = get_next_ino();
 	inode->i_fop = &anon_inode_fops;
 
 	inode->i_mapping->a_ops = &anon_aops;

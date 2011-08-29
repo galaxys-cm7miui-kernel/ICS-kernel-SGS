@@ -49,6 +49,7 @@ MODULE_DESCRIPTION("Adaptec I2O RAID Driver");
 #include <linux/kernel.h>	/* for printk */
 #include <linux/sched.h>
 #include <linux/reboot.h>
+#include <linux/smp_lock.h>
 #include <linux/spinlock.h>
 #include <linux/dma-mapping.h>
 
@@ -75,7 +76,6 @@ MODULE_DESCRIPTION("Adaptec I2O RAID Driver");
  * Needed for our management apps
  *============================================================================
  */
-static DEFINE_MUTEX(adpt_mutex);
 static dpt_sig_S DPTI_sig = {
 	{'d', 'P', 't', 'S', 'i', 'G'}, SIG_VERSION,
 #ifdef __i386__
@@ -126,7 +126,6 @@ static const struct file_operations adpt_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= compat_adpt_ioctl,
 #endif
-	.llseek		= noop_llseek,
 };
 
 /* Structures and definitions for synchronous message posting.
@@ -423,7 +422,7 @@ static int adpt_slave_configure(struct scsi_device * device)
 	return 0;
 }
 
-static int adpt_queue_lck(struct scsi_cmnd * cmd, void (*done) (struct scsi_cmnd *))
+static int adpt_queue(struct scsi_cmnd * cmd, void (*done) (struct scsi_cmnd *))
 {
 	adpt_hba* pHba = NULL;
 	struct adpt_device* pDev = NULL;	/* dpt per device information */
@@ -490,8 +489,6 @@ static int adpt_queue_lck(struct scsi_cmnd * cmd, void (*done) (struct scsi_cmnd
 	}
 	return adpt_scsi_to_i2o(pHba, cmd, pDev);
 }
-
-static DEF_SCSI_QCMD(adpt_queue)
 
 static int adpt_bios_param(struct scsi_device *sdev, struct block_device *dev,
 		sector_t capacity, int geom[])
@@ -1293,7 +1290,7 @@ static int adpt_i2o_post_wait(adpt_hba* pHba, u32* msg, int len, int timeout)
 	ulong flags = 0;
 	struct adpt_i2o_post_wait_data *p1, *p2;
 	struct adpt_i2o_post_wait_data *wait_data =
-		kmalloc(sizeof(struct adpt_i2o_post_wait_data), GFP_ATOMIC);
+		kmalloc(sizeof(struct adpt_i2o_post_wait_data),GFP_KERNEL);
 	DECLARE_WAITQUEUE(wait, current);
 
 	if (!wait_data)
@@ -1735,12 +1732,12 @@ static int adpt_open(struct inode *inode, struct file *file)
 	int minor;
 	adpt_hba* pHba;
 
-	mutex_lock(&adpt_mutex);
+	lock_kernel();
 	//TODO check for root access
 	//
 	minor = iminor(inode);
 	if (minor >= hba_count) {
-		mutex_unlock(&adpt_mutex);
+		unlock_kernel();
 		return -ENXIO;
 	}
 	mutex_lock(&adpt_configuration_lock);
@@ -1751,7 +1748,7 @@ static int adpt_open(struct inode *inode, struct file *file)
 	}
 	if (pHba == NULL) {
 		mutex_unlock(&adpt_configuration_lock);
-		mutex_unlock(&adpt_mutex);
+		unlock_kernel();
 		return -ENXIO;
 	}
 
@@ -1762,7 +1759,7 @@ static int adpt_open(struct inode *inode, struct file *file)
 
 	pHba->in_use = 1;
 	mutex_unlock(&adpt_configuration_lock);
-	mutex_unlock(&adpt_mutex);
+	unlock_kernel();
 
 	return 0;
 }
@@ -2163,9 +2160,9 @@ static long adpt_unlocked_ioctl(struct file *file, uint cmd, ulong arg)
  
 	inode = file->f_dentry->d_inode;
  
-	mutex_lock(&adpt_mutex);
+	lock_kernel();
 	ret = adpt_ioctl(inode, file, cmd, arg);
-	mutex_unlock(&adpt_mutex);
+	unlock_kernel();
 
 	return ret;
 }
@@ -2179,7 +2176,7 @@ static long compat_adpt_ioctl(struct file *file,
  
 	inode = file->f_dentry->d_inode;
  
-	mutex_lock(&adpt_mutex);
+	lock_kernel();
  
 	switch(cmd) {
 		case DPT_SIGNATURE:
@@ -2197,7 +2194,7 @@ static long compat_adpt_ioctl(struct file *file,
 			ret =  -ENOIOCTLCMD;
 	}
  
-	mutex_unlock(&adpt_mutex);
+	unlock_kernel();
  
 	return ret;
 }
@@ -2643,13 +2640,6 @@ static s32 adpt_i2o_reparse_lct(adpt_hba* pHba)
 				continue;
 			}
 			bus_no = buf[0]>>16;
-			if (bus_no >= MAX_CHANNEL) {	/* Something wrong skip it */
-				printk(KERN_WARNING
-					"%s: Channel number %d out of range\n",
-					pHba->name, bus_no);
-				continue;
-			}
-
 			scsi_id = buf[1];
 			scsi_lun = (buf[2]>>8 )&0xff;
 			pDev = pHba->channel[bus_no].device[scsi_id];
@@ -2661,8 +2651,7 @@ static s32 adpt_i2o_reparse_lct(adpt_hba* pHba)
 				pDev = pDev->next_lun;
 			}
 			if(!pDev ) { // Something new add it
-				d = kmalloc(sizeof(struct i2o_device),
-					    GFP_ATOMIC);
+				d = kmalloc(sizeof(struct i2o_device), GFP_KERNEL);
 				if(d==NULL)
 				{
 					printk(KERN_CRIT "Out of memory for I2O device data.\n");
@@ -2678,11 +2667,13 @@ static s32 adpt_i2o_reparse_lct(adpt_hba* pHba)
 				adpt_i2o_report_hba_unit(pHba, d);
 				adpt_i2o_install_device(pHba, d);
 	
+				if(bus_no >= MAX_CHANNEL) {	// Something wrong skip it
+					printk(KERN_WARNING"%s: Channel number %d out of range \n", pHba->name, bus_no);
+					continue;
+				}
 				pDev = pHba->channel[bus_no].device[scsi_id];	
 				if( pDev == NULL){
-					pDev =
-					  kzalloc(sizeof(struct adpt_device),
-						  GFP_ATOMIC);
+					pDev =  kzalloc(sizeof(struct adpt_device),GFP_KERNEL);
 					if(pDev == NULL) {
 						return -ENOMEM;
 					}
@@ -2691,9 +2682,7 @@ static s32 adpt_i2o_reparse_lct(adpt_hba* pHba)
 					while (pDev->next_lun) {
 						pDev = pDev->next_lun;
 					}
-					pDev = pDev->next_lun =
-					  kzalloc(sizeof(struct adpt_device),
-						  GFP_ATOMIC);
+					pDev = pDev->next_lun = kzalloc(sizeof(struct adpt_device),GFP_KERNEL);
 					if(pDev == NULL) {
 						return -ENOMEM;
 					}
@@ -3138,7 +3127,7 @@ static int adpt_i2o_lct_get(adpt_hba* pHba)
 		if (pHba->lct == NULL) {
 			pHba->lct = dma_alloc_coherent(&pHba->pDev->dev,
 					pHba->lct_size, &pHba->lct_pa,
-					GFP_ATOMIC);
+					GFP_KERNEL);
 			if(pHba->lct == NULL) {
 				printk(KERN_CRIT "%s: Lct Get failed. Out of memory.\n",
 					pHba->name);

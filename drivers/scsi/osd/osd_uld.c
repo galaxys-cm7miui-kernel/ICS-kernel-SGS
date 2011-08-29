@@ -182,7 +182,6 @@ static const struct file_operations osd_fops = {
 	.open           = osd_uld_open,
 	.release        = osd_uld_release,
 	.unlocked_ioctl = osd_uld_ioctl,
-	.llseek		= noop_llseek,
 };
 
 struct osd_dev *osduld_path_lookup(const char *name)

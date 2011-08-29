@@ -44,7 +44,6 @@
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 #include <net/rtnetlink.h>
-#include <net/gre.h>
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 #include <net/ipv6.h>
@@ -64,13 +63,13 @@
    We cannot track such dead loops during route installation,
    it is infeasible task. The most general solutions would be
    to keep skb->encapsulation counter (sort of local ttl),
-   and silently drop packet when it expires. It is a good
+   and silently drop packet when it expires. It is the best
    solution, but it supposes maintaing new variable in ALL
    skb, even if no tunneling is used.
 
-   Current solution: xmit_recursion breaks dead loops. This is a percpu
-   counter, since when we enter the first ndo_xmit(), cpu migration is
-   forbidden. We force an exit if this counter reaches RECURSION_LIMIT
+   Current solution: HARD_TX_LOCK lock breaks dead loops.
+
+
 
    2. Networking dead loops would not kill routers, but would really
    kill network. IP hop limit plays role of "t->recursion" in this case,
@@ -129,7 +128,7 @@ static int ipgre_tunnel_bind_dev(struct net_device *dev);
 
 static int ipgre_net_id __read_mostly;
 struct ipgre_net {
-	struct ip_tunnel __rcu *tunnels[4][HASH_SIZE];
+	struct ip_tunnel *tunnels[4][HASH_SIZE];
 
 	struct net_device *fb_tunnel_dev;
 };
@@ -159,39 +158,12 @@ struct ipgre_net {
 #define tunnels_l	tunnels[1]
 #define tunnels_wc	tunnels[0]
 /*
- * Locking : hash tables are protected by RCU and RTNL
+ * Locking : hash tables are protected by RCU and a spinlock
  */
+static DEFINE_SPINLOCK(ipgre_lock);
 
 #define for_each_ip_tunnel_rcu(start) \
 	for (t = rcu_dereference(start); t; t = rcu_dereference(t->next))
-
-/* often modified stats are per cpu, other are shared (netdev->stats) */
-struct pcpu_tstats {
-	unsigned long	rx_packets;
-	unsigned long	rx_bytes;
-	unsigned long	tx_packets;
-	unsigned long	tx_bytes;
-};
-
-static struct net_device_stats *ipgre_get_stats(struct net_device *dev)
-{
-	struct pcpu_tstats sum = { 0 };
-	int i;
-
-	for_each_possible_cpu(i) {
-		const struct pcpu_tstats *tstats = per_cpu_ptr(dev->tstats, i);
-
-		sum.rx_packets += tstats->rx_packets;
-		sum.rx_bytes   += tstats->rx_bytes;
-		sum.tx_packets += tstats->tx_packets;
-		sum.tx_bytes   += tstats->tx_bytes;
-	}
-	dev->stats.rx_packets = sum.rx_packets;
-	dev->stats.rx_bytes   = sum.rx_bytes;
-	dev->stats.tx_packets = sum.tx_packets;
-	dev->stats.tx_bytes   = sum.tx_bytes;
-	return &dev->stats;
-}
 
 /* Given src, dst and key, find appropriate for input tunnel. */
 
@@ -201,8 +173,8 @@ static struct ip_tunnel * ipgre_tunnel_lookup(struct net_device *dev,
 {
 	struct net *net = dev_net(dev);
 	int link = dev->ifindex;
-	unsigned int h0 = HASH(remote);
-	unsigned int h1 = HASH(key);
+	unsigned h0 = HASH(remote);
+	unsigned h1 = HASH(key);
 	struct ip_tunnel *t, *cand = NULL;
 	struct ipgre_net *ign = net_generic(net, ipgre_net_id);
 	int dev_type = (gre_proto == htons(ETH_P_TEB)) ?
@@ -317,13 +289,13 @@ static struct ip_tunnel * ipgre_tunnel_lookup(struct net_device *dev,
 	return NULL;
 }
 
-static struct ip_tunnel __rcu **__ipgre_bucket(struct ipgre_net *ign,
+static struct ip_tunnel **__ipgre_bucket(struct ipgre_net *ign,
 		struct ip_tunnel_parm *parms)
 {
 	__be32 remote = parms->iph.daddr;
 	__be32 local = parms->iph.saddr;
 	__be32 key = parms->i_key;
-	unsigned int h = HASH(key);
+	unsigned h = HASH(key);
 	int prio = 0;
 
 	if (local)
@@ -336,7 +308,7 @@ static struct ip_tunnel __rcu **__ipgre_bucket(struct ipgre_net *ign,
 	return &ign->tunnels[prio][h];
 }
 
-static inline struct ip_tunnel __rcu **ipgre_bucket(struct ipgre_net *ign,
+static inline struct ip_tunnel **ipgre_bucket(struct ipgre_net *ign,
 		struct ip_tunnel *t)
 {
 	return __ipgre_bucket(ign, &t->parms);
@@ -344,22 +316,23 @@ static inline struct ip_tunnel __rcu **ipgre_bucket(struct ipgre_net *ign,
 
 static void ipgre_tunnel_link(struct ipgre_net *ign, struct ip_tunnel *t)
 {
-	struct ip_tunnel __rcu **tp = ipgre_bucket(ign, t);
+	struct ip_tunnel **tp = ipgre_bucket(ign, t);
 
-	rcu_assign_pointer(t->next, rtnl_dereference(*tp));
+	spin_lock_bh(&ipgre_lock);
+	t->next = *tp;
 	rcu_assign_pointer(*tp, t);
+	spin_unlock_bh(&ipgre_lock);
 }
 
 static void ipgre_tunnel_unlink(struct ipgre_net *ign, struct ip_tunnel *t)
 {
-	struct ip_tunnel __rcu **tp;
-	struct ip_tunnel *iter;
+	struct ip_tunnel **tp;
 
-	for (tp = ipgre_bucket(ign, t);
-	     (iter = rtnl_dereference(*tp)) != NULL;
-	     tp = &iter->next) {
-		if (t == iter) {
-			rcu_assign_pointer(*tp, t->next);
+	for (tp = ipgre_bucket(ign, t); *tp; tp = &(*tp)->next) {
+		if (t == *tp) {
+			spin_lock_bh(&ipgre_lock);
+			*tp = t->next;
+			spin_unlock_bh(&ipgre_lock);
 			break;
 		}
 	}
@@ -373,13 +346,10 @@ static struct ip_tunnel *ipgre_tunnel_find(struct net *net,
 	__be32 local = parms->iph.saddr;
 	__be32 key = parms->i_key;
 	int link = parms->link;
-	struct ip_tunnel *t;
-	struct ip_tunnel __rcu **tp;
+	struct ip_tunnel *t, **tp;
 	struct ipgre_net *ign = net_generic(net, ipgre_net_id);
 
-	for (tp = __ipgre_bucket(ign, parms);
-	     (t = rtnl_dereference(*tp)) != NULL;
-	     tp = &t->next)
+	for (tp = __ipgre_bucket(ign, parms); (t = *tp) != NULL; tp = &t->next)
 		if (local == t->parms.iph.saddr &&
 		    remote == t->parms.iph.daddr &&
 		    key == t->parms.i_key &&
@@ -390,7 +360,7 @@ static struct ip_tunnel *ipgre_tunnel_find(struct net *net,
 	return t;
 }
 
-static struct ip_tunnel *ipgre_tunnel_locate(struct net *net,
+static struct ip_tunnel * ipgre_tunnel_locate(struct net *net,
 		struct ip_tunnel_parm *parms, int create)
 {
 	struct ip_tunnel *t, *nt;
@@ -612,7 +582,7 @@ static int ipgre_rcv(struct sk_buff *skb)
 	if ((tunnel = ipgre_tunnel_lookup(skb->dev,
 					  iph->saddr, iph->daddr, key,
 					  gre_proto))) {
-		struct pcpu_tstats *tstats;
+		struct net_device_stats *stats = &tunnel->dev->stats;
 
 		secpath_reset(skb);
 
@@ -636,22 +606,22 @@ static int ipgre_rcv(struct sk_buff *skb)
 			/* Looped back packet, drop it! */
 			if (skb_rtable(skb)->fl.iif == 0)
 				goto drop;
-			tunnel->dev->stats.multicast++;
+			stats->multicast++;
 			skb->pkt_type = PACKET_BROADCAST;
 		}
 #endif
 
 		if (((flags&GRE_CSUM) && csum) ||
 		    (!(flags&GRE_CSUM) && tunnel->parms.i_flags&GRE_CSUM)) {
-			tunnel->dev->stats.rx_crc_errors++;
-			tunnel->dev->stats.rx_errors++;
+			stats->rx_crc_errors++;
+			stats->rx_errors++;
 			goto drop;
 		}
 		if (tunnel->parms.i_flags&GRE_SEQ) {
 			if (!(flags&GRE_SEQ) ||
 			    (tunnel->i_seqno && (s32)(seqno - tunnel->i_seqno) < 0)) {
-				tunnel->dev->stats.rx_fifo_errors++;
-				tunnel->dev->stats.rx_errors++;
+				stats->rx_fifo_errors++;
+				stats->rx_errors++;
 				goto drop;
 			}
 			tunnel->i_seqno = seqno + 1;
@@ -660,8 +630,8 @@ static int ipgre_rcv(struct sk_buff *skb)
 		/* Warning: All skb pointers will be invalidated! */
 		if (tunnel->dev->type == ARPHRD_ETHER) {
 			if (!pskb_may_pull(skb, ETH_HLEN)) {
-				tunnel->dev->stats.rx_length_errors++;
-				tunnel->dev->stats.rx_errors++;
+				stats->rx_length_errors++;
+				stats->rx_errors++;
 				goto drop;
 			}
 
@@ -670,19 +640,14 @@ static int ipgre_rcv(struct sk_buff *skb)
 			skb_postpull_rcsum(skb, eth_hdr(skb), ETH_HLEN);
 		}
 
-		tstats = this_cpu_ptr(tunnel->dev->tstats);
-		tstats->rx_packets++;
-		tstats->rx_bytes += skb->len;
-
-		__skb_tunnel_rx(skb, tunnel->dev);
+		skb_tunnel_rx(skb, tunnel->dev);
 
 		skb_reset_network_header(skb);
 		ipgre_ecn_decapsulate(iph, skb);
 
 		netif_rx(skb);
-
 		rcu_read_unlock();
-		return 0;
+		return(0);
 	}
 	icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0);
 
@@ -690,19 +655,20 @@ drop:
 	rcu_read_unlock();
 drop_nolock:
 	kfree_skb(skb);
-	return 0;
+	return(0);
 }
 
 static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
-	struct pcpu_tstats *tstats;
+	struct net_device_stats *stats = &dev->stats;
+	struct netdev_queue *txq = netdev_get_tx_queue(dev, 0);
 	struct iphdr  *old_iph = ip_hdr(skb);
 	struct iphdr  *tiph;
 	u8     tos;
 	__be16 df;
 	struct rtable *rt;     			/* Route to the other host */
-	struct net_device *tdev;		/* Device to other host */
+	struct net_device *tdev;			/* Device to other host */
 	struct iphdr  *iph;			/* Our new IP header */
 	unsigned int max_headroom;		/* The extra header space needed */
 	int    gre_hlen;
@@ -724,7 +690,7 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 		/* NBMA tunnel */
 
 		if (skb_dst(skb) == NULL) {
-			dev->stats.tx_fifo_errors++;
+			stats->tx_fifo_errors++;
 			goto tx_error;
 		}
 
@@ -770,20 +736,14 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	}
 
 	{
-		struct flowi fl = {
-			.oif = tunnel->parms.link,
-			.nl_u = {
-				.ip4_u = {
-					.daddr = dst,
-					.saddr = tiph->saddr,
-					.tos = RT_TOS(tos)
-				}
-			},
-			.proto = IPPROTO_GRE
-		}
-;
+		struct flowi fl = { .oif = tunnel->parms.link,
+				    .nl_u = { .ip4_u =
+					      { .daddr = dst,
+						.saddr = tiph->saddr,
+						.tos = RT_TOS(tos) } },
+				    .proto = IPPROTO_GRE };
 		if (ip_route_output_key(dev_net(dev), &rt, &fl)) {
-			dev->stats.tx_carrier_errors++;
+			stats->tx_carrier_errors++;
 			goto tx_error;
 		}
 	}
@@ -791,7 +751,7 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 
 	if (tdev == dev) {
 		ip_rt_put(rt);
-		dev->stats.collisions++;
+		stats->collisions++;
 		goto tx_error;
 	}
 
@@ -854,7 +814,7 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 			dev->needed_headroom = max_headroom;
 		if (!new_skb) {
 			ip_rt_put(rt);
-			dev->stats.tx_dropped++;
+			txq->tx_dropped++;
 			dev_kfree_skb(skb);
 			return NETDEV_TX_OK;
 		}
@@ -921,15 +881,15 @@ static netdev_tx_t ipgre_tunnel_xmit(struct sk_buff *skb, struct net_device *dev
 	}
 
 	nf_reset(skb);
-	tstats = this_cpu_ptr(dev->tstats);
-	__IPTUNNEL_XMIT(tstats, &dev->stats);
+
+	IPTUNNEL_XMIT();
 	return NETDEV_TX_OK;
 
 tx_error_icmp:
 	dst_link_failure(skb);
 
 tx_error:
-	dev->stats.tx_errors++;
+	stats->tx_errors++;
 	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
@@ -949,19 +909,13 @@ static int ipgre_tunnel_bind_dev(struct net_device *dev)
 	/* Guess output device to choose reasonable mtu and needed_headroom */
 
 	if (iph->daddr) {
-		struct flowi fl = {
-			.oif = tunnel->parms.link,
-			.nl_u = {
-				.ip4_u = {
-					.daddr = iph->daddr,
-					.saddr = iph->saddr,
-					.tos = RT_TOS(iph->tos)
-				}
-			},
-			.proto = IPPROTO_GRE
-		};
+		struct flowi fl = { .oif = tunnel->parms.link,
+				    .nl_u = { .ip4_u =
+					      { .daddr = iph->daddr,
+						.saddr = iph->saddr,
+						.tos = RT_TOS(iph->tos) } },
+				    .proto = IPPROTO_GRE };
 		struct rtable *rt;
-
 		if (!ip_route_output_key(dev_net(dev), &rt, &fl)) {
 			tdev = rt->dst.dev;
 			ip_rt_put(rt);
@@ -1058,7 +1012,7 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 					break;
 				}
 			} else {
-				unsigned int nflags = 0;
+				unsigned nflags = 0;
 
 				t = netdev_priv(dev);
 
@@ -1072,7 +1026,6 @@ ipgre_tunnel_ioctl (struct net_device *dev, struct ifreq *ifr, int cmd)
 					break;
 				}
 				ipgre_tunnel_unlink(ign, t);
-				synchronize_net();
 				t->parms.iph.saddr = p.iph.saddr;
 				t->parms.iph.daddr = p.iph.daddr;
 				t->parms.i_key = p.i_key;
@@ -1172,7 +1125,7 @@ static int ipgre_tunnel_change_mtu(struct net_device *dev, int new_mtu)
 
 static int ipgre_header(struct sk_buff *skb, struct net_device *dev,
 			unsigned short type,
-			const void *daddr, const void *saddr, unsigned int len)
+			const void *daddr, const void *saddr, unsigned len)
 {
 	struct ip_tunnel *t = netdev_priv(dev);
 	struct iphdr *iph = (struct iphdr *)skb_push(skb, t->hlen);
@@ -1214,19 +1167,13 @@ static int ipgre_open(struct net_device *dev)
 	struct ip_tunnel *t = netdev_priv(dev);
 
 	if (ipv4_is_multicast(t->parms.iph.daddr)) {
-		struct flowi fl = {
-			.oif = t->parms.link,
-			.nl_u = {
-				.ip4_u = {
-					.daddr = t->parms.iph.daddr,
-					.saddr = t->parms.iph.saddr,
-					.tos = RT_TOS(t->parms.iph.tos)
-				}
-			},
-			.proto = IPPROTO_GRE
-		};
+		struct flowi fl = { .oif = t->parms.link,
+				    .nl_u = { .ip4_u =
+					      { .daddr = t->parms.iph.daddr,
+						.saddr = t->parms.iph.saddr,
+						.tos = RT_TOS(t->parms.iph.tos) } },
+				    .proto = IPPROTO_GRE };
 		struct rtable *rt;
-
 		if (ip_route_output_key(dev_net(dev), &rt, &fl))
 			return -EADDRNOTAVAIL;
 		dev = rt->dst.dev;
@@ -1246,8 +1193,10 @@ static int ipgre_close(struct net_device *dev)
 	if (ipv4_is_multicast(t->parms.iph.daddr) && t->mlink) {
 		struct in_device *in_dev;
 		in_dev = inetdev_by_index(dev_net(dev), t->mlink);
-		if (in_dev)
+		if (in_dev) {
 			ip_mc_dec_group(in_dev, t->parms.iph.daddr);
+			in_dev_put(in_dev);
+		}
 	}
 	return 0;
 }
@@ -1264,19 +1213,12 @@ static const struct net_device_ops ipgre_netdev_ops = {
 	.ndo_start_xmit		= ipgre_tunnel_xmit,
 	.ndo_do_ioctl		= ipgre_tunnel_ioctl,
 	.ndo_change_mtu		= ipgre_tunnel_change_mtu,
-	.ndo_get_stats		= ipgre_get_stats,
 };
-
-static void ipgre_dev_free(struct net_device *dev)
-{
-	free_percpu(dev->tstats);
-	free_netdev(dev);
-}
 
 static void ipgre_tunnel_setup(struct net_device *dev)
 {
 	dev->netdev_ops		= &ipgre_netdev_ops;
-	dev->destructor 	= ipgre_dev_free;
+	dev->destructor 	= free_netdev;
 
 	dev->type		= ARPHRD_IPGRE;
 	dev->needed_headroom 	= LL_MAX_HEADER + sizeof(struct iphdr) + 4;
@@ -1314,10 +1256,6 @@ static int ipgre_tunnel_init(struct net_device *dev)
 	} else
 		dev->header_ops = &ipgre_header_ops;
 
-	dev->tstats = alloc_percpu(struct pcpu_tstats);
-	if (!dev->tstats)
-		return -ENOMEM;
-
 	return 0;
 }
 
@@ -1325,6 +1263,7 @@ static void ipgre_fb_tunnel_init(struct net_device *dev)
 {
 	struct ip_tunnel *tunnel = netdev_priv(dev);
 	struct iphdr *iph = &tunnel->parms.iph;
+	struct ipgre_net *ign = net_generic(dev_net(dev), ipgre_net_id);
 
 	tunnel->dev = dev;
 	strcpy(tunnel->parms.name, dev->name);
@@ -1335,12 +1274,14 @@ static void ipgre_fb_tunnel_init(struct net_device *dev)
 	tunnel->hlen		= sizeof(struct iphdr) + 4;
 
 	dev_hold(dev);
+	ign->tunnels_wc[0]	= tunnel;
 }
 
 
-static const struct gre_protocol ipgre_protocol = {
-	.handler     = ipgre_rcv,
-	.err_handler = ipgre_err,
+static const struct net_protocol ipgre_protocol = {
+	.handler	=	ipgre_rcv,
+	.err_handler	=	ipgre_err,
+	.netns_ok	=	1,
 };
 
 static void ipgre_destroy_tunnels(struct ipgre_net *ign, struct list_head *head)
@@ -1350,13 +1291,11 @@ static void ipgre_destroy_tunnels(struct ipgre_net *ign, struct list_head *head)
 	for (prio = 0; prio < 4; prio++) {
 		int h;
 		for (h = 0; h < HASH_SIZE; h++) {
-			struct ip_tunnel *t;
-
-			t = rtnl_dereference(ign->tunnels[prio][h]);
+			struct ip_tunnel *t = ign->tunnels[prio][h];
 
 			while (t != NULL) {
 				unregister_netdevice_queue(t->dev, head);
-				t = rtnl_dereference(t->next);
+				t = t->next;
 			}
 		}
 	}
@@ -1381,12 +1320,10 @@ static int __net_init ipgre_init_net(struct net *net)
 	if ((err = register_netdev(ign->fb_tunnel_dev)))
 		goto err_reg_dev;
 
-	rcu_assign_pointer(ign->tunnels_wc[0],
-			   netdev_priv(ign->fb_tunnel_dev));
 	return 0;
 
 err_reg_dev:
-	ipgre_dev_free(ign->fb_tunnel_dev);
+	free_netdev(ign->fb_tunnel_dev);
 err_alloc_dev:
 	return err;
 }
@@ -1504,10 +1441,6 @@ static int ipgre_tap_init(struct net_device *dev)
 
 	ipgre_tunnel_bind_dev(dev);
 
-	dev->tstats = alloc_percpu(struct pcpu_tstats);
-	if (!dev->tstats)
-		return -ENOMEM;
-
 	return 0;
 }
 
@@ -1518,7 +1451,6 @@ static const struct net_device_ops ipgre_tap_netdev_ops = {
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_change_mtu		= ipgre_tunnel_change_mtu,
-	.ndo_get_stats		= ipgre_get_stats,
 };
 
 static void ipgre_tap_setup(struct net_device *dev)
@@ -1527,7 +1459,7 @@ static void ipgre_tap_setup(struct net_device *dev)
 	ether_setup(dev);
 
 	dev->netdev_ops		= &ipgre_tap_netdev_ops;
-	dev->destructor 	= ipgre_dev_free;
+	dev->destructor 	= free_netdev;
 
 	dev->iflink		= 0;
 	dev->features		|= NETIF_F_NETNS_LOCAL;
@@ -1554,10 +1486,6 @@ static int ipgre_newlink(struct net *src_net, struct net_device *dev, struct nla
 	mtu = ipgre_tunnel_bind_dev(dev);
 	if (!tb[IFLA_MTU])
 		dev->mtu = mtu;
-
-	/* Can use a lockless transmit, unless we generate output sequences */
-	if (!(nt->parms.o_flags & GRE_SEQ))
-		dev->features |= NETIF_F_LLTX;
 
 	err = register_netdevice(dev);
 	if (err)
@@ -1594,7 +1522,7 @@ static int ipgre_changelink(struct net_device *dev, struct nlattr *tb[],
 		t = nt;
 
 		if (dev->type != ARPHRD_ETHER) {
-			unsigned int nflags = 0;
+			unsigned nflags = 0;
 
 			if (ipv4_is_multicast(p.iph.daddr))
 				nflags = IFF_BROADCAST;
@@ -1735,7 +1663,7 @@ static int __init ipgre_init(void)
 	if (err < 0)
 		return err;
 
-	err = gre_add_protocol(&ipgre_protocol, GREPROTO_CISCO);
+	err = inet_add_protocol(&ipgre_protocol, IPPROTO_GRE);
 	if (err < 0) {
 		printk(KERN_INFO "ipgre init: can't add protocol\n");
 		goto add_proto_failed;
@@ -1755,7 +1683,7 @@ out:
 tap_ops_failed:
 	rtnl_link_unregister(&ipgre_link_ops);
 rtnl_link_failed:
-	gre_del_protocol(&ipgre_protocol, GREPROTO_CISCO);
+	inet_del_protocol(&ipgre_protocol, IPPROTO_GRE);
 add_proto_failed:
 	unregister_pernet_device(&ipgre_net_ops);
 	goto out;
@@ -1765,7 +1693,7 @@ static void __exit ipgre_fini(void)
 {
 	rtnl_link_unregister(&ipgre_tap_ops);
 	rtnl_link_unregister(&ipgre_link_ops);
-	if (gre_del_protocol(&ipgre_protocol, GREPROTO_CISCO) < 0)
+	if (inet_del_protocol(&ipgre_protocol, IPPROTO_GRE) < 0)
 		printk(KERN_INFO "ipgre close: can't remove protocol\n");
 	unregister_pernet_device(&ipgre_net_ops);
 }

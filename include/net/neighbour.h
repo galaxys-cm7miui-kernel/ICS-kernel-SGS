@@ -91,28 +91,26 @@ struct neigh_statistics {
 #define NEIGH_CACHE_STAT_INC(tbl, field) this_cpu_inc((tbl)->stats->field)
 
 struct neighbour {
-	struct neighbour __rcu	*next;
+	struct neighbour	*next;
 	struct neigh_table	*tbl;
 	struct neigh_parms	*parms;
+	struct net_device		*dev;
+	unsigned long		used;
 	unsigned long		confirmed;
 	unsigned long		updated;
 	__u8			flags;
 	__u8			nud_state;
 	__u8			type;
 	__u8			dead;
-	atomic_t		refcnt;
-	struct sk_buff_head	arp_queue;
-	struct timer_list	timer;
-	unsigned long		used;
 	atomic_t		probes;
 	rwlock_t		lock;
-	seqlock_t		ha_lock;
 	unsigned char		ha[ALIGN(MAX_ADDR_LEN, sizeof(unsigned long))];
 	struct hh_cache		*hh;
+	atomic_t		refcnt;
 	int			(*output)(struct sk_buff *skb);
+	struct sk_buff_head	arp_queue;
+	struct timer_list	timer;
 	const struct neigh_ops	*ops;
-	struct rcu_head		rcu;
-	struct net_device	*dev;
 	u8			primary_key[0];
 };
 
@@ -140,22 +138,13 @@ struct pneigh_entry {
  *	neighbour table manipulation
  */
 
-struct neigh_hash_table {
-	struct neighbour __rcu	**hash_buckets;
-	unsigned int		hash_mask;
-	__u32			hash_rnd;
-	struct rcu_head		rcu;
-};
-
 
 struct neigh_table {
 	struct neigh_table	*next;
 	int			family;
 	int			entry_size;
 	int			key_len;
-	__u32			(*hash)(const void *pkey,
-					const struct net_device *dev,
-					__u32 hash_rnd);
+	__u32			(*hash)(const void *pkey, const struct net_device *);
 	int			(*constructor)(struct neighbour *);
 	int			(*pconstructor)(struct pneigh_entry *);
 	void			(*pdestructor)(struct pneigh_entry *);
@@ -174,9 +163,11 @@ struct neigh_table {
 	atomic_t		entries;
 	rwlock_t		lock;
 	unsigned long		last_rand;
-	struct kmem_cache	*kmem_cachep;
+	struct kmem_cache		*kmem_cachep;
 	struct neigh_statistics	__percpu *stats;
-	struct neigh_hash_table __rcu *nht;
+	struct neighbour	**hash_buckets;
+	unsigned int		hash_mask;
+	__u32			hash_rnd;
 	struct pneigh_entry	**phash_buckets;
 };
 
@@ -246,7 +237,6 @@ extern void pneigh_for_each(struct neigh_table *tbl, void (*cb)(struct pneigh_en
 struct neigh_seq_state {
 	struct seq_net_private p;
 	struct neigh_table *tbl;
-	struct neigh_hash_table *nht;
 	void *(*neigh_sub_iter)(struct neigh_seq_state *state,
 				struct neighbour *n, loff_t *pos);
 	unsigned int bucket;
@@ -303,10 +293,7 @@ static inline void neigh_confirm(struct neighbour *neigh)
 
 static inline int neigh_event_send(struct neighbour *neigh, struct sk_buff *skb)
 {
-	unsigned long now = jiffies;
-	
-	if (neigh->used != now)
-		neigh->used = now;
+	neigh->used = jiffies;
 	if (!(neigh->nud_state&(NUD_CONNECTED|NUD_DELAY|NUD_PROBE)))
 		return __neigh_event_send(neigh, skb);
 	return 0;
@@ -377,14 +364,4 @@ struct neighbour_cb {
 
 #define NEIGH_CB(skb)	((struct neighbour_cb *)(skb)->cb)
 
-static inline void neigh_ha_snapshot(char *dst, const struct neighbour *n,
-				     const struct net_device *dev)
-{
-	unsigned int seq;
-
-	do {
-		seq = read_seqbegin(&n->ha_lock);
-		memcpy(dst, n->ha, dev->addr_len);
-	} while (read_seqretry(&n->ha_lock, seq));
-}
 #endif

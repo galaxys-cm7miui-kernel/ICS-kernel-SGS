@@ -9,7 +9,6 @@
 #include <linux/rcupdate.h>
 #include <linux/timer.h>
 #include <linux/sysctl.h>
-#include <linux/rtnetlink.h>
 
 enum
 {
@@ -159,12 +158,7 @@ struct in_ifaddr {
 extern int register_inetaddr_notifier(struct notifier_block *nb);
 extern int unregister_inetaddr_notifier(struct notifier_block *nb);
 
-extern struct net_device *__ip_dev_find(struct net *net, __be32 addr, bool devref);
-static inline struct net_device *ip_dev_find(struct net *net, __be32 addr)
-{
-	return __ip_dev_find(net, addr, true);
-}
-
+extern struct net_device *ip_dev_find(struct net *net, __be32 addr);
 extern int		inet_addr_onlink(struct in_device *in_dev, __be32 a, __be32 b);
 extern int		devinet_ioctl(struct net *net, unsigned int cmd, void __user *);
 extern void		devinet_init(void);
@@ -204,10 +198,14 @@ static __inline__ int bad_mask(__be32 mask, __be32 addr)
 
 static inline struct in_device *__in_dev_get_rcu(const struct net_device *dev)
 {
-	return rcu_dereference(dev->ip_ptr);
+	struct in_device *in_dev = dev->ip_ptr;
+	if (in_dev)
+		in_dev = rcu_dereference(in_dev);
+	return in_dev;
 }
 
-static inline struct in_device *in_dev_get(const struct net_device *dev)
+static __inline__ struct in_device *
+in_dev_get(const struct net_device *dev)
 {
 	struct in_device *in_dev;
 
@@ -219,9 +217,10 @@ static inline struct in_device *in_dev_get(const struct net_device *dev)
 	return in_dev;
 }
 
-static inline struct in_device *__in_dev_get_rtnl(const struct net_device *dev)
+static __inline__ struct in_device *
+__in_dev_get_rtnl(const struct net_device *dev)
 {
-	return rcu_dereference_check(dev->ip_ptr, lockdep_rtnl_is_held());
+	return (struct in_device*)dev->ip_ptr;
 }
 
 extern void in_dev_finish_destroy(struct in_device *idev);

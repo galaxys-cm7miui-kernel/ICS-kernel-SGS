@@ -117,7 +117,7 @@
 
 static struct hlist_head unix_socket_table[UNIX_HASH_SIZE + 1];
 static DEFINE_SPINLOCK(unix_table_lock);
-static atomic_long_t unix_nr_socks;
+static atomic_t unix_nr_socks = ATOMIC_INIT(0);
 
 #define unix_sockets_unbound	(&unix_socket_table[UNIX_HASH_SIZE])
 
@@ -360,13 +360,13 @@ static void unix_sock_destructor(struct sock *sk)
 	if (u->addr)
 		unix_release_addr(u->addr);
 
-	atomic_long_dec(&unix_nr_socks);
+	atomic_dec(&unix_nr_socks);
 	local_bh_disable();
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
 	local_bh_enable();
 #ifdef UNIX_REFCNT_DEBUG
-	printk(KERN_DEBUG "UNIX %p is destroyed, %ld are still alive.\n", sk,
-		atomic_long_read(&unix_nr_socks));
+	printk(KERN_DEBUG "UNIX %p is destroyed, %d are still alive.\n", sk,
+		atomic_read(&unix_nr_socks));
 #endif
 }
 
@@ -606,8 +606,8 @@ static struct sock *unix_create1(struct net *net, struct socket *sock)
 	struct sock *sk = NULL;
 	struct unix_sock *u;
 
-	atomic_long_inc(&unix_nr_socks);
-	if (atomic_long_read(&unix_nr_socks) > 2 * get_max_files())
+	atomic_inc(&unix_nr_socks);
+	if (atomic_read(&unix_nr_socks) > 2 * get_max_files())
 		goto out;
 
 	sk = sk_alloc(net, PF_UNIX, GFP_KERNEL, &unix_proto);
@@ -632,7 +632,7 @@ static struct sock *unix_create1(struct net *net, struct socket *sock)
 	unix_insert_socket(unix_sockets_unbound, sk);
 out:
 	if (sk == NULL)
-		atomic_long_dec(&unix_nr_socks);
+		atomic_dec(&unix_nr_socks);
 	else {
 		local_bh_disable();
 		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
@@ -1343,25 +1343,9 @@ static void unix_destruct_scm(struct sk_buff *skb)
 	sock_wfree(skb);
 }
 
-#define MAX_RECURSION_LEVEL 4
-
 static int unix_attach_fds(struct scm_cookie *scm, struct sk_buff *skb)
 {
 	int i;
-	unsigned char max_level = 0;
-	int unix_sock_count = 0;
-
-	for (i = scm->fp->count - 1; i >= 0; i--) {
-		struct sock *sk = unix_get_socket(scm->fp->fp[i]);
-
-		if (sk) {
-			unix_sock_count++;
-			max_level = max(max_level,
-					unix_sk(sk)->recursion_level);
-		}
-	}
-	if (unlikely(max_level > MAX_RECURSION_LEVEL))
-		return -ETOOMANYREFS;
 
 	/*
 	 * Need to duplicate file references for the sake of garbage
@@ -1372,11 +1356,9 @@ static int unix_attach_fds(struct scm_cookie *scm, struct sk_buff *skb)
 	if (!UNIXCB(skb).fp)
 		return -ENOMEM;
 
-	if (unix_sock_count) {
-		for (i = scm->fp->count - 1; i >= 0; i--)
-			unix_inflight(scm->fp->fp[i]);
-	}
-	return max_level;
+	for (i = scm->fp->count-1; i >= 0; i--)
+		unix_inflight(scm->fp->fp[i]);
+	return 0;
 }
 
 static int unix_scm_to_skb(struct scm_cookie *scm, struct sk_buff *skb, bool send_fds)
@@ -1411,7 +1393,6 @@ static int unix_dgram_sendmsg(struct kiocb *kiocb, struct socket *sock,
 	struct sk_buff *skb;
 	long timeo;
 	struct scm_cookie tmp_scm;
-	int max_level;
 
 	if (NULL == siocb->scm)
 		siocb->scm = &tmp_scm;
@@ -1450,9 +1431,8 @@ static int unix_dgram_sendmsg(struct kiocb *kiocb, struct socket *sock,
 		goto out;
 
 	err = unix_scm_to_skb(siocb->scm, skb, true);
-	if (err < 0)
+	if (err)
 		goto out_free;
-	max_level = err + 1;
 	unix_get_secdata(siocb->scm, skb);
 
 	skb_reset_transport_header(skb);
@@ -1531,11 +1511,7 @@ restart:
 		goto restart;
 	}
 
-	if (sock_flag(other, SOCK_RCVTSTAMP))
-		__net_timestamp(skb);
 	skb_queue_tail(&other->sk_receive_queue, skb);
-	if (max_level > unix_sk(other)->recursion_level)
-		unix_sk(other)->recursion_level = max_level;
 	unix_state_unlock(other);
 	other->sk_data_ready(other, len);
 	sock_put(other);
@@ -1566,7 +1542,6 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 	int sent = 0;
 	struct scm_cookie tmp_scm;
 	bool fds_sent = false;
-	int max_level;
 
 	if (NULL == siocb->scm)
 		siocb->scm = &tmp_scm;
@@ -1630,11 +1605,10 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 
 		/* Only send the fds in the first buffer */
 		err = unix_scm_to_skb(siocb->scm, skb, !fds_sent);
-		if (err < 0) {
+		if (err) {
 			kfree_skb(skb);
 			goto out_err;
 		}
-		max_level = err + 1;
 		fds_sent = true;
 
 		err = memcpy_fromiovec(skb_put(skb, size), msg->msg_iov, size);
@@ -1650,8 +1624,6 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 			goto pipe_err_free;
 
 		skb_queue_tail(&other->sk_receive_queue, skb);
-		if (max_level > unix_sk(other)->recursion_level)
-			unix_sk(other)->recursion_level = max_level;
 		unix_state_unlock(other);
 		other->sk_data_ready(other, size);
 		sent += size;
@@ -1749,9 +1721,6 @@ static int unix_dgram_recvmsg(struct kiocb *iocb, struct socket *sock,
 	err = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, size);
 	if (err)
 		goto out_free;
-
-	if (sock_flag(sk, SOCK_RCVTSTAMP))
-		__sock_recv_timestamp(msg, sk, skb);
 
 	if (!siocb->scm) {
 		siocb->scm = &tmp_scm;
@@ -1871,7 +1840,6 @@ static int unix_stream_recvmsg(struct kiocb *iocb, struct socket *sock,
 		unix_state_lock(sk);
 		skb = skb_dequeue(&sk->sk_receive_queue);
 		if (skb == NULL) {
-			unix_sk(sk)->recursion_level = 0;
 			if (copied >= target)
 				goto unlock;
 
@@ -2065,10 +2033,11 @@ static unsigned int unix_poll(struct file *file, struct socket *sock, poll_table
 	if (sk->sk_shutdown == SHUTDOWN_MASK)
 		mask |= POLLHUP;
 	if (sk->sk_shutdown & RCV_SHUTDOWN)
-		mask |= POLLRDHUP | POLLIN | POLLRDNORM;
+		mask |= POLLRDHUP;
 
 	/* readable? */
-	if (!skb_queue_empty(&sk->sk_receive_queue))
+	if (!skb_queue_empty(&sk->sk_receive_queue) ||
+	    (sk->sk_shutdown & RCV_SHUTDOWN))
 		mask |= POLLIN | POLLRDNORM;
 
 	/* Connection-based need to check for termination and startup */

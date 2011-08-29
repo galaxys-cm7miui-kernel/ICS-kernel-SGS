@@ -1325,6 +1325,7 @@ static struct mmc_host_ops sdhci_ops = {
 	.get_ro		= sdhci_get_ro,
 	.get_cd		= sdhci_get_cd,
 	.enable_sdio_irq = sdhci_enable_sdio_irq,
+	.adjust_cfg = sdhci_adjust_cfg,
 };
 
 /*****************************************************************************\
@@ -1964,12 +1965,12 @@ int sdhci_add_host(struct sdhci_host *host)
 	 * can do scatter/gather or not.
 	 */
 	if (host->flags & SDHCI_USE_ADMA)
-		mmc->max_segs = 128;
+		mmc->max_hw_segs = 128;
 	else if (host->flags & SDHCI_USE_SDMA)
-		mmc->max_segs = 1;
+		mmc->max_hw_segs = 1;
 	else /* PIO */
-		mmc->max_segs = 128;
-//	mmc->max_phys_segs = 128;
+		mmc->max_hw_segs = 128;
+	mmc->max_phys_segs = 128;
 
 	/*
 	 * Maximum number of sectors in one transfer. Limited by DMA boundary
