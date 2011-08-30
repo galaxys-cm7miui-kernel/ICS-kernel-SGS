@@ -42,8 +42,6 @@
 #    mv config_strip .config
 #    make oldconfig
 #
-use strict;
-
 my $config = ".config";
 
 my $uname = `uname -r`;
@@ -125,6 +123,7 @@ my %selects;
 my %prompts;
 my %objects;
 my $var;
+my $cont = 0;
 my $iflevel = 0;
 my @ifdeps;
 
@@ -138,35 +137,9 @@ sub read_kconfig {
     my $config;
     my @kconfigs;
 
-    my $cont = 0;
-    my $line;
-
-    my $source = "$ksource/$kconfig";
-    my $last_source = "";
-
-    # Check for any environment variables used
-    while ($source =~ /\$(\w+)/ && $last_source ne $source) {
-	my $env = $1;
-	$last_source = $source;
-	$source =~ s/\$$env/$ENV{$env}/;
-    }
-
-    open(KIN, "$source") || die "Can't open $kconfig";
+    open(KIN, "$ksource/$kconfig") || die "Can't open $kconfig";
     while (<KIN>) {
 	chomp;
-
-	# Make sure that lines ending with \ continue
-	if ($cont) {
-	    $_ = $line . " " . $_;
-	}
-
-	if (s/\\$//) {
-	    $cont = 1;
-	    $line = $_;
-	    next;
-	}
-
-	$cont = 0;
 
 	# collect any Kconfig sources
 	if (/^source\s*"(.*)"/) {
@@ -174,9 +147,9 @@ sub read_kconfig {
 	}
 
 	# configs found
-	if (/^\s*(menu)?config\s+(\S+)\s*$/) {
+	if (/^\s*config\s+(\S+)\s*$/) {
 	    $state = "NEW";
-	    $config = $2;
+	    $config = $1;
 
 	    for (my $i = 0; $i < $iflevel; $i++) {
 		if ($i) {
@@ -205,7 +178,7 @@ sub read_kconfig {
 	# configs without prompts must be selected
 	} elsif ($state ne "NONE" && /^\s*tristate\s\S/) {
 	    # note if the config has a prompt
-	    $prompts{$config} = 1;
+	    $prompt{$config} = 1;
 
 	# Check for if statements
 	} elsif (/^if\s+(.*\S)\s*$/) {
@@ -244,8 +217,6 @@ if ($kconfig) {
 
 # Read all Makefiles to map the configs to the objects
 foreach my $makefile (@makefiles) {
-
-    my $cont = 0;
 
     open(MIN,$makefile) || die "Can't open $makefile";
     while (<MIN>) {
@@ -310,7 +281,7 @@ if (defined($lsmod_file)) {
     # see what modules are loaded on this system
     my $lsmod;
 
-    foreach my $dir ( ("/sbin", "/bin", "/usr/sbin", "/usr/bin") ) {
+    foreach $dir ( ("/sbin", "/bin", "/usr/sbin", "/usr/bin") ) {
 	if ( -x "$dir/lsmod" ) {
 	    $lsmod = "$dir/lsmod";
 	    last;
@@ -392,7 +363,7 @@ while ($repeat) {
 	    parse_config_dep_select $depends{$config};
 	}
 
-	if (defined($prompts{$config}) || !defined($selects{$config})) {
+	if (defined($prompt{$config}) || !defined($selects{$config})) {
 	    next;
 	}
 

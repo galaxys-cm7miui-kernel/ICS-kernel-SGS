@@ -69,8 +69,7 @@ typedef enum {
 	F_BACK = 5,
 	F_SAVE = 6,
 	F_LOAD = 7,
-	F_SEARCH = 8,
-	F_EXIT = 9,
+	F_EXIT = 8
 } function_key;
 
 void set_colors(void);

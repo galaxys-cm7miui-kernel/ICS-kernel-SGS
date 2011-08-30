@@ -1087,7 +1087,7 @@ void expr_print(struct expr *e, void (*fn)(void *, struct symbol *, const char *
 
 static void expr_print_file_helper(void *data, struct symbol *sym, const char *str)
 {
-	xfwrite(str, strlen(str), 1, data);
+	fwrite(str, strlen(str), 1, data);
 }
 
 void expr_fprint(struct expr *e, FILE *out)
@@ -1121,7 +1121,7 @@ static void expr_print_gstr_helper(void *data, struct symbol *sym, const char *s
 	}
 
 	str_append(gs, str);
-	if (sym && sym->type != S_UNKNOWN)
+	if (sym)
 		str_printf(gs, " [=%s]", sym_str);
 }
 

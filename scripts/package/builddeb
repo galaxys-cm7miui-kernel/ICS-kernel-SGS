@@ -66,9 +66,7 @@ else
 	cp System.map "$tmpdir/boot/System.map-$version"
 	cp .config "$tmpdir/boot/config-$version"
 	# Not all arches include the boot path in KBUILD_IMAGE
-	if [ -e $KBUILD_IMAGE ]; then
-		cp $KBUILD_IMAGE "$tmpdir/boot/vmlinuz-$version"
-	else
+	if ! cp $KBUILD_IMAGE "$tmpdir/boot/vmlinuz-$version"; then
 		cp arch/$ARCH/boot/$KBUILD_IMAGE "$tmpdir/boot/vmlinuz-$version"
 	fi
 fi
@@ -150,11 +148,10 @@ EOF
 # Generate a control file
 cat <<EOF > debian/control
 Source: linux-upstream
-Section: kernel
+Section: admin
 Priority: optional
 Maintainer: $maintainer
-Standards-Version: 3.8.4
-Homepage: http://www.kernel.org/
+Standards-Version: 3.8.1
 EOF
 
 if [ "$ARCH" = "um" ]; then

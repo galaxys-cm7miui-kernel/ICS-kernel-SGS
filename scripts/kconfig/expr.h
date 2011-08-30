@@ -18,7 +18,7 @@ extern "C" {
 struct file {
 	struct file *next;
 	struct file *parent;
-	const char *name;
+	char *name;
 	int lineno;
 	int flags;
 };
@@ -83,7 +83,6 @@ struct symbol {
 	tristate visible;
 	int flags;
 	struct property *prop;
-	struct expr_value dir_dep;
 	struct expr_value rev_dep;
 };
 
@@ -132,7 +131,6 @@ enum prop_type {
 	P_SELECT,   /* select BAR */
 	P_RANGE,    /* range 7..100 (for a symbol) */
 	P_ENV,      /* value from environment variable */
-	P_SYMBOL,   /* where a symbol is defined */
 };
 
 struct property {
@@ -164,7 +162,6 @@ struct menu {
 	struct menu *list;
 	struct symbol *sym;
 	struct property *prompt;
-	struct expr *visibility;
 	struct expr *dep;
 	unsigned int flags;
 	char *help;
