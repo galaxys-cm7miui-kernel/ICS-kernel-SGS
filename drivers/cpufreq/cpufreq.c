@@ -32,9 +32,9 @@
 #define dprintk(msg...) cpufreq_debug_printk(CPUFREQ_DEBUG_CORE, \
 						"cpufreq-core", msg)
 
-int exp_UV_mV[11];
+int exp_UV_mV[11] = { 0 };
 extern unsigned int freq_uv_table[11][3];
-int enabled_freqs[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
+int enabled_freqs[11] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
@@ -699,14 +699,14 @@ static ssize_t show_bios_limit(struct cpufreq_policy *policy, char *buf)
 }
 
 static ssize_t show_states_enabled_table(struct cpufreq_policy *policy, char *buf) {
-	return sprintf(buf, "%d %d %d %d %d %d %d %d", enabled_freqs[0], enabled_freqs[1], enabled_freqs[2], enabled_freqs[3], enabled_freqs[4], enabled_freqs[5], enabled_freqs[6], enabled_freqs[7]);
+	return sprintf(buf, "%d %d %d %d %d %d %d %d %d %d %d", enabled_freqs[0], enabled_freqs[1], enabled_freqs[2], enabled_freqs[3], enabled_freqs[4], enabled_freqs[5], enabled_freqs[6], enabled_freqs[7], enabled_freqs[8], enabled_freqs[9], enabled_freqs[10]);
 
 }
 
 static ssize_t store_states_enabled_table(struct cpufreq_policy *policy, const char *buf, int count) {
 	unsigned int ret = -EINVAL;
 
-	ret = sscanf(buf, "%d %d %d %d %d %d %d %d", &enabled_freqs[0], &enabled_freqs[1], &enabled_freqs[2], &enabled_freqs[3], &enabled_freqs[4], &enabled_freqs[5], &enabled_freqs[6], &enabled_freqs[7]);
+	ret = sscanf(buf, "%d %d %d %d %d %d %d %d %d %d %d", &enabled_freqs[0], &enabled_freqs[1], &enabled_freqs[2], &enabled_freqs[3], &enabled_freqs[4], &enabled_freqs[5], &enabled_freqs[6], &enabled_freqs[7], &enabled_freqs[8], &enabled_freqs[9], &enabled_freqs[10]);
 	if(ret != 1) {
 		return -EINVAL;
 	}
