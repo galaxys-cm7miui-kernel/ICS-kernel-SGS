@@ -712,22 +712,24 @@ static int intel_pmu_handle_irq(struct pt_regs *regs)
 	struct perf_sample_data data;
 	struct cpu_hw_events *cpuc;
 	int bit, loops;
-	u64 ack, status;
+	u64 status;
+	int handled;
 
 	perf_sample_data_init(&data, 0);
 
 	cpuc = &__get_cpu_var(cpu_hw_events);
 
 	intel_pmu_disable_all();
-	intel_pmu_drain_bts_buffer();
+	handled = intel_pmu_drain_bts_buffer();
 	status = intel_pmu_get_status();
 	if (!status) {
 		intel_pmu_enable_all(0);
-		return 0;
+		return handled;
 	}
 
 	loops = 0;
 again:
+	intel_pmu_ack_status(status);
 	if (++loops > 100) {
 		WARN_ONCE(1, "perfevents: irq loop stuck!\n");
 		perf_event_print_debug();
@@ -736,18 +738,21 @@ again:
 	}
 
 	inc_irq_stat(apic_perf_irqs);
-	ack = status;
 
 	intel_pmu_lbr_read();
 
 	/*
 	 * PEBS overflow sets bit 62 in the global status register
 	 */
-	if (__test_and_clear_bit(62, (unsigned long *)&status))
+	if (__test_and_clear_bit(62, (unsigned long *)&status)) {
+		handled++;
 		x86_pmu.drain_pebs(regs);
+	}
 
 	for_each_set_bit(bit, (unsigned long *)&status, X86_PMC_IDX_MAX) {
 		struct perf_event *event = cpuc->events[bit];
+
+		handled++;
 
 		if (!test_bit(bit, cpuc->active_mask))
 			continue;
@@ -758,10 +763,8 @@ again:
 		data.period = event->hw.last_period;
 
 		if (perf_event_overflow(event, 1, &data, regs))
-			x86_pmu_stop(event);
+			x86_pmu_stop(event, 0);
 	}
-
-	intel_pmu_ack_status(ack);
 
 	/*
 	 * Repeat if there is more work to be done:
@@ -772,7 +775,7 @@ again:
 
 done:
 	intel_pmu_enable_all(0);
-	return 1;
+	return handled;
 }
 
 static struct event_constraint *

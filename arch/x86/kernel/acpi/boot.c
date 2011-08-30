@@ -72,7 +72,6 @@ u8 acpi_sci_flags __initdata;
 int acpi_sci_override_gsi __initdata;
 int acpi_skip_timer_override __initdata;
 int acpi_use_timer_override __initdata;
-int acpi_fix_pin2_polarity __initdata;
 
 #ifdef CONFIG_X86_LOCAL_APIC
 static u64 acpi_lapic_addr __initdata = APIC_DEFAULT_PHYS_BASE;
@@ -411,15 +410,10 @@ acpi_parse_int_src_ovr(struct acpi_subtable_header * header,
 		return 0;
 	}
 
-	if (intsrc->source_irq == 0 && intsrc->global_irq == 2) {
-		if (acpi_skip_timer_override) {
-			printk(PREFIX "BIOS IRQ0 pin2 override ignored.\n");
-			return 0;
-		}
-		if (acpi_fix_pin2_polarity && (intsrc->inti_flags & ACPI_MADT_POLARITY_MASK)) {
-			intsrc->inti_flags &= ~ACPI_MADT_POLARITY_MASK;
-			printk(PREFIX "BIOS IRQ0 pin2 override: forcing polarity to high active.\n");
-		}
+	if (acpi_skip_timer_override &&
+	    intsrc->source_irq == 0 && intsrc->global_irq == 2) {
+		printk(PREFIX "BIOS IRQ0 pin2 override ignored.\n");
+		return 0;
 	}
 
 	mp_override_legacy_irq(intsrc->source_irq,
@@ -519,6 +513,33 @@ int acpi_isa_irq_to_gsi(unsigned isa_irq, u32 *gsi)
 	return 0;
 }
 
+static int acpi_register_gsi_pic(struct device *dev, u32 gsi,
+				 int trigger, int polarity)
+{
+#ifdef CONFIG_PCI
+	/*
+	 * Make sure all (legacy) PCI IRQs are set as level-triggered.
+	 */
+	if (trigger == ACPI_LEVEL_SENSITIVE)
+		eisa_set_level_irq(gsi);
+#endif
+
+	return gsi;
+}
+
+static int acpi_register_gsi_ioapic(struct device *dev, u32 gsi,
+				    int trigger, int polarity)
+{
+#ifdef CONFIG_X86_IO_APIC
+	gsi = mp_register_gsi(dev, gsi, trigger, polarity);
+#endif
+
+	return gsi;
+}
+
+int (*__acpi_register_gsi)(struct device *dev, u32 gsi,
+			   int trigger, int polarity) = acpi_register_gsi_pic;
+
 /*
  * success: return IRQ number (>=0)
  * failure: return < 0
@@ -528,24 +549,24 @@ int acpi_register_gsi(struct device *dev, u32 gsi, int trigger, int polarity)
 	unsigned int irq;
 	unsigned int plat_gsi = gsi;
 
-#ifdef CONFIG_PCI
-	/*
-	 * Make sure all (legacy) PCI IRQs are set as level-triggered.
-	 */
-	if (acpi_irq_model == ACPI_IRQ_MODEL_PIC) {
-		if (trigger == ACPI_LEVEL_SENSITIVE)
-			eisa_set_level_irq(gsi);
-	}
-#endif
-
-#ifdef CONFIG_X86_IO_APIC
-	if (acpi_irq_model == ACPI_IRQ_MODEL_IOAPIC) {
-		plat_gsi = mp_register_gsi(dev, gsi, trigger, polarity);
-	}
-#endif
+	plat_gsi = (*__acpi_register_gsi)(dev, gsi, trigger, polarity);
 	irq = gsi_to_irq(plat_gsi);
 
 	return irq;
+}
+
+void __init acpi_set_irq_model_pic(void)
+{
+	acpi_irq_model = ACPI_IRQ_MODEL_PIC;
+	__acpi_register_gsi = acpi_register_gsi_pic;
+	acpi_ioapic = 0;
+}
+
+void __init acpi_set_irq_model_ioapic(void)
+{
+	acpi_irq_model = ACPI_IRQ_MODEL_IOAPIC;
+	__acpi_register_gsi = acpi_register_gsi_ioapic;
+	acpi_ioapic = 1;
 }
 
 /*
@@ -1265,8 +1286,7 @@ static void __init acpi_process_madt(void)
 			 */
 			error = acpi_parse_madt_ioapic_entries();
 			if (!error) {
-				acpi_irq_model = ACPI_IRQ_MODEL_IOAPIC;
-				acpi_ioapic = 1;
+				acpi_set_irq_model_ioapic();
 
 				smp_found_config = 1;
 			}

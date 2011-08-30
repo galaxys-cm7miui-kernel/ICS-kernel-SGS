@@ -82,8 +82,6 @@ struct thread_struct {
         unsigned long prot_addr;        /* address of protection-excep.     */
         unsigned int trap_no;
         per_struct per_info;
-	/* Used to give failing instruction back to user for ieee exceptions */
-	unsigned long ieee_instruction_pointer; 
         /* pfault_wait is used to block the process on a pfault event */
 	unsigned long pfault_wait;
 };
@@ -149,6 +147,11 @@ extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
  * Return saved PC of a blocked thread.
  */
 extern unsigned long thread_saved_pc(struct task_struct *t);
+
+/*
+ * Print register of task into buffer. Used in fs/proc/array.c.
+ */
+extern void task_show_regs(struct seq_file *m, struct task_struct *task);
 
 extern void show_code(struct pt_regs *regs);
 

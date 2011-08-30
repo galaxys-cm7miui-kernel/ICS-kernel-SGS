@@ -39,8 +39,9 @@
 #include <asm/cacheflush.h>
 #include <asm/swiotlb.h>
 #include <asm/dma.h>
-#include <asm/k8.h>
+#include <asm/amd_nb.h>
 #include <asm/x86_init.h>
+#include <asm/iommu_table.h>
 
 static unsigned long iommu_bus_base;	/* GART remapping area (physical) */
 static unsigned long iommu_size;	/* size of remapping area bytes */
@@ -79,9 +80,6 @@ static u32 gart_unmapped_entry;
 #else
 #define AGPEXTERN
 #endif
-
-/* GART can only remap to physical addresses < 1TB */
-#define GART_MAX_PHYS_ADDR	(1ULL << 40)
 
 /* backdoor interface to AGP driver */
 AGPEXTERN int agp_memory_reserved;
@@ -214,13 +212,9 @@ static dma_addr_t dma_map_area(struct device *dev, dma_addr_t phys_mem,
 				size_t size, int dir, unsigned long align_mask)
 {
 	unsigned long npages = iommu_num_pages(phys_mem, size, PAGE_SIZE);
-	unsigned long iommu_page;
+	unsigned long iommu_page = alloc_iommu(dev, npages, align_mask);
 	int i;
 
-	if (unlikely(phys_mem + size > GART_MAX_PHYS_ADDR))
-		return bad_dma_addr;
-
-	iommu_page = alloc_iommu(dev, npages, align_mask);
 	if (iommu_page == -1) {
 		if (!nonforced_iommu(dev, phys_mem, size))
 			return phys_mem;
@@ -567,8 +561,11 @@ static void enable_gart_translations(void)
 {
 	int i;
 
-	for (i = 0; i < num_k8_northbridges; i++) {
-		struct pci_dev *dev = k8_northbridges[i];
+	if (!k8_northbridges.gart_supported)
+		return;
+
+	for (i = 0; i < k8_northbridges.num; i++) {
+		struct pci_dev *dev = k8_northbridges.nb_misc[i];
 
 		enable_gart_translation(dev, __pa(agp_gatt_table));
 	}
@@ -599,16 +596,19 @@ static void gart_fixup_northbridges(struct sys_device *dev)
 	if (!fix_up_north_bridges)
 		return;
 
+	if (!k8_northbridges.gart_supported)
+		return;
+
 	pr_info("PCI-DMA: Restoring GART aperture settings\n");
 
-	for (i = 0; i < num_k8_northbridges; i++) {
-		struct pci_dev *dev = k8_northbridges[i];
+	for (i = 0; i < k8_northbridges.num; i++) {
+		struct pci_dev *dev = k8_northbridges.nb_misc[i];
 
 		/*
 		 * Don't enable translations just yet.  That is the next
 		 * step.  Restore the pre-suspend aperture settings.
 		 */
-		pci_write_config_dword(dev, AMD64_GARTAPERTURECTL, aperture_order << 1);
+		gart_set_size_and_enable(dev, aperture_order);
 		pci_write_config_dword(dev, AMD64_GARTAPERTUREBASE, aperture_alloc >> 25);
 	}
 }
@@ -656,8 +656,8 @@ static __init int init_k8_gatt(struct agp_kern_info *info)
 
 	aper_size = aper_base = info->aper_size = 0;
 	dev = NULL;
-	for (i = 0; i < num_k8_northbridges; i++) {
-		dev = k8_northbridges[i];
+	for (i = 0; i < k8_northbridges.num; i++) {
+		dev = k8_northbridges.nb_misc[i];
 		new_aper_base = read_aperture(dev, &new_aper_size);
 		if (!new_aper_base)
 			goto nommu;
@@ -725,10 +725,13 @@ static void gart_iommu_shutdown(void)
 	if (!no_agp)
 		return;
 
-	for (i = 0; i < num_k8_northbridges; i++) {
+	if (!k8_northbridges.gart_supported)
+		return;
+
+	for (i = 0; i < k8_northbridges.num; i++) {
 		u32 ctl;
 
-		dev = k8_northbridges[i];
+		dev = k8_northbridges.nb_misc[i];
 		pci_read_config_dword(dev, AMD64_GARTAPERTURECTL, &ctl);
 
 		ctl &= ~GARTEN;
@@ -746,7 +749,7 @@ int __init gart_iommu_init(void)
 	unsigned long scratch;
 	long i;
 
-	if (num_k8_northbridges == 0)
+	if (!k8_northbridges.gart_supported)
 		return 0;
 
 #ifndef CONFIG_AGP_AMD64
@@ -903,3 +906,4 @@ void __init gart_parse_options(char *p)
 		}
 	}
 }
+IOMMU_INIT_POST(gart_iommu_hole_init);
