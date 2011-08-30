@@ -959,6 +959,12 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
  *	Sets the new child socket's sid to the openreq sid.
  * @inet_conn_established:
  *	Sets the connection's peersid to the secmark on skb.
+ * @secmark_relabel_packet:
+ *	check if the process should be allowed to relabel packets to the given secid
+ * @security_secmark_refcount_inc
+ *	tells the LSM to increment the number of secmark labeling rules loaded
+ * @security_secmark_refcount_dec
+ *	tells the LSM to decrement the number of secmark labeling rules loaded
  * @req_classify_flow:
  *	Sets the flow's sid to the openreq sid.
  * @tun_dev_create:
@@ -1279,9 +1285,13 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
  *	Return 0 if permission is granted.
  *
  * @secid_to_secctx:
- *	Convert secid to security context.
+ *	Convert secid to security context.  If secdata is NULL the length of
+ *	the result will be returned in seclen, but no secdata will be returned.
+ *	This does mean that the length could change between calls to check the
+ *	length and the next call which actually allocates and returns the secdata.
  *	@secid contains the security ID.
  *	@secdata contains the pointer that stores the converted security context.
+ *	@seclen pointer which contains the length of the data
  * @secctx_to_secid:
  *	Convert security context to secid.
  *	@secid contains the pointer to the generated security ID.
@@ -1593,6 +1603,9 @@ struct security_operations {
 				  struct request_sock *req);
 	void (*inet_csk_clone) (struct sock *newsk, const struct request_sock *req);
 	void (*inet_conn_established) (struct sock *sk, struct sk_buff *skb);
+	int (*secmark_relabel_packet) (u32 secid);
+	void (*secmark_refcount_inc) (void);
+	void (*secmark_refcount_dec) (void);
 	void (*req_classify_flow) (const struct request_sock *req, struct flowi *fl);
 	int (*tun_dev_create)(void);
 	void (*tun_dev_post_create)(struct sock *sk);
@@ -2546,6 +2559,9 @@ void security_inet_csk_clone(struct sock *newsk,
 			const struct request_sock *req);
 void security_inet_conn_established(struct sock *sk,
 			struct sk_buff *skb);
+int security_secmark_relabel_packet(u32 secid);
+void security_secmark_refcount_inc(void);
+void security_secmark_refcount_dec(void);
 int security_tun_dev_create(void);
 void security_tun_dev_post_create(struct sock *sk);
 int security_tun_dev_attach(struct sock *sk);
@@ -2697,6 +2713,19 @@ static inline void security_inet_csk_clone(struct sock *newsk,
 
 static inline void security_inet_conn_established(struct sock *sk,
 			struct sk_buff *skb)
+{
+}
+
+static inline int security_secmark_relabel_packet(u32 secid)
+{
+	return 0;
+}
+
+static inline void security_secmark_refcount_inc(void)
+{
+}
+
+static inline void security_secmark_refcount_dec(void)
 {
 }
 
