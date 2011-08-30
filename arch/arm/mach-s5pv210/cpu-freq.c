@@ -83,7 +83,7 @@ unsigned int freq_uv_table[11][3] = {
 	{200000,	950,	950},
 	{100000,	950,	950}
 };
-//extern int enabled_freqs[8];
+//extern int enabled_freqs[11];
 //extern int update_states = 0;
 
 struct s5pv210_dvs_conf {
@@ -156,7 +156,7 @@ static u32 clkdiv_val[11][11] = {
 	 * HCLK_DSYS, PCLK_DSYS, HCLK_PSYS, PCLK_PSYS, ONEDRAM,
 	 * MFC, G3D }
 	 */
-	//L0:1540
+	//L0:1600
 	{0, 7, 7, 1, 3, 1, 4, 1, 3, 0, 0},
 	//L1:1500
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
