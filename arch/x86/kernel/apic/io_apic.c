@@ -2430,12 +2430,13 @@ static void ack_apic_level(struct irq_data *data)
 {
 	struct irq_cfg *cfg = data->chip_data;
 	int i, do_unmask_irq = 0, irq = data->irq;
+	struct irq_desc *desc = irq_to_desc(irq);
 	unsigned long v;
 
 	irq_complete_move(cfg);
 #ifdef CONFIG_GENERIC_PENDING_IRQ
 	/* If we are moving the irq we need to mask it */
-	if (unlikely(irq_to_desc(irq)->status & IRQ_MOVE_PENDING)) {
+	if (unlikely(desc->status & IRQ_MOVE_PENDING)) {
 		do_unmask_irq = 1;
 		mask_ioapic(cfg);
 	}
@@ -3108,7 +3109,7 @@ void destroy_irq(unsigned int irq)
 
 	irq_set_status_flags(irq, IRQ_NOREQUEST|IRQ_NOPROBE);
 
-	if (irq_remapped(cfg))
+	if (intr_remapping_enabled)
 		free_irte(irq);
 	raw_spin_lock_irqsave(&vector_lock, flags);
 	__clear_irq_vector(irq, cfg);
@@ -3330,7 +3331,7 @@ static int setup_msi_irq(struct pci_dev *dev, struct msi_desc *msidesc, int irq)
 	return 0;
 }
 
-int native_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
+int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 {
 	int node, ret, sub_handle, index = 0;
 	unsigned int irq, irq_want;
@@ -3388,7 +3389,7 @@ error:
 	return ret;
 }
 
-void native_teardown_msi_irq(unsigned int irq)
+void arch_teardown_msi_irq(unsigned int irq)
 {
 	destroy_irq(irq);
 }
@@ -3412,7 +3413,6 @@ dmar_msi_set_affinity(struct irq_data *data, const struct cpumask *mask,
 	msg.data |= MSI_DATA_VECTOR(cfg->vector);
 	msg.address_lo &= ~MSI_ADDR_DEST_ID_MASK;
 	msg.address_lo |= MSI_ADDR_DEST_ID(dest);
-	msg.address_hi = MSI_ADDR_BASE_HI | MSI_ADDR_EXT_DEST_ID(dest);
 
 	dmar_msi_write(irq, &msg);
 
@@ -3648,11 +3648,6 @@ void __init probe_nr_irqs_gsi(void)
 		nr_irqs_gsi = nr;
 
 	printk(KERN_DEBUG "nr_irqs_gsi: %d\n", nr_irqs_gsi);
-}
-
-int get_nr_irqs_gsi(void)
-{
-	return nr_irqs_gsi;
 }
 
 #ifdef CONFIG_SPARSE_IRQ

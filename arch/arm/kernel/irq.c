@@ -151,13 +151,16 @@ void set_irq_flags(unsigned int irq, unsigned int iflags)
 
 void __init init_IRQ(void)
 {
-	int irq;
-
-	for (irq = 0; irq < NR_IRQS; irq++)
-		irq_desc[irq].status |= IRQ_NOREQUEST | IRQ_NOPROBE;
-
 	init_arch_irq();
 }
+
+#ifdef CONFIG_SPARSE_IRQ
+int __init arch_probe_nr_irqs(void)
+{
+	nr_irqs = arch_nr_irqs ? arch_nr_irqs : NR_IRQS;
+	return nr_irqs;
+}
+#endif
 
 #ifdef CONFIG_HOTPLUG_CPU
 
