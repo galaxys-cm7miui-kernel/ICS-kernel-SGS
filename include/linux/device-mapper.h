@@ -180,6 +180,12 @@ struct dm_target {
 	 */
 	unsigned num_flush_requests;
 
+	/*
+	 * The number of discard requests that will be submitted to the
+	 * target.  map_info->request_nr is used just like num_flush_requests.
+	 */
+	unsigned num_discard_requests;
+
 	/* target specific data */
 	void *private;
 
@@ -391,6 +397,12 @@ void *dm_vcalloc(unsigned long nmemb, unsigned long elem_size);
 
 #define dm_array_too_big(fixed, obj, num) \
 	((num) > (UINT_MAX - (fixed)) / (obj))
+
+/*
+ * Sector offset taken relative to the start of the target instead of
+ * relative to the start of the device.
+ */
+#define dm_target_offset(ti, sector) ((sector) - (ti)->begin)
 
 static inline sector_t to_sector(unsigned long n)
 {
