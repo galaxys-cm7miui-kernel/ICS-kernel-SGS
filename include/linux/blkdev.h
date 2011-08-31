@@ -115,6 +115,7 @@ struct request {
 	void *elevator_private3;
 
 	struct gendisk *rq_disk;
+	struct hd_struct *part;
 	unsigned long start_time;
 #ifdef CONFIG_BLK_CGROUP
 	unsigned long long start_time_ns;
@@ -124,6 +125,9 @@ struct request {
 	 * physical address coalescing is performed.
 	 */
 	unsigned short nr_phys_segments;
+#if defined(CONFIG_BLK_DEV_INTEGRITY)
+	unsigned short nr_integrity_segments;
+#endif
 
 	unsigned short ioprio;
 
@@ -243,6 +247,7 @@ struct queue_limits {
 
 	unsigned short		logical_block_size;
 	unsigned short		max_segments;
+	unsigned short		max_integrity_segments;
 
 	unsigned char		misaligned;
 	unsigned char		discard_misaligned;
@@ -366,6 +371,11 @@ struct request_queue
 
 #if defined(CONFIG_BLK_DEV_BSG)
 	struct bsg_class_device bsg_dev;
+#endif
+
+#ifdef CONFIG_BLK_DEV_THROTTLING
+	/* Throttle data */
+	struct throtl_data *td;
 #endif
 };
 
@@ -1091,11 +1101,11 @@ static inline int queue_dma_alignment(struct request_queue *q)
 	return q ? q->dma_alignment : 511;
 }
 
-static inline int blk_rq_aligned(struct request_queue *q, void *addr,
+static inline int blk_rq_aligned(struct request_queue *q, unsigned long addr,
 				 unsigned int len)
 {
 	unsigned int alignment = queue_dma_alignment(q) | q->dma_pad_mask;
-	return !((unsigned long)addr & alignment) && !(len & alignment);
+	return !(addr & alignment) && !(len & alignment);
 }
 
 /* assumes size > 256 */
@@ -1125,6 +1135,7 @@ static inline void put_dev_sector(Sector p)
 
 struct work_struct;
 int kblockd_schedule_work(struct request_queue *q, struct work_struct *work);
+int kblockd_schedule_delayed_work(struct request_queue *q, struct delayed_work *dwork, unsigned long delay);
 
 #ifdef CONFIG_BLK_CGROUP
 /*
@@ -1167,6 +1178,24 @@ static inline uint64_t rq_io_start_time_ns(struct request *req)
 	return 0;
 }
 #endif
+
+#ifdef CONFIG_BLK_DEV_THROTTLING
+extern int blk_throtl_init(struct request_queue *q);
+extern void blk_throtl_exit(struct request_queue *q);
+extern int blk_throtl_bio(struct request_queue *q, struct bio **bio);
+extern void throtl_schedule_delayed_work(struct request_queue *q, unsigned long delay);
+extern void throtl_shutdown_timer_wq(struct request_queue *q);
+#else /* CONFIG_BLK_DEV_THROTTLING */
+static inline int blk_throtl_bio(struct request_queue *q, struct bio **bio)
+{
+	return 0;
+}
+
+static inline int blk_throtl_init(struct request_queue *q) { return 0; }
+static inline int blk_throtl_exit(struct request_queue *q) { return 0; }
+static inline void throtl_schedule_delayed_work(struct request_queue *q, unsigned long delay) {}
+static inline void throtl_shutdown_timer_wq(struct request_queue *q) {}
+#endif /* CONFIG_BLK_DEV_THROTTLING */
 
 #define MODULE_ALIAS_BLOCKDEV(major,minor) \
 	MODULE_ALIAS("block-major-" __stringify(major) "-" __stringify(minor))
@@ -1211,8 +1240,13 @@ struct blk_integrity {
 extern int blk_integrity_register(struct gendisk *, struct blk_integrity *);
 extern void blk_integrity_unregister(struct gendisk *);
 extern int blk_integrity_compare(struct gendisk *, struct gendisk *);
-extern int blk_rq_map_integrity_sg(struct request *, struct scatterlist *);
-extern int blk_rq_count_integrity_sg(struct request *);
+extern int blk_rq_map_integrity_sg(struct request_queue *, struct bio *,
+				   struct scatterlist *);
+extern int blk_rq_count_integrity_sg(struct request_queue *, struct bio *);
+extern int blk_integrity_merge_rq(struct request_queue *, struct request *,
+				  struct request *);
+extern int blk_integrity_merge_bio(struct request_queue *, struct request *,
+				   struct bio *);
 
 static inline
 struct blk_integrity *bdev_get_integrity(struct block_device *bdev)
@@ -1233,16 +1267,32 @@ static inline int blk_integrity_rq(struct request *rq)
 	return bio_integrity(rq->bio);
 }
 
+static inline void blk_queue_max_integrity_segments(struct request_queue *q,
+						    unsigned int segs)
+{
+	q->limits.max_integrity_segments = segs;
+}
+
+static inline unsigned short
+queue_max_integrity_segments(struct request_queue *q)
+{
+	return q->limits.max_integrity_segments;
+}
+
 #else /* CONFIG_BLK_DEV_INTEGRITY */
 
 #define blk_integrity_rq(rq)			(0)
-#define blk_rq_count_integrity_sg(a)		(0)
-#define blk_rq_map_integrity_sg(a, b)		(0)
+#define blk_rq_count_integrity_sg(a, b)		(0)
+#define blk_rq_map_integrity_sg(a, b, c)	(0)
 #define bdev_get_integrity(a)			(0)
 #define blk_get_integrity(a)			(0)
 #define blk_integrity_compare(a, b)		(0)
 #define blk_integrity_register(a, b)		(0)
 #define blk_integrity_unregister(a)		do { } while (0);
+#define blk_queue_max_integrity_segments(a, b)	do { } while (0);
+#define queue_max_integrity_segments(a)		(0)
+#define blk_integrity_merge_rq(a, b, c)		(0)
+#define blk_integrity_merge_bio(a, b, c)	(0)
 
 #endif /* CONFIG_BLK_DEV_INTEGRITY */
 
