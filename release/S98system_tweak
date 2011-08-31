@@ -1,6 +1,6 @@
 #!/system/bin/sh
 #
-# 89system_tweak V56
+# 89system_tweak V57
 # by zacharias.maladroit
 # modifications and ideas taken from: ckMod SSSwitch by voku1987 and "battery tweak" (collin_ph@xda)
 # OOM/LMK settings by Juwe11
@@ -184,6 +184,8 @@ echo 4096 87380 404480 > /proc/sys/net/ipv4/tcp_rmem;
 setprop net.tcp.buffersize.default 4096,87380,256960,4096,16384,256960;
 setprop net.tcp.buffersize.wifi 4095,87380,256960,4096,16384,256960;
 setprop net.tcp.buffersize.umts 4094,87380,256960,4096,16384,256960;
+setprop net.tcp.buffersize.gprs 4094,87380,256960,4096,16384,256960;
+setprop net.tcp.buffersize.edge 4094,87380,256960,4096,16384,256960;
 
 
 # Increase the tcp-time-wait buckets pool size
@@ -381,11 +383,11 @@ setprop ro.ril.def.agps.mode=2 # default value
 # =========
 setprop ro.telephony.call_ring.delay 100; # let's minimize the time Android waits until it rings on a call
 setprop ro.ril.disable.power.collapse 0;
-#setprop pm.sleep_mode 0;
+setprop pm.sleep_mode 1; # previously 0, recommended is 1 or 2
 #setprop dalvik.vm.startheapsize 8m;
 #setprop dalvik.vm.heapsize 64m; # leave that setting to cyanogenmod settings or uncomment it if needed
 setprop wifi.supplicant_scan_interval 60; # higher is not recommended, scans while not connected anyway so shouldn't affect while connected
-setprop windowsmgr.max_events_per_sec 60; # smoother GUI
+setprop windowsmgr.max_events_per_sec 260; # smoother GUI # max at 300
 #echo 64000 > /proc/sys/kernel/msgmni;
 echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
 #echo 5000 > /proc/sys/kernel/threads-max;
@@ -635,3 +637,4 @@ echo "24319" > /proc/sys/kernel/sched_features
 # V54: some more tweaks & explanations
 # V55: commented out a superfluous definition/occurence of vfs_cache_pressure - thanks to pikachu01 !
 # V56: fixed a typo in NO_NORMALIZED_SLEEPERS;  no_new_fair_sleepers and no_normalized_sleepers are rather pointless since not available in the kernel but still setting them - just in case ;)
+# V57: enable some more network tweaks (for all network types), smoother GUI, testing with sleep mode
