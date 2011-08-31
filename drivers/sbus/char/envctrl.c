@@ -722,6 +722,7 @@ static const struct file_operations envctrl_fops = {
 #endif
 	.open =			envctrl_open,
 	.release =		envctrl_release,
+	.llseek =		noop_llseek,
 };	
 
 static struct miscdevice envctrl_dev = {
