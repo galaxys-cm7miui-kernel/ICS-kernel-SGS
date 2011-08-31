@@ -337,12 +337,12 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-MODFLAGS	= -DMODULE -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -floop-interchange -floop-strip-mine -floop-block -fgraphite-identity
+MODFLAGS	= -DMODULE -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -fira-coalesce -funswitch-loops -ftree-loop-im -fipa-cp-clone -fivopts
 CFLAGS_MODULE   = $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL	= -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -floop-interchange -floop-strip-mine -floop-block -fgraphite-identity
-AFLAGS_KERNEL	= -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -floop-interchange -floop-strip-mine -floop-block -fgraphite-identity
+CFLAGS_KERNEL	= -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -fira-coalesce -funswitch-loops -ftree-loop-im -fipa-cp-clone -fivopts
+AFLAGS_KERNEL	= -mtune=cortex-a8 -mfpu=vfpv3 --param l2-cache-size=256 --param l1-cache-size=16 --param simultaneous-prefetches=8 --param prefetch-latency=200 --param l1-cache-line-size=32 -fira-coalesce -funswitch-loops -ftree-loop-im -fipa-cp-clone -fivopts
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
