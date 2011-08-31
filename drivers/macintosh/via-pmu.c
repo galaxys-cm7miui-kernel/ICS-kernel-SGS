@@ -18,7 +18,7 @@
  *
  */
 #include <stdarg.h>
-#include <linux/smp_lock.h>
+#include <linux/mutex.h>
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
@@ -72,6 +72,7 @@
 /* How many iterations between battery polls */
 #define BATTERY_POLLING_COUNT	2
 
+static DEFINE_MUTEX(pmu_info_proc_mutex);
 static volatile unsigned char __iomem *via;
 
 /* VIA registers - spaced 0x200 bytes apart */
@@ -2076,7 +2077,7 @@ pmu_open(struct inode *inode, struct file *file)
 	pp->rb_get = pp->rb_put = 0;
 	spin_lock_init(&pp->lock);
 	init_waitqueue_head(&pp->wait);
-	lock_kernel();
+	mutex_lock(&pmu_info_proc_mutex);
 	spin_lock_irqsave(&all_pvt_lock, flags);
 #if defined(CONFIG_INPUT_ADBHID) && defined(CONFIG_PMAC_BACKLIGHT)
 	pp->backlight_locker = 0;
@@ -2084,7 +2085,7 @@ pmu_open(struct inode *inode, struct file *file)
 	list_add(&pp->list, &all_pmu_pvt);
 	spin_unlock_irqrestore(&all_pvt_lock, flags);
 	file->private_data = pp;
-	unlock_kernel();
+	mutex_unlock(&pmu_info_proc_mutex);
 	return 0;
 }
 
@@ -2341,9 +2342,9 @@ static long pmu_unlocked_ioctl(struct file *filp,
 {
 	int ret;
 
-	lock_kernel();
+	mutex_lock(&pmu_info_proc_mutex);
 	ret = pmu_ioctl(filp, cmd, arg);
-	unlock_kernel();
+	mutex_unlock(&pmu_info_proc_mutex);
 
 	return ret;
 }
