@@ -550,10 +550,8 @@ static int s3c24xx_i2c_xfer(struct i2c_adapter *adap,
 
 		ret = s3c24xx_i2c_doxfer(i2c, msgs, num);
 
-		if (ret != -EAGAIN) {
-			clk_disable(i2c->clk);
-			return ret;
-		}
+		if (ret != -EAGAIN)
+			goto out;
 
 		dev_dbg(i2c->dev, "Retrying transmission (%d)\n", retry);
 
@@ -562,7 +560,8 @@ static int s3c24xx_i2c_xfer(struct i2c_adapter *adap,
 	ret = -EREMOTEIO;
 out:
 	clk_disable(i2c->clk);
-	return -EREMOTEIO;
+
+	return ret;
 }
 
 /* declare our i2c functionality */
@@ -899,7 +898,6 @@ static int s3c24xx_i2c_probe(struct platform_device *pdev)
 	clk_disable(i2c->clk);
 
 	dev_info(&pdev->dev, "%s: S3C I2C adapter\n", dev_name(&i2c->adap.dev));
-	clk_disable(i2c->clk);
 	return 0;
 
  err_cpufreq:
@@ -967,6 +965,7 @@ static int s3c24xx_i2c_resume(struct device *dev)
 	struct s3c24xx_i2c *i2c = platform_get_drvdata(pdev);
 
 	i2c->suspended = 0;
+
 	clk_enable(i2c->clk);
 	s3c24xx_i2c_init(i2c);
 	clk_disable(i2c->clk);
