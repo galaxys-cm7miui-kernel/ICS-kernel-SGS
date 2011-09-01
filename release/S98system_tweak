@@ -1,6 +1,6 @@
 #!/system/bin/sh
 #
-# 89system_tweak V57
+# 89system_tweak V58
 # by zacharias.maladroit
 # modifications and ideas taken from: ckMod SSSwitch by voku1987 and "battery tweak" (collin_ph@xda)
 # OOM/LMK settings by Juwe11
@@ -372,8 +372,8 @@ ro.ril.enable.gea3=1
 # =========
 # TWEAKS: agps [network assisted gps] stuff optimizations
 # =========
-setprop ro.ril.def.agps.feature=1 # also default ?
-setprop ro.ril.def.agps.mode=2 # default value
+setprop ro.ril.def.agps.feature 1 # also default ?
+setprop ro.ril.def.agps.mode 2 # default value
 
 # For HSDPA low throughput
 # setprop ro.ril.disable.power.collapse = 1
@@ -638,3 +638,4 @@ echo "24319" > /proc/sys/kernel/sched_features
 # V55: commented out a superfluous definition/occurence of vfs_cache_pressure - thanks to pikachu01 !
 # V56: fixed a typo in NO_NORMALIZED_SLEEPERS;  no_new_fair_sleepers and no_normalized_sleepers are rather pointless since not available in the kernel but still setting them - just in case ;)
 # V57: enable some more network tweaks (for all network types), smoother GUI, testing with sleep mode
+# V58: fixed 2 typos in the agps tweaks - thanks to DerTeufel for spotting those !
