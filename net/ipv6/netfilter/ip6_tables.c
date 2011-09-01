@@ -82,13 +82,13 @@ EXPORT_SYMBOL_GPL(ip6t_alloc_initial_table);
 int
 ip6t_ext_hdr(u8 nexthdr)
 {
-	return ( (nexthdr == IPPROTO_HOPOPTS)   ||
-		 (nexthdr == IPPROTO_ROUTING)   ||
-		 (nexthdr == IPPROTO_FRAGMENT)  ||
-		 (nexthdr == IPPROTO_ESP)       ||
-		 (nexthdr == IPPROTO_AH)        ||
-		 (nexthdr == IPPROTO_NONE)      ||
-		 (nexthdr == IPPROTO_DSTOPTS) );
+	return  (nexthdr == IPPROTO_HOPOPTS)   ||
+		(nexthdr == IPPROTO_ROUTING)   ||
+		(nexthdr == IPPROTO_FRAGMENT)  ||
+		(nexthdr == IPPROTO_ESP)       ||
+		(nexthdr == IPPROTO_AH)        ||
+		(nexthdr == IPPROTO_NONE)      ||
+		(nexthdr == IPPROTO_DSTOPTS);
 }
 
 /* Returns whether matches rule or not. */
@@ -1137,6 +1137,7 @@ static int get_info(struct net *net, void __user *user,
 			private = &tmp;
 		}
 #endif
+		memset(&info, 0, sizeof(info));
 		info.valid_hooks = t->valid_hooks;
 		memcpy(info.hook_entry, private->hook_entry,
 		       sizeof(info.hook_entry));

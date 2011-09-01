@@ -600,7 +600,7 @@ static inline u32 qdisc_l2t(struct qdisc_rate_table* rtab, unsigned int pktlen)
 		slot = 0;
 	slot >>= rtab->rate.cell_log;
 	if (slot > 255)
-		return (rtab->data[255]*(slot >> 8) + rtab->data[slot & 0xFF]);
+		return rtab->data[255]*(slot >> 8) + rtab->data[slot & 0xFF];
 	return rtab->data[slot];
 }
 
@@ -610,11 +610,7 @@ static inline struct sk_buff *skb_act_clone(struct sk_buff *skb, gfp_t gfp_mask,
 {
 	struct sk_buff *n;
 
-	if ((action == TC_ACT_STOLEN || action == TC_ACT_QUEUED) &&
-	    !skb_shared(skb))
-		n = skb_get(skb);
-	else
-		n = skb_clone(skb, gfp_mask);
+	n = skb_clone(skb, gfp_mask);
 
 	if (n) {
 		n->tc_verd = SET_TC_VERD(n->tc_verd, 0);

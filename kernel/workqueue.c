@@ -661,7 +661,7 @@ void wq_worker_waking_up(struct task_struct *task, unsigned int cpu)
 {
 	struct worker *worker = kthread_data(task);
 
-	if (likely(!(worker->flags & WORKER_NOT_RUNNING)))
+	if (!(worker->flags & WORKER_NOT_RUNNING))
 		atomic_inc(get_gcwq_nr_running(cpu));
 }
 
@@ -687,7 +687,7 @@ struct task_struct *wq_worker_sleeping(struct task_struct *task,
 	struct global_cwq *gcwq = get_gcwq(cpu);
 	atomic_t *nr_running = get_gcwq_nr_running(cpu);
 
-	if (unlikely(worker->flags & WORKER_NOT_RUNNING))
+	if (worker->flags & WORKER_NOT_RUNNING)
 		return NULL;
 
 	/* this can only happen on the local cpu */
@@ -2064,7 +2064,7 @@ static void insert_wq_barrier(struct cpu_workqueue_struct *cwq,
 	 * checks and call back into the fixup functions where we
 	 * might deadlock.
 	 */
-	INIT_WORK_ON_STACK(&barr->work, wq_barrier_func);
+	INIT_WORK_ONSTACK(&barr->work, wq_barrier_func);
 	__set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(&barr->work));
 	init_completion(&barr->done);
 
@@ -2791,7 +2791,9 @@ static int alloc_cwqs(struct workqueue_struct *wq)
 		}
 	}
 
-	/* just in case, make sure it's actually aligned */
+	/* just in case, make sure it's actually aligned
+	 * - this is affected by PERCPU() alignment in vmlinux.lds.S
+	 */
 	BUG_ON(!IS_ALIGNED(wq->cpu_wq.v, align));
 	return wq->cpu_wq.v ? 0 : -ENOMEM;
 }
@@ -3690,7 +3692,8 @@ static int __init init_workqueues(void)
 	system_nrt_wq = alloc_workqueue("events_nrt", WQ_NON_REENTRANT, 0);
 	system_unbound_wq = alloc_workqueue("events_unbound", WQ_UNBOUND,
 					    WQ_UNBOUND_MAX_ACTIVE);
-	BUG_ON(!system_wq || !system_long_wq || !system_nrt_wq);
+	BUG_ON(!system_wq || !system_long_wq || !system_nrt_wq ||
+	       !system_unbound_wq);
 	return 0;
 }
 early_initcall(init_workqueues);

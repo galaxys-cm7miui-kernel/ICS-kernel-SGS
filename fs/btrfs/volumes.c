@@ -412,12 +412,16 @@ static noinline int device_list_add(const char *path,
 
 		device->fs_devices = fs_devices;
 		fs_devices->num_devices++;
-	} else if (strcmp(device->name, path)) {
+	} else if (!device->name || strcmp(device->name, path)) {
 		name = kstrdup(path, GFP_NOFS);
 		if (!name)
 			return -ENOMEM;
 		kfree(device->name);
 		device->name = name;
+		if (device->missing) {
+			fs_devices->missing_devices--;
+			device->missing = 0;
+		}
 	}
 
 	if (found_transid > fs_devices->latest_trans) {
@@ -1236,6 +1240,9 @@ int btrfs_rm_device(struct btrfs_root *root, char *device_path)
 
 	device->fs_devices->num_devices--;
 
+	if (device->missing)
+		root->fs_info->fs_devices->missing_devices--;
+
 	next_device = list_entry(root->fs_info->fs_devices->devices.next,
 				 struct btrfs_device, dev_list);
 	if (device->bdev == root->fs_info->sb->s_bdev)
@@ -1898,7 +1905,6 @@ int btrfs_balance(struct btrfs_root *dev_root)
 	u64 size_to_free;
 	struct btrfs_path *path;
 	struct btrfs_key key;
-	struct btrfs_chunk *chunk;
 	struct btrfs_root *chunk_root = dev_root->fs_info->chunk_root;
 	struct btrfs_trans_handle *trans;
 	struct btrfs_key found_key;
@@ -1962,9 +1968,6 @@ int btrfs_balance(struct btrfs_root *dev_root)
 		if (found_key.objectid != key.objectid)
 			break;
 
-		chunk = btrfs_item_ptr(path->nodes[0],
-				       path->slots[0],
-				       struct btrfs_chunk);
 		/* chunk zero is special */
 		if (found_key.offset == 0)
 			break;
@@ -3031,8 +3034,7 @@ int btrfs_map_bio(struct btrfs_root *root, int rw, struct bio *bio,
 		}
 		bio->bi_sector = multi->stripes[dev_nr].physical >> 9;
 		dev = multi->stripes[dev_nr].dev;
-		BUG_ON(rw == WRITE && !dev->writeable);
-		if (dev && dev->bdev) {
+		if (dev && dev->bdev && (rw != WRITE || dev->writeable)) {
 			bio->bi_bdev = dev->bdev;
 			if (async_submit)
 				schedule_bio(root, dev, rw, bio);
@@ -3085,7 +3087,9 @@ static struct btrfs_device *add_missing_dev(struct btrfs_root *root,
 	device->devid = devid;
 	device->work.func = pending_bios_fn;
 	device->fs_devices = fs_devices;
+	device->missing = 1;
 	fs_devices->num_devices++;
+	fs_devices->missing_devices++;
 	spin_lock_init(&device->io_lock);
 	INIT_LIST_HEAD(&device->dev_alloc_list);
 	memcpy(device->uuid, dev_uuid, BTRFS_UUID_SIZE);
@@ -3283,6 +3287,15 @@ static int read_one_dev(struct btrfs_root *root,
 			device = add_missing_dev(root, devid, dev_uuid);
 			if (!device)
 				return -ENOMEM;
+		} else if (!device->missing) {
+			/*
+			 * this happens when a device that was properly setup
+			 * in the device info lists suddenly goes bad.
+			 * device->bdev is NULL, and so we have to set
+			 * device->missing to one here
+			 */
+			root->fs_info->fs_devices->missing_devices++;
+			device->missing = 1;
 		}
 	}
 
