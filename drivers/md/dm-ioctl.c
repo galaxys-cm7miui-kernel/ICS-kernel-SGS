@@ -1167,6 +1167,15 @@ static int table_load(struct dm_ioctl *param, size_t param_size)
 		r = -EINVAL;
 		goto out;
 	}
+
+	/* setup md->queue to reflect md's type (may block) */
+	r = dm_setup_md_queue(md);
+	if (r) {
+		DMWARN("unable to set up device queue for new table.");
+		dm_table_destroy(t);
+		dm_unlock_md_type(md);
+		goto out;
+	}
 	dm_unlock_md_type(md);
 
 	/* stage inactive table */

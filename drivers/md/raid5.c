@@ -3876,9 +3876,9 @@ static int chunk_aligned_read(mddev_t *mddev, struct bio * raid_bio)
 		return 0;
 	}
 	/*
-	 * use bio_clone to make a copy of the bio
+	 * use bio_clone_mddev to make a copy of the bio
 	 */
-	align_bi = bio_clone(raid_bio, GFP_NOIO);
+	align_bi = bio_clone_mddev(raid_bio, GFP_NOIO, mddev);
 	if (!align_bi)
 		return 0;
 	/*
@@ -4360,7 +4360,7 @@ static inline sector_t sync_request(mddev_t *mddev, sector_t sector_nr, int *ski
 	raid5_conf_t *conf = mddev->private;
 	struct stripe_head *sh;
 	sector_t max_sector = mddev->dev_sectors;
-	int sync_blocks;
+	sector_t sync_blocks;
 	int still_degraded = 0;
 	int i;
 
@@ -5329,6 +5329,8 @@ static int raid5_spare_active(mddev_t *mddev)
 	int i;
 	raid5_conf_t *conf = mddev->private;
 	struct disk_info *tmp;
+	int count = 0;
+	unsigned long flags;
 
 	for (i = 0; i < conf->raid_disks; i++) {
 		tmp = conf->disks + i;
@@ -5336,14 +5338,15 @@ static int raid5_spare_active(mddev_t *mddev)
 		    && tmp->rdev->recovery_offset == MaxSector
 		    && !test_bit(Faulty, &tmp->rdev->flags)
 		    && !test_and_set_bit(In_sync, &tmp->rdev->flags)) {
-			unsigned long flags;
-			spin_lock_irqsave(&conf->device_lock, flags);
-			mddev->degraded--;
-			spin_unlock_irqrestore(&conf->device_lock, flags);
+			count++;
+			sysfs_notify_dirent(tmp->rdev->sysfs_state);
 		}
 	}
+	spin_lock_irqsave(&conf->device_lock, flags);
+	mddev->degraded -= count;
+	spin_unlock_irqrestore(&conf->device_lock, flags);
 	print_raid5_conf(conf);
-	return 0;
+	return count;
 }
 
 static int raid5_remove_disk(mddev_t *mddev, int number)
