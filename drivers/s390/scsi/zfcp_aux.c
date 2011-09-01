@@ -56,7 +56,6 @@ static void __init zfcp_init_device_configure(char *busid, u64 wwpn, u64 lun)
 	struct ccw_device *cdev;
 	struct zfcp_adapter *adapter;
 	struct zfcp_port *port;
-	struct zfcp_unit *unit;
 
 	cdev = get_ccwdev_by_busid(&zfcp_ccw_driver, busid);
 	if (!cdev)
@@ -72,17 +71,11 @@ static void __init zfcp_init_device_configure(char *busid, u64 wwpn, u64 lun)
 	port = zfcp_get_port_by_wwpn(adapter, wwpn);
 	if (!port)
 		goto out_port;
+	flush_work(&port->rport_work);
 
-	unit = zfcp_unit_enqueue(port, lun);
-	if (IS_ERR(unit))
-		goto out_unit;
-
-	zfcp_erp_unit_reopen(unit, 0, "auidc_1", NULL);
-	zfcp_erp_wait(adapter);
-	flush_work(&unit->scsi_work);
-
-out_unit:
+	zfcp_unit_add(port, lun);
 	put_device(&port->dev);
+
 out_port:
 	zfcp_ccw_adapter_put(adapter);
 out_ccw_device:
@@ -160,6 +153,9 @@ static int __init zfcp_module_init(void)
 		fc_attach_transport(&zfcp_transport_functions);
 	if (!zfcp_data.scsi_transport_template)
 		goto out_transport;
+	scsi_transport_reserve_device(zfcp_data.scsi_transport_template,
+				      sizeof(struct zfcp_scsi_dev));
+
 
 	retval = misc_register(&zfcp_cfdc_misc);
 	if (retval) {
@@ -213,30 +209,6 @@ static void __exit zfcp_module_exit(void)
 module_exit(zfcp_module_exit);
 
 /**
- * zfcp_get_unit_by_lun - find unit in unit list of port by FCP LUN
- * @port: pointer to port to search for unit
- * @fcp_lun: FCP LUN to search for
- *
- * Returns: pointer to zfcp_unit or NULL
- */
-struct zfcp_unit *zfcp_get_unit_by_lun(struct zfcp_port *port, u64 fcp_lun)
-{
-	unsigned long flags;
-	struct zfcp_unit *unit;
-
-	read_lock_irqsave(&port->unit_list_lock, flags);
-	list_for_each_entry(unit, &port->unit_list, list)
-		if (unit->fcp_lun == fcp_lun) {
-			if (!get_device(&unit->dev))
-				unit = NULL;
-			read_unlock_irqrestore(&port->unit_list_lock, flags);
-			return unit;
-		}
-	read_unlock_irqrestore(&port->unit_list_lock, flags);
-	return NULL;
-}
-
-/**
  * zfcp_get_port_by_wwpn - find port in port list of adapter by wwpn
  * @adapter: pointer to adapter to search for port
  * @wwpn: wwpn to search for
@@ -261,6 +233,7 @@ struct zfcp_port *zfcp_get_port_by_wwpn(struct zfcp_adapter *adapter,
 	return NULL;
 }
 
+<<<<<<< HEAD
 /**
  * zfcp_unit_release - dequeue unit
  * @dev: pointer to device
@@ -347,6 +320,8 @@ err_out:
 	return ERR_PTR(retval);
 }
 
+=======
+>>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 static int zfcp_allocate_low_mem_buffers(struct zfcp_adapter *adapter)
 {
 	adapter->pool.erp_req =

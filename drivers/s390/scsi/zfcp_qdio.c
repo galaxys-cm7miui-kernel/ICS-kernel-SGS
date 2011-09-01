@@ -57,14 +57,12 @@ static inline void zfcp_qdio_account(struct zfcp_qdio *qdio)
 	unsigned long long now, span;
 	int free, used;
 
-	spin_lock(&qdio->stat_lock);
 	now = get_clock_monotonic();
 	span = (now - qdio->req_q_time) >> 12;
 	free = atomic_read(&qdio->req_q.count);
 	used = QDIO_MAX_BUFFERS_PER_Q - free;
 	qdio->req_q_util += used * span;
 	qdio->req_q_time = now;
-	spin_unlock(&qdio->stat_lock);
 }
 
 static void zfcp_qdio_int_req(struct ccw_device *cdev, unsigned int qdio_err,
@@ -84,8 +82,14 @@ static void zfcp_qdio_int_req(struct ccw_device *cdev, unsigned int qdio_err,
 	/* cleanup all SBALs being program-owned now */
 	zfcp_qdio_zero_sbals(queue->sbal, first, count);
 
+	spin_lock_irq(&qdio->stat_lock);
 	zfcp_qdio_account(qdio);
+<<<<<<< HEAD
 	atomic_add(count, &queue->count);
+=======
+	spin_unlock_irq(&qdio->stat_lock);
+	atomic_add(count, &qdio->req_q_free);
+>>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 	wake_up(&qdio->req_q_wq);
 }
 
@@ -248,13 +252,18 @@ int zfcp_qdio_sbals_from_sg(struct zfcp_qdio *qdio, struct zfcp_qdio_req *q_req,
 
 static int zfcp_qdio_sbal_check(struct zfcp_qdio *qdio)
 {
+<<<<<<< HEAD
 	struct zfcp_qdio_queue *req_q = &qdio->req_q;
 
 	spin_lock_bh(&qdio->req_q_lock);
 	if (atomic_read(&req_q->count) ||
+=======
+	spin_lock_irq(&qdio->req_q_lock);
+	if (atomic_read(&qdio->req_q_free) ||
+>>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 	    !(atomic_read(&qdio->adapter->status) & ZFCP_STATUS_ADAPTER_QDIOUP))
 		return 1;
-	spin_unlock_bh(&qdio->req_q_lock);
+	spin_unlock_irq(&qdio->req_q_lock);
 	return 0;
 }
 
@@ -272,7 +281,7 @@ int zfcp_qdio_sbal_get(struct zfcp_qdio *qdio)
 {
 	long ret;
 
-	spin_unlock_bh(&qdio->req_q_lock);
+	spin_unlock_irq(&qdio->req_q_lock);
 	ret = wait_event_interruptible_timeout(qdio->req_q_wq,
 			       zfcp_qdio_sbal_check(qdio), 5 * HZ);
 
@@ -288,7 +297,7 @@ int zfcp_qdio_sbal_get(struct zfcp_qdio *qdio)
 		zfcp_erp_adapter_reopen(qdio->adapter, 0, "qdsbg_1", NULL);
 	}
 
-	spin_lock_bh(&qdio->req_q_lock);
+	spin_lock_irq(&qdio->req_q_lock);
 	return -EIO;
 }
 
@@ -306,7 +315,9 @@ int zfcp_qdio_send(struct zfcp_qdio *qdio, struct zfcp_qdio_req *q_req)
 	int retval;
 	unsigned int qdio_flags = QDIO_FLAG_SYNC_OUTPUT;
 
+	spin_lock(&qdio->stat_lock);
 	zfcp_qdio_account(qdio);
+	spin_unlock(&qdio->stat_lock);
 
 	retval = do_QDIO(qdio->adapter->ccw_device, qdio_flags, 0, first,
 			 count);
@@ -376,10 +387,16 @@ void zfcp_qdio_close(struct zfcp_qdio *qdio)
 		return;
 
 	/* clear QDIOUP flag, thus do_QDIO is not called during qdio_shutdown */
+<<<<<<< HEAD
 	req_q = &qdio->req_q;
 	spin_lock_bh(&qdio->req_q_lock);
 	atomic_clear_mask(ZFCP_STATUS_ADAPTER_QDIOUP, &qdio->adapter->status);
 	spin_unlock_bh(&qdio->req_q_lock);
+=======
+	spin_lock_irq(&qdio->req_q_lock);
+	atomic_clear_mask(ZFCP_STATUS_ADAPTER_QDIOUP, &adapter->status);
+	spin_unlock_irq(&qdio->req_q_lock);
+>>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 
 	wake_up(&qdio->req_q_wq);
 
