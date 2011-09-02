@@ -471,6 +471,8 @@ static void blk_release_queue(struct kobject *kobj)
 
 	blk_sync_queue(q);
 
+	blk_throtl_exit(q);
+
 	if (rl->rq_pool)
 		mempool_destroy(rl->rq_pool);
 
@@ -509,10 +511,8 @@ int blk_register_queue(struct gendisk *disk)
 		return ret;
 
 	ret = kobject_add(&q->kobj, kobject_get(&dev->kobj), "%s", "queue");
-	if (ret < 0) {
-		blk_trace_remove_sysfs(dev);
+	if (ret < 0)
 		return ret;
-	}
 
 	kobject_uevent(&q->kobj, KOBJ_ADD);
 
