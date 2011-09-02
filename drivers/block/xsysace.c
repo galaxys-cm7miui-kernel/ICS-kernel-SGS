@@ -94,6 +94,7 @@
 #include <linux/hdreg.h>
 #include <linux/platform_device.h>
 #if defined(CONFIG_OF)
+#include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #endif
@@ -1195,7 +1196,7 @@ static struct platform_driver ace_platform_driver = {
 
 #if defined(CONFIG_OF)
 static int __devinit
-ace_of_probe(struct of_device *op, const struct of_device_id *match)
+ace_of_probe(struct platform_device *op, const struct of_device_id *match)
 {
 	struct resource res;
 	resource_size_t physaddr;
@@ -1224,10 +1225,11 @@ ace_of_probe(struct of_device *op, const struct of_device_id *match)
 		bus_width = ACE_BUS_WIDTH_8;
 
 	/* Call the bus-independant setup code */
-	return ace_alloc(&op->dev, id ? *id : 0, physaddr, irq, bus_width);
+	return ace_alloc(&op->dev, id ? be32_to_cpup(id) : 0,
+						physaddr, irq, bus_width);
 }
 
-static int __devexit ace_of_remove(struct of_device *op)
+static int __devexit ace_of_remove(struct platform_device *op)
 {
 	ace_free(&op->dev);
 	return 0;
