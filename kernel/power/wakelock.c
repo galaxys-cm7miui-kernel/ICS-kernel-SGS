@@ -266,10 +266,6 @@ long has_wake_lock(int type)
 	return ret;
 }
 
-#ifdef CONFIG_SYS_SYNC_BLOCKING_DEBUG
-void sys_sync_debug(void);
-#endif
-
 static void suspend_backoff(void)
 {
 	pr_info("suspend: too many immediate wakeups, back off\n");
