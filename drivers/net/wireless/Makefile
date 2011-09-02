@@ -49,9 +49,10 @@ obj-$(CONFIG_ATH_COMMON)	+= ath/
 
 obj-$(CONFIG_MAC80211_HWSIM)	+= mac80211_hwsim.o
 
+obj-$(CONFIG_WL1251)	+= wl1251/
 obj-$(CONFIG_WL12XX)	+= wl12xx/
+obj-$(CONFIG_WL12XX_PLATFORM_DATA)	+= wl12xx/
 
 obj-$(CONFIG_IWM)	+= iwmc3200wifi/
 
 obj-$(CONFIG_BCM4329)	+= bcm4329/
-obj-$(CONFIG_BCMDHD)    += bcmdhd/
