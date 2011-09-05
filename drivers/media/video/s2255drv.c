@@ -49,6 +49,7 @@
 #include <linux/videodev2.h>
 #include <linux/version.h>
 #include <linux/mm.h>
+#include <linux/smp_lock.h>
 #include <media/videobuf-vmalloc.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-device.h>
@@ -599,7 +600,7 @@ static int s2255_got_frame(struct s2255_channel *channel, int jpgsize)
 	dprintk(2, "%s: [buf/i] [%p/%d]\n", __func__, buf, buf->vb.i);
 unlock:
 	spin_unlock_irqrestore(&dev->slock, flags);
-	return rc;
+	return 0;
 }
 
 static const struct s2255_fmt *format_by_fourcc(int fourcc)
@@ -1816,7 +1817,7 @@ static int s2255_open(struct file *file)
 				    NULL, &dev->slock,
 				    fh->type,
 				    V4L2_FIELD_INTERLACED,
-				    sizeof(struct s2255_buffer), fh, NULL);
+				    sizeof(struct s2255_buffer), fh);
 	return 0;
 }
 

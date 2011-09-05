@@ -18,6 +18,7 @@
 #include <linux/videodev.h>
 #include <linux/videodev2.h>
 #include <linux/module.h>
+#include <linux/smp_lock.h>
 #include <media/v4l2-ioctl.h>
 
 #ifdef CONFIG_COMPAT

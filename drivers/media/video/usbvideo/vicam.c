@@ -43,6 +43,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
+#include <linux/smp_lock.h>
 #include <linux/mutex.h>
 #include <linux/firmware.h>
 #include <linux/ihex.h>
@@ -482,28 +483,29 @@ vicam_open(struct file *file)
 		return -EINVAL;
 	}
 
-	/* cam_lock/open_count protects us from simultaneous opens
-	 * ... for now. we probably shouldn't rely on this fact forever.
+	/* the videodev_lock held above us protects us from
+	 * simultaneous opens...for now. we probably shouldn't
+	 * rely on this fact forever.
 	 */
 
-	mutex_lock(&cam->cam_lock);
+	lock_kernel();
 	if (cam->open_count > 0) {
 		printk(KERN_INFO
 		       "vicam_open called on already opened camera");
-		mutex_unlock(&cam->cam_lock);
+		unlock_kernel();
 		return -EBUSY;
 	}
 
 	cam->raw_image = kmalloc(VICAM_MAX_READ_SIZE, GFP_KERNEL);
 	if (!cam->raw_image) {
-		mutex_unlock(&cam->cam_lock);
+		unlock_kernel();
 		return -ENOMEM;
 	}
 
 	cam->framebuf = rvmalloc(VICAM_MAX_FRAME_SIZE * VICAM_FRAMES);
 	if (!cam->framebuf) {
 		kfree(cam->raw_image);
-		mutex_unlock(&cam->cam_lock);
+		unlock_kernel();
 		return -ENOMEM;
 	}
 
@@ -511,16 +513,9 @@ vicam_open(struct file *file)
 	if (!cam->cntrlbuf) {
 		kfree(cam->raw_image);
 		rvfree(cam->framebuf, VICAM_MAX_FRAME_SIZE * VICAM_FRAMES);
-		mutex_unlock(&cam->cam_lock);
+		unlock_kernel();
 		return -ENOMEM;
 	}
-
-	cam->needsDummyRead = 1;
-	cam->open_count++;
-
-	file->private_data = cam;
-	mutex_unlock(&cam->cam_lock);
-
 
 	// First upload firmware, then turn the camera on
 
@@ -531,6 +526,12 @@ vicam_open(struct file *file)
 	}
 
 	set_camera_power(cam, 1);
+
+	cam->needsDummyRead = 1;
+	cam->open_count++;
+
+	file->private_data = cam;
+	unlock_kernel();
 
 	return 0;
 }

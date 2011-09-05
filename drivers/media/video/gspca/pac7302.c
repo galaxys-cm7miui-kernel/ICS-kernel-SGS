@@ -408,8 +408,9 @@ static void reg_w_buf(struct gspca_dev *gspca_dev,
 			index, gspca_dev->usb_buf, len,
 			500);
 	if (ret < 0) {
-		err("reg_w_buf failed index 0x%02x, error %d",
-			index, ret);
+		PDEBUG(D_ERR, "reg_w_buf(): "
+		"Failed to write registers to index 0x%x, error %i",
+		index, ret);
 		gspca_dev->usb_err = ret;
 	}
 }
@@ -431,8 +432,9 @@ static void reg_w(struct gspca_dev *gspca_dev,
 			0, index, gspca_dev->usb_buf, 1,
 			500);
 	if (ret < 0) {
-		err("reg_w() failed index 0x%02x, value 0x%02x, error %d",
-			index, value, ret);
+		PDEBUG(D_ERR, "reg_w(): "
+		"Failed to write register to index 0x%x, value 0x%x, error %i",
+		index, value, ret);
 		gspca_dev->usb_err = ret;
 	}
 }
@@ -466,9 +468,10 @@ static void reg_w_page(struct gspca_dev *gspca_dev,
 				0, index, gspca_dev->usb_buf, 1,
 				500);
 		if (ret < 0) {
-			err("reg_w_page() failed index 0x%02x, "
-			"value 0x%02x, error %d",
-				index, page[index], ret);
+			PDEBUG(D_ERR, "reg_w_page(): "
+			"Failed to write register to index 0x%x, "
+			"value 0x%x, error %i",
+			index, page[index], ret);
 			gspca_dev->usb_err = ret;
 			break;
 		}
@@ -897,8 +900,9 @@ static int sd_setcontrast(struct gspca_dev *gspca_dev, __s32 val)
 	struct sd *sd = (struct sd *) gspca_dev;
 
 	sd->contrast = val;
-	if (gspca_dev->streaming)
+	if (gspca_dev->streaming) {
 		setbrightcont(gspca_dev);
+	}
 	return gspca_dev->usb_err;
 }
 
@@ -1131,7 +1135,7 @@ static int sd_chip_ident(struct gspca_dev *gspca_dev,
 }
 #endif
 
-#if defined(CONFIG_INPUT) || defined(CONFIG_INPUT_MODULE)
+#ifdef CONFIG_INPUT
 static int sd_int_pkt_scan(struct gspca_dev *gspca_dev,
 			u8 *data,		/* interrupt packet data */
 			int len)		/* interrput packet length */
@@ -1178,7 +1182,7 @@ static const struct sd_desc sd_desc = {
 	.set_register = sd_dbg_s_register,
 	.get_chip_ident = sd_chip_ident,
 #endif
-#if defined(CONFIG_INPUT) || defined(CONFIG_INPUT_MODULE)
+#ifdef CONFIG_INPUT
 	.int_pkt_scan = sd_int_pkt_scan,
 #endif
 };
@@ -1222,11 +1226,17 @@ static struct usb_driver sd_driver = {
 /* -- module insert / remove -- */
 static int __init sd_mod_init(void)
 {
-	return usb_register(&sd_driver);
+	int ret;
+	ret = usb_register(&sd_driver);
+	if (ret < 0)
+		return ret;
+	PDEBUG(D_PROBE, "registered");
+	return 0;
 }
 static void __exit sd_mod_exit(void)
 {
 	usb_deregister(&sd_driver);
+	PDEBUG(D_PROBE, "deregistered");
 }
 
 module_init(sd_mod_init);

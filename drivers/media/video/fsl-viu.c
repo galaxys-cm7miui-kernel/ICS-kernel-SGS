@@ -22,7 +22,6 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/of_platform.h>
-#include <linux/slab.h>
 #include <linux/version.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-device.h>
@@ -426,7 +425,7 @@ static void free_buffer(struct videobuf_queue *vq, struct viu_buf *buf)
 
 	BUG_ON(in_interrupt());
 
-	videobuf_waiton(vq, &buf->vb, 0, 0);
+	videobuf_waiton(&buf->vb, 0, 0);
 
 	if (vq->int_ops && vq->int_ops->vaddr)
 		vaddr = vq->int_ops->vaddr(vb);
@@ -1288,7 +1287,7 @@ static int viu_open(struct file *file)
 	videobuf_queue_dma_contig_init(&fh->vb_vidq, &viu_video_qops,
 				       dev->dev, &fh->vbq_lock,
 				       fh->type, V4L2_FIELD_INTERLACED,
-				       sizeof(struct viu_buf), fh, NULL);
+				       sizeof(struct viu_buf), fh);
 	return 0;
 }
 
@@ -1486,7 +1485,7 @@ static int __devinit viu_of_probe(struct platform_device *op,
 
 	ad = i2c_get_adapter(0);
 	viu_dev->decoder = v4l2_i2c_new_subdev(&viu_dev->v4l2_dev, ad,
-			"saa7113", VIU_VIDEO_DECODER_ADDR, NULL);
+			"saa7115", "saa7113", VIU_VIDEO_DECODER_ADDR, NULL);
 
 	viu_dev->vidq.timeout.function = viu_vid_timeout;
 	viu_dev->vidq.timeout.data     = (unsigned long)viu_dev;

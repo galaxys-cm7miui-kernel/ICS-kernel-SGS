@@ -572,7 +572,7 @@ static int zr364xx_got_frame(struct zr364xx_camera *cam, int jpgsize)
 	DBG("wakeup [buf/i] [%p/%d]\n", buf, buf->vb.i);
 unlock:
 	spin_unlock_irqrestore(&cam->slock, flags);
-	return rc;
+	return 0;
 }
 
 /* this function moves the usb stream read pipe data
@@ -1304,7 +1304,7 @@ static int zr364xx_open(struct file *file)
 				    NULL, &cam->slock,
 				    cam->type,
 				    V4L2_FIELD_NONE,
-				    sizeof(struct zr364xx_buffer), cam, NULL);
+				    sizeof(struct zr364xx_buffer), cam);
 
 	/* Added some delay here, since opening/closing the camera quickly,
 	 * like Ekiga does during its startup, can crash the webcam

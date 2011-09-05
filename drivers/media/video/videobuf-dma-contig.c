@@ -28,6 +28,7 @@ struct videobuf_dma_contig_memory {
 	void *vaddr;
 	dma_addr_t dma_handle;
 	unsigned long size;
+	int is_userptr;
 };
 
 #define MAGIC_DC_MEM 0x0733ac61
@@ -62,7 +63,7 @@ static void videobuf_vm_close(struct vm_area_struct *vma)
 		struct videobuf_dma_contig_memory *mem;
 
 		dev_dbg(q->dev, "munmap %p q=%p\n", map, q);
-		videobuf_queue_lock(q);
+		mutex_lock(&q->vb_lock);
 
 		/* We need first to cancel streams, before unmapping */
 		if (q->streaming)
@@ -102,7 +103,7 @@ static void videobuf_vm_close(struct vm_area_struct *vma)
 
 		kfree(map);
 
-		videobuf_queue_unlock(q);
+		mutex_unlock(&q->vb_lock);
 	}
 }
 
@@ -119,6 +120,7 @@ static const struct vm_operations_struct videobuf_vm_ops = {
  */
 static void videobuf_dma_contig_user_put(struct videobuf_dma_contig_memory *mem)
 {
+	mem->is_userptr = 0;
 	mem->dma_handle = 0;
 	mem->size = 0;
 }
@@ -145,6 +147,7 @@ static int videobuf_dma_contig_user_get(struct videobuf_dma_contig_memory *mem,
 
 	offset = vb->baddr & ~PAGE_MASK;
 	mem->size = PAGE_ALIGN(vb->size + offset);
+	mem->is_userptr = 0;
 	ret = -EINVAL;
 
 	down_read(&mm->mmap_sem);
@@ -177,6 +180,9 @@ static int videobuf_dma_contig_user_get(struct videobuf_dma_contig_memory *mem,
 		user_address += PAGE_SIZE;
 		pages_done++;
 	}
+
+	if (!ret)
+		mem->is_userptr = 1;
 
  out_up:
 	up_read(&current->mm->mmap_sem);
@@ -343,11 +349,10 @@ void videobuf_queue_dma_contig_init(struct videobuf_queue *q,
 				    enum v4l2_buf_type type,
 				    enum v4l2_field field,
 				    unsigned int msize,
-				    void *priv,
-				    struct mutex *ext_lock)
+				    void *priv)
 {
 	videobuf_queue_core_init(q, ops, dev, irqlock, type, field, msize,
-				 priv, &qops, ext_lock);
+				 priv, &qops);
 }
 EXPORT_SYMBOL_GPL(videobuf_queue_dma_contig_init);
 

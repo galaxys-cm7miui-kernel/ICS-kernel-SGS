@@ -49,6 +49,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/smp_lock.h>
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
 #include <linux/wait.h>
@@ -912,7 +913,7 @@ static int zoran_open(struct file *file)
 	dprintk(2, KERN_INFO "%s: %s(%s, pid=[%d]), users(-)=%d\n",
 		ZR_DEVNAME(zr), __func__, current->comm, task_pid_nr(current), zr->user + 1);
 
-	mutex_lock(&zr->other_lock);
+	lock_kernel();
 
 	if (zr->user >= 2048) {
 		dprintk(1, KERN_ERR "%s: too many users (%d) on device\n",
@@ -962,14 +963,14 @@ static int zoran_open(struct file *file)
 	file->private_data = fh;
 	fh->zr = zr;
 	zoran_open_init_session(fh);
-	mutex_unlock(&zr->other_lock);
+	unlock_kernel();
 
 	return 0;
 
 fail_fh:
 	kfree(fh);
 fail_unlock:
-	mutex_unlock(&zr->other_lock);
+	unlock_kernel();
 
 	dprintk(2, KERN_INFO "%s: open failed (%d), users(-)=%d\n",
 		ZR_DEVNAME(zr), res, zr->user);
@@ -988,7 +989,7 @@ zoran_close(struct file  *file)
 
 	/* kernel locks (fs/device.c), so don't do that ourselves
 	 * (prevents deadlocks) */
-	mutex_lock(&zr->other_lock);
+	/*mutex_lock(&zr->resource_lock);*/
 
 	zoran_close_end_session(fh);
 
@@ -1022,7 +1023,6 @@ zoran_close(struct file  *file)
 			encoder_call(zr, video, s_routing, 2, 0, 0);
 		}
 	}
-	mutex_unlock(&zr->other_lock);
 
 	file->private_data = NULL;
 	kfree(fh->overlay_mask);
@@ -1177,7 +1177,7 @@ static int setup_window(struct zoran_fh *fh, int x, int y, int width, int height
 	if (height > BUZ_MAX_HEIGHT)
 		height = BUZ_MAX_HEIGHT;
 
-	/* Check for invalid parameters */
+	/* Check for vaild parameters */
 	if (width < BUZ_MIN_WIDTH || height < BUZ_MIN_HEIGHT ||
 	    width > BUZ_MAX_WIDTH || height > BUZ_MAX_HEIGHT) {
 		dprintk(1,
@@ -3322,7 +3322,7 @@ zoran_mmap (struct file           *file,
 mmap_unlock_and_return:
 	mutex_unlock(&zr->resource_lock);
 
-	return res;
+	return 0;
 }
 
 static const struct v4l2_ioctl_ops zoran_ioctl_ops = {
@@ -3370,26 +3370,11 @@ static const struct v4l2_ioctl_ops zoran_ioctl_ops = {
 #endif
 };
 
-/* please use zr->resource_lock consistently and kill this wrapper */
-static long zoran_ioctl(struct file *file, unsigned int cmd,
-			unsigned long arg)
-{
-	struct zoran_fh *fh = file->private_data;
-	struct zoran *zr = fh->zr;
-	int ret;
-
-	mutex_lock(&zr->other_lock);
-	ret = video_ioctl2(file, cmd, arg);
-	mutex_unlock(&zr->other_lock);
-
-	return ret;
-}
-
 static const struct v4l2_file_operations zoran_fops = {
 	.owner = THIS_MODULE,
 	.open = zoran_open,
 	.release = zoran_close,
-	.unlocked_ioctl = zoran_ioctl,
+	.ioctl = video_ioctl2,
 	.read = zoran_read,
 	.write = zoran_write,
 	.mmap = zoran_mmap,

@@ -50,8 +50,8 @@ static struct fimc_fmt fimc_formats[] = {
 		.planes_cnt = 1,
 		.flags = FMT_FLAGS_M2M,
 	}, {
-		.name = "XRGB-8-8-8-8, 32 bpp",
-		.fourcc	= V4L2_PIX_FMT_RGB32,
+		.name = "XRGB-8-8-8-8, 24 bpp",
+		.fourcc	= V4L2_PIX_FMT_RGB24,
 		.depth = 32,
 		.color	= S5P_FIMC_RGB888,
 		.buff_cnt = 1,
@@ -983,7 +983,6 @@ int fimc_vidioc_queryctrl(struct file *file, void *priv,
 {
 	struct fimc_ctx *ctx = priv;
 	struct v4l2_queryctrl *c;
-	int ret = -EINVAL;
 
 	c = get_ctrl(qc->id);
 	if (c) {
@@ -991,14 +990,10 @@ int fimc_vidioc_queryctrl(struct file *file, void *priv,
 		return 0;
 	}
 
-	if (ctx->state & FIMC_CTX_CAP) {
-		if (mutex_lock_interruptible(&ctx->fimc_dev->lock))
-			return -ERESTARTSYS;
-		ret = v4l2_subdev_call(ctx->fimc_dev->vid_cap.sd,
+	if (ctx->state & FIMC_CTX_CAP)
+		return v4l2_subdev_call(ctx->fimc_dev->vid_cap.sd,
 					core, queryctrl, qc);
-		mutex_unlock(&ctx->fimc_dev->lock);
-	}
-	return ret;
+	return -EINVAL;
 }
 
 int fimc_vidioc_g_ctrl(struct file *file, void *priv,
@@ -1120,7 +1115,7 @@ static int fimc_m2m_s_ctrl(struct file *file, void *priv,
 	return 0;
 }
 
-static int fimc_m2m_cropcap(struct file *file, void *fh,
+int fimc_vidioc_cropcap(struct file *file, void *fh,
 			struct v4l2_cropcap *cr)
 {
 	struct fimc_frame *frame;
@@ -1144,7 +1139,7 @@ static int fimc_m2m_cropcap(struct file *file, void *fh,
 	return 0;
 }
 
-static int fimc_m2m_g_crop(struct file *file, void *fh, struct v4l2_crop *cr)
+int fimc_vidioc_g_crop(struct file *file, void *fh, struct v4l2_crop *cr)
 {
 	struct fimc_frame *frame;
 	struct fimc_ctx *ctx = file->private_data;
@@ -1172,22 +1167,22 @@ int fimc_try_crop(struct fimc_ctx *ctx, struct v4l2_crop *cr)
 	struct fimc_frame *f;
 	u32 min_size, halign;
 
+	f = (cr->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) ?
+		&ctx->s_frame : &ctx->d_frame;
+
 	if (cr->c.top < 0 || cr->c.left < 0) {
 		v4l2_err(&fimc->m2m.v4l2_dev,
 			"doesn't support negative values for top & left\n");
 		return -EINVAL;
 	}
 
-	if (cr->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		f = (ctx->state & FIMC_CTX_CAP) ? &ctx->s_frame : &ctx->d_frame;
-	else if (cr->type == V4L2_BUF_TYPE_VIDEO_OUTPUT &&
-		 ctx->state & FIMC_CTX_M2M)
-		f = &ctx->s_frame;
-	else
-		return -EINVAL;
+	f = ctx_get_frame(ctx, cr->type);
+	if (IS_ERR(f))
+		return PTR_ERR(f);
 
-	min_size = (f == &ctx->s_frame) ?
-		fimc->variant->min_inp_pixsize : fimc->variant->min_out_pixsize;
+	min_size = (cr->type == V4L2_BUF_TYPE_VIDEO_OUTPUT)
+		? fimc->variant->min_inp_pixsize
+		: fimc->variant->min_out_pixsize;
 
 	if (ctx->state & FIMC_CTX_M2M) {
 		if (fimc->id == 1 && fimc->variant->pix_hoff)
@@ -1238,9 +1233,6 @@ static int fimc_m2m_s_crop(struct file *file, void *fh, struct v4l2_crop *cr)
 	f = (cr->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) ?
 		&ctx->s_frame : &ctx->d_frame;
 
-	if (mutex_lock_interruptible(&fimc->lock))
-		return -ERESTARTSYS;
-
 	spin_lock_irqsave(&ctx->slock, flags);
 	if (~ctx->state & (FIMC_SRC_FMT | FIMC_DST_FMT)) {
 		/* Check to see if scaling ratio is within supported range */
@@ -1249,9 +1241,9 @@ static int fimc_m2m_s_crop(struct file *file, void *fh, struct v4l2_crop *cr)
 		else
 			ret = fimc_check_scaler_ratio(&cr->c, &ctx->s_frame);
 		if (ret) {
+			spin_unlock_irqrestore(&ctx->slock, flags);
 			v4l2_err(&fimc->m2m.v4l2_dev, "Out of scaler range");
-			ret = -EINVAL;
-			goto scr_unlock;
+			return -EINVAL;
 		}
 	}
 	ctx->state |= FIMC_PARAMS;
@@ -1261,9 +1253,7 @@ static int fimc_m2m_s_crop(struct file *file, void *fh, struct v4l2_crop *cr)
 	f->width  = cr->c.width;
 	f->height = cr->c.height;
 
-scr_unlock:
 	spin_unlock_irqrestore(&ctx->slock, flags);
-	mutex_unlock(&fimc->lock);
 	return 0;
 }
 
@@ -1295,9 +1285,9 @@ static const struct v4l2_ioctl_ops fimc_m2m_ioctl_ops = {
 	.vidioc_g_ctrl			= fimc_vidioc_g_ctrl,
 	.vidioc_s_ctrl			= fimc_m2m_s_ctrl,
 
-	.vidioc_g_crop			= fimc_m2m_g_crop,
+	.vidioc_g_crop			= fimc_vidioc_g_crop,
 	.vidioc_s_crop			= fimc_m2m_s_crop,
-	.vidioc_cropcap			= fimc_m2m_cropcap
+	.vidioc_cropcap			= fimc_vidioc_cropcap
 
 };
 
@@ -1310,7 +1300,7 @@ static void queue_init(void *priv, struct videobuf_queue *vq,
 	videobuf_queue_dma_contig_init(vq, &fimc_qops,
 		&fimc->pdev->dev,
 		&fimc->irqlock, type, V4L2_FIELD_NONE,
-		sizeof(struct fimc_vid_buffer), priv, NULL);
+		sizeof(struct fimc_vid_buffer), priv);
 }
 
 static int fimc_m2m_open(struct file *file)
@@ -1330,18 +1320,16 @@ static int fimc_m2m_open(struct file *file)
 	 * is already opened.
 	 */
 	if (fimc->vid_cap.refcnt > 0) {
-		err = -EBUSY;
-		goto err_unlock;
+		mutex_unlock(&fimc->lock);
+		return -EBUSY;
 	}
 
 	fimc->m2m.refcnt++;
 	set_bit(ST_OUTDMA_RUN, &fimc->state);
 
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
-	if (!ctx) {
-		err = -ENOMEM;
-		goto err_unlock;
-	}
+	if (!ctx)
+		return -ENOMEM;
 
 	file->private_data = ctx;
 	ctx->fimc_dev = fimc;
@@ -1361,7 +1349,6 @@ static int fimc_m2m_open(struct file *file)
 		kfree(ctx);
 	}
 
-err_unlock:
 	mutex_unlock(&fimc->lock);
 	return err;
 }
@@ -1406,7 +1393,7 @@ static const struct v4l2_file_operations fimc_m2m_fops = {
 	.open		= fimc_m2m_open,
 	.release	= fimc_m2m_release,
 	.poll		= fimc_m2m_poll,
-	.unlocked_ioctl	= video_ioctl2,
+	.ioctl		= video_ioctl2,
 	.mmap		= fimc_m2m_mmap,
 };
 
@@ -1746,7 +1733,6 @@ static struct samsung_fimc_variant fimc0_variant_s5pv310 = {
 	.pix_hoff	 = 1,
 	.has_inp_rot	 = 1,
 	.has_out_rot	 = 1,
-	.has_cistatus2	 = 1,
 	.min_inp_pixsize = 16,
 	.min_out_pixsize = 16,
 	.hor_offs_align	 = 1,
@@ -1756,7 +1742,6 @@ static struct samsung_fimc_variant fimc0_variant_s5pv310 = {
 
 static struct samsung_fimc_variant fimc2_variant_s5pv310 = {
 	.pix_hoff	 = 1,
-	.has_cistatus2	 = 1,
 	.min_inp_pixsize = 16,
 	.min_out_pixsize = 16,
 	.hor_offs_align	 = 1,

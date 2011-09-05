@@ -718,7 +718,7 @@ static ssize_t qcam_read(struct file *file, char __user *buf,
 
 static const struct v4l2_file_operations qcam_fops = {
 	.owner		= THIS_MODULE,
-	.unlocked_ioctl	= video_ioctl2,
+	.ioctl		= video_ioctl2,
 	.read		= qcam_read,
 };
 

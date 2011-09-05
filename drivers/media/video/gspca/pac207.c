@@ -1,7 +1,7 @@
 /*
  * Pixart PAC207BCA library
  *
- * Copyright (C) 2008 Hans de Goede <hdegoede@redhat.com>
+ * Copyright (C) 2008 Hans de Goede <hdgoede@redhat.com>
  * Copyright (C) 2005 Thomas Kaiser thomas@kaiser-linux.li
  * Copyleft (C) 2005 Michel Xhaard mxhaard@magic.fr
  *
@@ -28,7 +28,7 @@
 #include <linux/input.h>
 #include "gspca.h"
 
-MODULE_AUTHOR("Hans de Goede <hdegoede@redhat.com>");
+MODULE_AUTHOR("Hans de Goede <hdgoede@redhat.com>");
 MODULE_DESCRIPTION("Pixart PAC207");
 MODULE_LICENSE("GPL");
 
@@ -45,7 +45,7 @@ MODULE_LICENSE("GPL");
 
 #define PAC207_GAIN_MIN			0
 #define PAC207_GAIN_MAX			31
-#define PAC207_GAIN_DEFAULT		9 /* power on default: 9 */
+#define PAC207_GAIN_DEFAULT         	9 /* power on default: 9 */
 #define PAC207_GAIN_KNEE		31
 
 #define PAC207_AUTOGAIN_DEADZONE	30
@@ -178,7 +178,8 @@ static int pac207_write_regs(struct gspca_dev *gspca_dev, u16 index,
 			0x00, index,
 			gspca_dev->usb_buf, length, PAC207_CTRL_TIMEOUT);
 	if (err < 0)
-		err("Failed to write registers to index 0x%04X, error %d)",
+		PDEBUG(D_ERR,
+			"Failed to write registers to index 0x%04X, error %d)",
 			index, err);
 
 	return err;
@@ -194,7 +195,7 @@ static int pac207_write_reg(struct gspca_dev *gspca_dev, u16 index, u16 value)
 			USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE,
 			value, index, NULL, 0, PAC207_CTRL_TIMEOUT);
 	if (err)
-		err("Failed to write a register (index 0x%04X,"
+		PDEBUG(D_ERR, "Failed to write a register (index 0x%04X,"
 			" value 0x%02X, error %d)", index, value, err);
 
 	return err;
@@ -210,7 +211,8 @@ static int pac207_read_reg(struct gspca_dev *gspca_dev, u16 index)
 			0x00, index,
 			gspca_dev->usb_buf, 1, PAC207_CTRL_TIMEOUT);
 	if (res < 0) {
-		err("Failed to read a register (index 0x%04X, error %d)",
+		PDEBUG(D_ERR,
+			"Failed to read a register (index 0x%04X, error %d)",
 			index, res);
 		return res;
 	}
@@ -494,7 +496,7 @@ static int sd_getautogain(struct gspca_dev *gspca_dev, __s32 *val)
 	return 0;
 }
 
-#if defined(CONFIG_INPUT) || defined(CONFIG_INPUT_MODULE)
+#ifdef CONFIG_INPUT
 static int sd_int_pkt_scan(struct gspca_dev *gspca_dev,
 			u8 *data,		/* interrupt packet data */
 			int len)		/* interrput packet length */
@@ -524,7 +526,7 @@ static const struct sd_desc sd_desc = {
 	.stopN = sd_stopN,
 	.dq_callback = pac207_do_auto_gain,
 	.pkt_scan = sd_pkt_scan,
-#if defined(CONFIG_INPUT) || defined(CONFIG_INPUT_MODULE)
+#ifdef CONFIG_INPUT
 	.int_pkt_scan = sd_int_pkt_scan,
 #endif
 };
@@ -570,11 +572,17 @@ static struct usb_driver sd_driver = {
 /* -- module insert / remove -- */
 static int __init sd_mod_init(void)
 {
-	return usb_register(&sd_driver);
+	int ret;
+	ret = usb_register(&sd_driver);
+	if (ret < 0)
+		return ret;
+	PDEBUG(D_PROBE, "registered");
+	return 0;
 }
 static void __exit sd_mod_exit(void)
 {
 	usb_deregister(&sd_driver);
+	PDEBUG(D_PROBE, "deregistered");
 }
 
 module_init(sd_mod_init);

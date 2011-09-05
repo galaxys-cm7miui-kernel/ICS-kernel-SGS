@@ -27,7 +27,6 @@
 
 #include <mach/ipu.h>
 #include <mach/mx3_camera.h>
-#include <mach/dma.h>
 
 #define MX3_CAM_DRV_NAME "mx3-camera"
 
@@ -186,7 +185,7 @@ static void free_buffer(struct videobuf_queue *vq, struct mx3_camera_buffer *buf
 	 * This waits until this buffer is out of danger, i.e., until it is no
 	 * longer in STATE_QUEUED or STATE_ACTIVE
 	 */
-	videobuf_waiton(vq, vb, 0, 0);
+	videobuf_waiton(vb, 0, 0);
 	if (txd) {
 		ichan = to_idmac_chan(txd->chan);
 		async_tx_ack(txd);
@@ -442,8 +441,7 @@ static void mx3_camera_init_videobuf(struct videobuf_queue *q,
 				       &mx3_cam->lock,
 				       V4L2_BUF_TYPE_VIDEO_CAPTURE,
 				       V4L2_FIELD_NONE,
-				       sizeof(struct mx3_camera_buffer), icd,
-				       NULL);
+				       sizeof(struct mx3_camera_buffer), icd);
 }
 
 /* First part of ipu_csi_init_interface() */
@@ -638,9 +636,6 @@ static bool chan_filter(struct dma_chan *chan, void *arg)
 {
 	struct dma_chan_request *rq = arg;
 	struct mx3_camera_pdata *pdata;
-
-	if (!imx_dma_is_ipu(chan))
-		return false;
 
 	if (!rq)
 		return false;
@@ -981,7 +976,7 @@ static int mx3_camera_try_fmt(struct soc_camera_device *icd,
 	return ret;
 }
 
-static int mx3_camera_reqbufs(struct soc_camera_device *icd,
+static int mx3_camera_reqbufs(struct soc_camera_file *icf,
 			      struct v4l2_requestbuffers *p)
 {
 	return 0;
@@ -989,9 +984,9 @@ static int mx3_camera_reqbufs(struct soc_camera_device *icd,
 
 static unsigned int mx3_camera_poll(struct file *file, poll_table *pt)
 {
-	struct soc_camera_device *icd = file->private_data;
+	struct soc_camera_file *icf = file->private_data;
 
-	return videobuf_poll_stream(file, &icd->vb_vidq, pt);
+	return videobuf_poll_stream(file, &icf->vb_vidq, pt);
 }
 
 static int mx3_camera_querycap(struct soc_camera_host *ici,
