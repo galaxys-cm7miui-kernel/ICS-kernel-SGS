@@ -150,36 +150,13 @@ static int add_event_total(struct perf_session *session,
 	return 0;
 }
 
-static int process_sample_event(event_t *event, struct perf_session *session)
+static int process_sample_event(event_t *event, struct sample_data *sample,
+				struct perf_session *session)
 {
-	struct sample_data data = { .period = 1, };
 	struct addr_location al;
 	struct perf_event_attr *attr;
 
-	event__parse_sample(event, session->sample_type, &data);
-
-	dump_printf("(IP, %d): %d/%d: %#Lx period: %Ld\n", event->header.misc,
-		    data.pid, data.tid, data.ip, data.period);
-
-	if (session->sample_type & PERF_SAMPLE_CALLCHAIN) {
-		unsigned int i;
-
-		dump_printf("... chain: nr:%Lu\n", data.callchain->nr);
-
-		if (!ip_callchain__valid(data.callchain, event)) {
-			pr_debug("call-chain problem with event, "
-				 "skipping it.\n");
-			return 0;
-		}
-
-		if (dump_trace) {
-			for (i = 0; i < data.callchain->nr; i++)
-				dump_printf("..... %2d: %016Lx\n",
-					    i, data.callchain->ips[i]);
-		}
-	}
-
-	if (event__preprocess_sample(event, session, &al, NULL) < 0) {
+	if (event__preprocess_sample(event, session, &al, sample, NULL) < 0) {
 		fprintf(stderr, "problem processing %d event, skipping it.\n",
 			event->header.type);
 		return -1;
@@ -188,14 +165,14 @@ static int process_sample_event(event_t *event, struct perf_session *session)
 	if (al.filtered || (hide_unresolved && al.sym == NULL))
 		return 0;
 
-	if (perf_session__add_hist_entry(session, &al, &data)) {
+	if (perf_session__add_hist_entry(session, &al, sample)) {
 		pr_debug("problem incrementing symbol period, skipping event\n");
 		return -1;
 	}
 
-	attr = perf_header__find_attr(data.id, &session->header);
+	attr = perf_header__find_attr(sample->id, &session->header);
 
-	if (add_event_total(session, &data, attr)) {
+	if (add_event_total(session, sample, attr)) {
 		pr_debug("problem adding event period\n");
 		return -1;
 	}
@@ -203,7 +180,8 @@ static int process_sample_event(event_t *event, struct perf_session *session)
 	return 0;
 }
 
-static int process_read_event(event_t *event, struct perf_session *session __used)
+static int process_read_event(event_t *event, struct sample_data *sample __used,
+			      struct perf_session *session __used)
 {
 	struct perf_event_attr *attr;
 
@@ -219,7 +197,7 @@ static int process_read_event(event_t *event, struct perf_session *session __use
 					   event->read.value);
 	}
 
-	dump_printf(": %d %d %s %Lu\n", event->read.pid, event->read.tid,
+	dump_printf(": %d %d %s %" PRIu64 "\n", event->read.pid, event->read.tid,
 		    attr ? __event_name(attr->type, attr->config) : "FAIL",
 		    event->read.value);
 
@@ -266,6 +244,8 @@ static struct perf_event_ops event_ops = {
 	.event_type = event__process_event_type,
 	.tracing_data = event__process_tracing_data,
 	.build_id = event__process_build_id,
+	.ordered_samples = true,
+	.ordering_requires_timestamps = true,
 };
 
 extern volatile int session_done;
@@ -330,7 +310,7 @@ static int __cmd_report(void)
 
 	signal(SIGINT, sig_handler);
 
-	session = perf_session__new(input_name, O_RDONLY, force, false);
+	session = perf_session__new(input_name, O_RDONLY, force, false, &event_ops);
 	if (session == NULL)
 		return -ENOMEM;
 
@@ -372,7 +352,18 @@ static int __cmd_report(void)
 		hists__tty_browse_tree(&session->hists_tree, help);
 
 out_delete:
-	perf_session__delete(session);
+	/*
+	 * Speed up the exit process, for large files this can
+	 * take quite a while.
+	 *
+	 * XXX Enable this when using valgrind or if we ever
+	 * librarize this command.
+	 *
+	 * Also experiment with obstacks to see how much speed
+	 * up we'll get here.
+	 *
+ 	 * perf_session__delete(session);
+ 	 */
 	return ret;
 }
 
@@ -454,6 +445,8 @@ static const struct option options[] = {
 		    "dump raw trace in ASCII"),
 	OPT_STRING('k', "vmlinux", &symbol_conf.vmlinux_name,
 		   "file", "vmlinux pathname"),
+	OPT_STRING(0, "kallsyms", &symbol_conf.kallsyms_name,
+		   "file", "kallsyms pathname"),
 	OPT_BOOLEAN('f', "force", &force, "don't complain, do it"),
 	OPT_BOOLEAN('m', "modules", &symbol_conf.use_modules,
 		    "load module symbols - WARNING: use only with -k and LIVE kernel"),
@@ -467,8 +460,6 @@ static const struct option options[] = {
 	OPT_BOOLEAN(0, "stdio", &use_stdio, "Use the stdio interface"),
 	OPT_STRING('s', "sort", &sort_order, "key[,key2...]",
 		   "sort by key(s): pid, comm, dso, symbol, parent"),
-	OPT_BOOLEAN('P', "full-paths", &symbol_conf.full_paths,
-		    "Don't shorten the pathnames taking into account the cwd"),
 	OPT_BOOLEAN(0, "showcpuutilization", &symbol_conf.show_cpu_utilization,
 		    "Show sample percentage for different cpu modes"),
 	OPT_STRING('p', "parent", &parent_pattern, "regex",
@@ -492,6 +483,8 @@ static const struct option options[] = {
 		   "columns '.' is reserved."),
 	OPT_BOOLEAN('U', "hide-unresolved", &hide_unresolved,
 		    "Only display entries resolved to a symbol"),
+	OPT_STRING(0, "symfs", &symbol_conf.symfs, "directory",
+		    "Look for files with symbols relative to this directory"),
 	OPT_END()
 };
 
@@ -513,8 +506,24 @@ int cmd_report(int argc, const char **argv, const char *prefix __used)
 	 * so don't allocate extra space that won't be used in the stdio
 	 * implementation.
 	 */
-	if (use_browser > 0)
+	if (use_browser > 0) {
 		symbol_conf.priv_size = sizeof(struct sym_priv);
+		/*
+ 		 * For searching by name on the "Browse map details".
+ 		 * providing it only in verbose mode not to bloat too
+ 		 * much struct symbol.
+ 		 */
+		if (verbose) {
+			/*
+			 * XXX: Need to provide a less kludgy way to ask for
+			 * more space per symbol, the u32 is for the index on
+			 * the ui browser.
+			 * See symbol__browser_index.
+			 */
+			symbol_conf.priv_size += sizeof(u32);
+			symbol_conf.sort_by_name = true;
+		}
+	}
 
 	if (symbol__init() < 0)
 		return -1;

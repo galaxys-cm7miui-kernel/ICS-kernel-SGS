@@ -205,6 +205,16 @@ static void sym_calc_visibility(struct symbol *sym)
 	}
 	if (sym_is_choice_value(sym))
 		return;
+	/* defaulting to "yes" if no explicit "depends on" are given */
+	tri = yes;
+	if (sym->dir_dep.expr)
+		tri = expr_calc_value(sym->dir_dep.expr);
+	if (tri == mod)
+		tri = yes;
+	if (sym->dir_dep.tri != tri) {
+		sym->dir_dep.tri = tri;
+		sym_set_changed(sym);
+	}
 	tri = no;
 	if (sym->rev_dep.expr)
 		tri = expr_calc_value(sym->rev_dep.expr);
@@ -216,19 +226,17 @@ static void sym_calc_visibility(struct symbol *sym)
 	}
 }
 
-static struct symbol *sym_calc_choice(struct symbol *sym)
+/*
+ * Find the default symbol for a choice.
+ * First try the default values for the choice symbol
+ * Next locate the first visible choice value
+ * Return NULL if none was found
+ */
+struct symbol *sym_choice_default(struct symbol *sym)
 {
 	struct symbol *def_sym;
 	struct property *prop;
 	struct expr *e;
-
-	/* is the user choice visible? */
-	def_sym = sym->def[S_DEF_USER].val;
-	if (def_sym) {
-		sym_calc_visibility(def_sym);
-		if (def_sym->visible != no)
-			return def_sym;
-	}
 
 	/* any of the defaults visible? */
 	for_all_defaults(sym, prop) {
@@ -236,22 +244,43 @@ static struct symbol *sym_calc_choice(struct symbol *sym)
 		if (prop->visible.tri == no)
 			continue;
 		def_sym = prop_get_symbol(prop);
-		sym_calc_visibility(def_sym);
 		if (def_sym->visible != no)
 			return def_sym;
 	}
 
 	/* just get the first visible value */
 	prop = sym_get_choice_prop(sym);
-	expr_list_for_each_sym(prop->expr, e, def_sym) {
-		sym_calc_visibility(def_sym);
+	expr_list_for_each_sym(prop->expr, e, def_sym)
 		if (def_sym->visible != no)
 			return def_sym;
-	}
 
-	/* no choice? reset tristate value */
-	sym->curr.tri = no;
+	/* failed to locate any defaults */
 	return NULL;
+}
+
+static struct symbol *sym_calc_choice(struct symbol *sym)
+{
+	struct symbol *def_sym;
+	struct property *prop;
+	struct expr *e;
+
+	/* first calculate all choice values' visibilities */
+	prop = sym_get_choice_prop(sym);
+	expr_list_for_each_sym(prop->expr, e, def_sym)
+		sym_calc_visibility(def_sym);
+
+	/* is the user choice visible? */
+	def_sym = sym->def[S_DEF_USER].val;
+	if (def_sym && def_sym->visible != no)
+		return def_sym;
+
+	def_sym = sym_choice_default(sym);
+
+	if (def_sym == NULL)
+		/* no choice? reset tristate value */
+		sym->curr.tri = no;
+
+	return def_sym;
 }
 
 void sym_calc_value(struct symbol *sym)
@@ -321,6 +350,18 @@ void sym_calc_value(struct symbol *sym)
 				}
 			}
 		calc_newval:
+			if (sym->dir_dep.tri == no && sym->rev_dep.tri != no) {
+				struct expr *e;
+				e = expr_simplify_unmet_dep(sym->rev_dep.expr,
+				    sym->dir_dep.expr);
+				fprintf(stderr, "warning: (");
+				expr_fprint(e, stderr);
+				fprintf(stderr, ") selects %s which has unmet direct dependencies (",
+					sym->name);
+				expr_fprint(sym->dir_dep.expr, stderr);
+				fprintf(stderr, ")\n");
+				expr_free(e);
+			}
 			newval.tri = EXPR_OR(newval.tri, sym->rev_dep.tri);
 		}
 		if (newval.tri == mod && sym_get_type(sym) == S_BOOLEAN)
@@ -365,12 +406,13 @@ void sym_calc_value(struct symbol *sym)
 
 	if (sym_is_choice(sym)) {
 		struct symbol *choice_sym;
-		int flags = sym->flags & (SYMBOL_CHANGED | SYMBOL_WRITE);
 
 		prop = sym_get_choice_prop(sym);
 		expr_list_for_each_sym(prop->expr, e, choice_sym) {
-			choice_sym->flags |= flags;
-			if (flags & SYMBOL_CHANGED)
+			if ((sym->flags & SYMBOL_WRITE) &&
+			    choice_sym->visible != no)
+				choice_sym->flags |= SYMBOL_WRITE;
+			if (sym->flags & SYMBOL_CHANGED)
 				sym_set_changed(choice_sym);
 		}
 	}
@@ -623,6 +665,80 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	return true;
 }
 
+/*
+ * Find the default value associated to a symbol.
+ * For tristate symbol handle the modules=n case
+ * in which case "m" becomes "y".
+ * If the symbol does not have any default then fallback
+ * to the fixed default values.
+ */
+const char *sym_get_string_default(struct symbol *sym)
+{
+	struct property *prop;
+	struct symbol *ds;
+	const char *str;
+	tristate val;
+
+	sym_calc_visibility(sym);
+	sym_calc_value(modules_sym);
+	val = symbol_no.curr.tri;
+	str = symbol_empty.curr.val;
+
+	/* If symbol has a default value look it up */
+	prop = sym_get_default_prop(sym);
+	if (prop != NULL) {
+		switch (sym->type) {
+		case S_BOOLEAN:
+		case S_TRISTATE:
+			/* The visibility may limit the value from yes => mod */
+			val = EXPR_AND(expr_calc_value(prop->expr), prop->visible.tri);
+			break;
+		default:
+			/*
+			 * The following fails to handle the situation
+			 * where a default value is further limited by
+			 * the valid range.
+			 */
+			ds = prop_get_symbol(prop);
+			if (ds != NULL) {
+				sym_calc_value(ds);
+				str = (const char *)ds->curr.val;
+			}
+		}
+	}
+
+	/* Handle select statements */
+	val = EXPR_OR(val, sym->rev_dep.tri);
+
+	/* transpose mod to yes if modules are not enabled */
+	if (val == mod)
+		if (!sym_is_choice_value(sym) && modules_sym->curr.tri == no)
+			val = yes;
+
+	/* transpose mod to yes if type is bool */
+	if (sym->type == S_BOOLEAN && val == mod)
+		val = yes;
+
+	switch (sym->type) {
+	case S_BOOLEAN:
+	case S_TRISTATE:
+		switch (val) {
+		case no: return "n";
+		case mod: return "m";
+		case yes: return "y";
+		}
+	case S_INT:
+	case S_HEX:
+		return str;
+	case S_STRING:
+		return str;
+	case S_OTHER:
+	case S_UNKNOWN:
+		break;
+	}
+	return "";
+}
+
 const char *sym_get_string_value(struct symbol *sym)
 {
 	tristate val;
@@ -728,6 +844,55 @@ struct symbol *sym_find(const char *name)
 	return symbol;
 }
 
+/*
+ * Expand symbol's names embedded in the string given in argument. Symbols'
+ * name to be expanded shall be prefixed by a '$'. Unknown symbol expands to
+ * the empty string.
+ */
+const char *sym_expand_string_value(const char *in)
+{
+	const char *src;
+	char *res;
+	size_t reslen;
+
+	reslen = strlen(in) + 1;
+	res = malloc(reslen);
+	res[0] = '\0';
+
+	while ((src = strchr(in, '$'))) {
+		char *p, name[SYMBOL_MAXLENGTH];
+		const char *symval = "";
+		struct symbol *sym;
+		size_t newlen;
+
+		strncat(res, in, src - in);
+		src++;
+
+		p = name;
+		while (isalnum(*src) || *src == '_')
+			*p++ = *src++;
+		*p = '\0';
+
+		sym = sym_find(name);
+		if (sym != NULL) {
+			sym_calc_value(sym);
+			symval = sym_get_string_value(sym);
+		}
+
+		newlen = strlen(res) + strlen(symval) + strlen(src) + 1;
+		if (newlen > reslen) {
+			reslen = newlen;
+			res = realloc(res, reslen);
+		}
+
+		strcat(res, symval);
+		in = src;
+	}
+	strcat(res, in);
+
+	return res;
+}
+
 struct symbol **sym_re_search(const char *pattern)
 {
 	struct symbol *sym, **sym_arr = NULL;
@@ -825,6 +990,8 @@ static void sym_check_print_recursive(struct symbol *last_sym)
 		sym = stack->sym;
 		next_sym = stack->next ? stack->next->sym : last_sym;
 		prop = stack->prop;
+		if (prop == NULL)
+			prop = stack->sym->prop;
 
 		/* for choice values find the menu entry (used below) */
 		if (sym_is_choice(sym) || sym_is_choice_value(sym)) {
@@ -1055,6 +1222,8 @@ const char *prop_get_type_name(enum prop_type type)
 		return "select";
 	case P_RANGE:
 		return "range";
+	case P_SYMBOL:
+		return "symbol";
 	case P_UNKNOWN:
 		break;
 	}
