@@ -617,7 +617,7 @@ static int fimc_configure_subdev(struct fimc_control *ctrl)
 	 * so nothing happens but pass platform data through
 	 */
 	sd = v4l2_i2c_new_subdev_board(&ctrl->v4l2_dev, i2c_adap,
-			name, i2c_info, &addr);
+			i2c_info, &addr);
 	if (!sd) {
 		fimc_err("%s: v4l2 subdev board registering failed\n",
 				__func__);
@@ -1539,9 +1539,9 @@ int fimc_streamon_capture(void *fh)
 	struct v4l2_frmsizeenum cam_frmsize;
 	int rot;
 	int ret;
+	char *ce147 = "CE147 0-003c";
 
 	fimc_dbg("%s\n", __func__);
-	char *ce147 = "CE147 0-003c";
 	device_id = strcmp(ctrl->cam->sd->name, ce147);
 	fimc_dbg("%s, name(%s), device_id(%d), vtmode(%d)\n", __func__, ctrl->cam->sd->name , device_id, vtmode);
 
