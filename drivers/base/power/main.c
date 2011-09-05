@@ -26,6 +26,7 @@
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/async.h>
+#include <linux/timer.h>
 
 #include "../base.h"
 #include "power.h"
@@ -44,6 +45,12 @@ LIST_HEAD(dpm_list);
 
 static DEFINE_MUTEX(dpm_list_mtx);
 static pm_message_t pm_transition;
+
+static void dpm_drv_timeout(unsigned long data);
+struct dpm_drv_wd_data {
+	struct device *dev;
+	struct task_struct *tsk;
+};
 
 /*
  * Set once the preparation of devices for a PM transition has started, reset
@@ -475,20 +482,33 @@ End:
  */
 void dpm_resume_noirq(pm_message_t state)
 {
-	struct device *dev;
+	struct list_head list;
 	ktime_t starttime = ktime_get();
 
+	INIT_LIST_HEAD(&list);
 	mutex_lock(&dpm_list_mtx);
 	transition_started = false;
-	list_for_each_entry(dev, &dpm_list, power.entry)
+	while (!list_empty(&dpm_list)) {
+		struct device *dev = to_device(dpm_list.next);
+
+		get_device(dev);
 		if (dev->power.status > DPM_OFF) {
 			int error;
 
 			dev->power.status = DPM_OFF;
+			mutex_unlock(&dpm_list_mtx);
+
 			error = device_resume_noirq(dev, state);
+
+			mutex_lock(&dpm_list_mtx);
 			if (error)
 				pm_dev_err(dev, state, " early", error);
 		}
+		if (!list_empty(&dev->power.entry))
+			list_move_tail(&dev->power.entry, &list);
+		put_device(dev);
+	}
+	list_splice(&list, &dpm_list);
 	mutex_unlock(&dpm_list_mtx);
 	dpm_show_time(starttime, state, "early");
 	resume_device_irqs();
@@ -528,7 +548,9 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 	TRACE_DEVICE(dev);
 	TRACE_RESUME(0);
 
-	dpm_wait(dev->parent, async);
+	if (dev->parent && (dev->parent->power.status >= DPM_OFF ||
+			    dev->parent->power.status == DPM_RESUMING))
+		dpm_wait(dev->parent, async);
 	device_lock(dev);
 
 	dev->power.status = DPM_RESUMING;
@@ -586,6 +608,30 @@ static bool is_async(struct device *dev)
 {
 	return dev->power.async_suspend && pm_async_enabled
 		&& !pm_trace_is_enabled();
+}
+
+/**
+ *	dpm_drv_timeout - Driver suspend / resume watchdog handler
+ *	@data: struct device which timed out
+ *
+ * 	Called when a driver has timed out suspending or resuming.
+ * 	There's not much we can do here to recover so
+ * 	BUG() out for a crash-dump
+ *
+ */
+static void dpm_drv_timeout(unsigned long data)
+{
+	struct dpm_drv_wd_data *wd_data = (void *)data;
+	struct device *dev = wd_data->dev;
+	struct task_struct *tsk = wd_data->tsk;
+
+	printk(KERN_EMERG "**** DPM device timeout: %s (%s)\n", dev_name(dev),
+	       (dev->driver ? dev->driver->name : "no driver"));
+
+	printk(KERN_EMERG "dpm suspend stack:\n");
+	show_stack(tsk, NULL);
+
+	BUG();
 }
 
 /**
@@ -789,20 +835,33 @@ End:
  */
 int dpm_suspend_noirq(pm_message_t state)
 {
-	struct device *dev;
+	struct list_head list;
 	ktime_t starttime = ktime_get();
 	int error = 0;
 
+	INIT_LIST_HEAD(&list);
 	suspend_device_irqs();
 	mutex_lock(&dpm_list_mtx);
-	list_for_each_entry_reverse(dev, &dpm_list, power.entry) {
+	while (!list_empty(&dpm_list)) {
+		struct device *dev = to_device(dpm_list.prev);
+
+		get_device(dev);
+		mutex_unlock(&dpm_list_mtx);
+
 		error = device_suspend_noirq(dev, state);
+
+		mutex_lock(&dpm_list_mtx);
 		if (error) {
 			pm_dev_err(dev, state, " late", error);
+			put_device(dev);
 			break;
 		}
 		dev->power.status = DPM_OFF_IRQ;
+		if (!list_empty(&dev->power.entry))
+			list_move(&dev->power.entry, &list);
+		put_device(dev);
 	}
+	list_splice_tail(&list, &dpm_list);
 	mutex_unlock(&dpm_list_mtx);
 	if (error)
 		dpm_resume_noirq(resume_event(state));
@@ -843,8 +902,19 @@ static int legacy_suspend(struct device *dev, pm_message_t state,
 static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 {
 	int error = 0;
+	struct timer_list timer;
+	struct dpm_drv_wd_data data;
 
 	dpm_wait_for_children(dev, async);
+
+	data.dev = dev;
+	data.tsk = get_current();
+	init_timer_on_stack(&timer);
+	timer.expires = jiffies + HZ * 3;
+	timer.function = dpm_drv_timeout;
+	timer.data = (unsigned long)&data;
+	add_timer(&timer);
+
 	device_lock(dev);
 
 	if (async_error)
@@ -886,6 +956,10 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
  End:
 	device_unlock(dev);
+
+	del_timer_sync(&timer);
+	destroy_timer_on_stack(&timer);
+
 	complete_all(&dev->power.completion);
 
 	if (error)
