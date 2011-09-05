@@ -31,7 +31,7 @@
  * as small as 4 bytes.  The allocator organizes chunks into lists
  * according to free size and tries to allocate from the fullest one.
  * Each chunk keeps the maximum contiguous area size hint which is
- * guaranteed to be equal to or larger than the maximum contiguous
+ * guaranteed to be eqaul to or larger than the maximum contiguous
  * area in the chunk.  This helps the allocator not to iterate the
  * chunk maps unnecessarily.
  *
@@ -1268,7 +1268,7 @@ int __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 
 	/* we're done parsing the input, undefine BUG macro and dump config */
 #undef PCPU_SETUP_BUG_ON
-	pcpu_dump_alloc_info(KERN_DEBUG, ai);
+	pcpu_dump_alloc_info(KERN_INFO, ai);
 
 	pcpu_nr_groups = ai->nr_groups;
 	pcpu_group_offsets = group_offsets;

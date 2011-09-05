@@ -924,21 +924,15 @@ static int migrate_to_node(struct mm_struct *mm, int source, int dest,
 	nodemask_t nmask;
 	LIST_HEAD(pagelist);
 	int err = 0;
-	struct vm_area_struct *vma;
 
 	nodes_clear(nmask);
 	node_set(source, nmask);
 
-	vma = check_range(mm, mm->mmap->vm_start, mm->task_size, &nmask,
+	check_range(mm, mm->mmap->vm_start, mm->task_size, &nmask,
 			flags | MPOL_MF_DISCONTIG_OK, &pagelist);
-	if (IS_ERR(vma))
-		return PTR_ERR(vma);
 
-	if (!list_empty(&pagelist)) {
+	if (!list_empty(&pagelist))
 		err = migrate_pages(&pagelist, new_node_page, dest, 0);
-		if (err)
-			putback_lru_pages(&pagelist);
-	}
 
 	return err;
 }
@@ -1153,12 +1147,9 @@ static long do_mbind(unsigned long start, unsigned long len,
 
 		err = mbind_range(mm, start, end, new);
 
-		if (!list_empty(&pagelist)) {
+		if (!list_empty(&pagelist))
 			nr_failed = migrate_pages(&pagelist, new_vma_page,
 						(unsigned long)vma, 0);
-			if (nr_failed)
-				putback_lru_pages(&pagelist);
-		}
 
 		if (!err && nr_failed && (flags & MPOL_MF_STRICT))
 			err = -EIO;
@@ -1307,18 +1298,15 @@ SYSCALL_DEFINE4(migrate_pages, pid_t, pid, unsigned long, maxnode,
 		goto out;
 
 	/* Find the mm_struct */
-	rcu_read_lock();
 	read_lock(&tasklist_lock);
 	task = pid ? find_task_by_vpid(pid) : current;
 	if (!task) {
 		read_unlock(&tasklist_lock);
-		rcu_read_unlock();
 		err = -ESRCH;
 		goto out;
 	}
 	mm = get_task_mm(task);
 	read_unlock(&tasklist_lock);
-	rcu_read_unlock();
 
 	err = -EINVAL;
 	if (!mm)
@@ -1600,7 +1588,7 @@ unsigned slab_node(struct mempolicy *policy)
 		(void)first_zones_zonelist(zonelist, highest_zoneidx,
 							&policy->v.nodes,
 							&zone);
-		return zone ? zone->node : numa_node_id();
+		return zone->node;
 	}
 
 	default:

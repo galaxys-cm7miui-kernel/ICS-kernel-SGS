@@ -34,23 +34,6 @@
 
 #include "internal.h"
 
-DEFINE_MUTEX(mem_hotplug_mutex);
-
-void lock_memory_hotplug(void)
-{
-	mutex_lock(&mem_hotplug_mutex);
-
-	/* for exclusive hibernation if CONFIG_HIBERNATION=y */
-	lock_system_sleep();
-}
-
-void unlock_memory_hotplug(void)
-{
-	unlock_system_sleep();
-	mutex_unlock(&mem_hotplug_mutex);
-}
-
-
 /* add this memory to iomem resource */
 static struct resource *register_memory_resource(u64 start, u64 size)
 {
@@ -510,7 +493,7 @@ int mem_online_node(int nid)
 	pg_data_t	*pgdat;
 	int	ret;
 
-	lock_memory_hotplug();
+	lock_system_sleep();
 	pgdat = hotadd_new_pgdat(nid, 0);
 	if (pgdat) {
 		ret = -ENOMEM;
@@ -521,7 +504,7 @@ int mem_online_node(int nid)
 	BUG_ON(ret);
 
 out:
-	unlock_memory_hotplug();
+	unlock_system_sleep();
 	return ret;
 }
 
@@ -533,7 +516,7 @@ int __ref add_memory(int nid, u64 start, u64 size)
 	struct resource *res;
 	int ret;
 
-	lock_memory_hotplug();
+	lock_system_sleep();
 
 	res = register_memory_resource(start, size);
 	ret = -EEXIST;
@@ -580,7 +563,7 @@ error:
 		release_memory_resource(res);
 
 out:
-	unlock_memory_hotplug();
+	unlock_system_sleep();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(add_memory);
@@ -619,14 +602,27 @@ static struct page *next_active_pageblock(struct page *page)
 /* Checks if this range of memory is likely to be hot-removable. */
 int is_mem_section_removable(unsigned long start_pfn, unsigned long nr_pages)
 {
+	int type;
 	struct page *page = pfn_to_page(start_pfn);
 	struct page *end_page = page + nr_pages;
 
 	/* Check the starting page of each pageblock within the range */
 	for (; page < end_page; page = next_active_pageblock(page)) {
-		if (!is_pageblock_removable_nolock(page))
+		type = get_pageblock_migratetype(page);
+
+		/*
+		 * A pageblock containing MOVABLE or free pages is considered
+		 * removable
+		 */
+		if (type != MIGRATE_MOVABLE && !pageblock_free(page))
 			return 0;
-		cond_resched();
+
+		/*
+		 * A pageblock starting with a PageReserved page is not
+		 * considered removable.
+		 */
+		if (PageReserved(page))
+			return 0;
 	}
 
 	/* All pageblocks in the memory block are likely to be hot-removable */
@@ -663,7 +659,7 @@ static int test_pages_in_a_zone(unsigned long start_pfn, unsigned long end_pfn)
  * Scanning pfn is much easier than scanning lru list.
  * Scan pfn from start to end and Find LRU page.
  */
-static unsigned long scan_lru_pages(unsigned long start, unsigned long end)
+int scan_lru_pages(unsigned long start, unsigned long end)
 {
 	unsigned long pfn;
 	struct page *page;
@@ -713,30 +709,29 @@ do_migrate_range(unsigned long start_pfn, unsigned long end_pfn)
 					    page_is_file_cache(page));
 
 		} else {
+			/* Becasue we don't have big zone->lock. we should
+			   check this again here. */
+			if (page_count(page))
+				not_managed++;
 #ifdef CONFIG_DEBUG_VM
 			printk(KERN_ALERT "removing pfn %lx from LRU failed\n",
 			       pfn);
 			dump_page(page);
 #endif
-			/* Becasue we don't have big zone->lock. we should
-			   check this again here. */
-			if (page_count(page)) {
-				not_managed++;
-				ret = -EBUSY;
-				break;
-			}
 		}
 	}
-	if (!list_empty(&source)) {
-		if (not_managed) {
+	ret = -EBUSY;
+	if (not_managed) {
+		if (!list_empty(&source))
 			putback_lru_pages(&source);
-			goto out;
-		}
-		/* this function returns # of failed pages */
-		ret = migrate_pages(&source, hotremove_migrate_alloc, 0, 1);
-		if (ret)
-			putback_lru_pages(&source);
+		goto out;
 	}
+	ret = 0;
+	if (list_empty(&source))
+		goto out;
+	/* this function returns # of failed pages */
+	ret = migrate_pages(&source, hotremove_migrate_alloc, 0, 1);
+
 out:
 	return ret;
 }
@@ -808,7 +803,7 @@ static int offline_pages(unsigned long start_pfn,
 	if (!test_pages_in_a_zone(start_pfn, end_pfn))
 		return -EINVAL;
 
-	lock_memory_hotplug();
+	lock_system_sleep();
 
 	zone = page_zone(pfn_to_page(start_pfn));
 	node = zone_to_nid(zone);
@@ -897,7 +892,7 @@ repeat:
 	writeback_set_ratelimit();
 
 	memory_notify(MEM_OFFLINE, &arg);
-	unlock_memory_hotplug();
+	unlock_system_sleep();
 	return 0;
 
 failed_removal:
@@ -908,7 +903,7 @@ failed_removal:
 	undo_isolate_page_range(start_pfn, end_pfn);
 
 out:
-	unlock_memory_hotplug();
+	unlock_system_sleep();
 	return ret;
 }
 

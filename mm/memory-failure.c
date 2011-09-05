@@ -51,7 +51,6 @@
 #include <linux/slab.h>
 #include <linux/swapops.h>
 #include <linux/hugetlb.h>
-#include <linux/memory_hotplug.h>
 #include "internal.h"
 
 int sysctl_memory_failure_early_kill __read_mostly = 0;
@@ -1231,10 +1230,11 @@ static int get_any_page(struct page *p, unsigned long pfn, int flags)
 		return 1;
 
 	/*
-	 * The lock_memory_hotplug prevents a race with memory hotplug.
+	 * The lock_system_sleep prevents a race with memory hotplug,
+	 * because the isolation assumes there's only a single user.
 	 * This is a big hammer, a better would be nicer.
 	 */
-	lock_memory_hotplug();
+	lock_system_sleep();
 
 	/*
 	 * Isolate the page, so that it doesn't get reallocated if it
@@ -1264,7 +1264,7 @@ static int get_any_page(struct page *p, unsigned long pfn, int flags)
 		ret = 1;
 	}
 	unset_migratetype_isolate(p);
-	unlock_memory_hotplug();
+	unlock_system_sleep();
 	return ret;
 }
 
@@ -1292,7 +1292,6 @@ static int soft_offline_huge_page(struct page *page, int flags)
 	list_add(&hpage->lru, &pagelist);
 	ret = migrate_huge_pages(&pagelist, new_page, MPOL_MF_MOVE_ALL, 0);
 	if (ret) {
-			putback_lru_pages(&pagelist);
 		pr_debug("soft offline: %#lx: migration failed %d, type %lx\n",
 			 pfn, ret, page->flags);
 		if (ret > 0)

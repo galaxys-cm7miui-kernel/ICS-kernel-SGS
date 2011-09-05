@@ -415,8 +415,14 @@ void global_dirty_limits(unsigned long *pbackground, unsigned long *pdirty)
 
 	if (vm_dirty_bytes)
 		dirty = DIV_ROUND_UP(vm_dirty_bytes, PAGE_SIZE);
-	else
-		dirty = (vm_dirty_ratio * available_memory) / 100;
+	else {
+		int dirty_ratio;
+
+		dirty_ratio = vm_dirty_ratio;
+		if (dirty_ratio < 5)
+			dirty_ratio = 5;
+		dirty = (dirty_ratio * available_memory) / 100;
+	}
 
 	if (dirty_background_bytes)
 		background = DIV_ROUND_UP(dirty_background_bytes, PAGE_SIZE);
@@ -504,7 +510,7 @@ static void balance_dirty_pages(struct address_space *mapping,
 		 * catch-up. This avoids (excessively) small writeouts
 		 * when the bdi limits are ramping up.
 		 */
-		if (nr_reclaimable + nr_writeback <=
+		if (nr_reclaimable + nr_writeback <
 				(background_thresh + dirty_thresh) / 2)
 			break;
 
@@ -536,8 +542,8 @@ static void balance_dirty_pages(struct address_space *mapping,
 		 * the last resort safeguard.
 		 */
 		dirty_exceeded =
-			(bdi_nr_reclaimable + bdi_nr_writeback > bdi_thresh)
-			|| (nr_reclaimable + nr_writeback > dirty_thresh);
+			(bdi_nr_reclaimable + bdi_nr_writeback >= bdi_thresh)
+			|| (nr_reclaimable + nr_writeback >= dirty_thresh);
 
 		if (!dirty_exceeded)
 			break;
@@ -563,7 +569,7 @@ static void balance_dirty_pages(struct address_space *mapping,
 				break;		/* We've done our duty */
 		}
 		trace_wbc_balance_dirty_wait(&wbc, bdi);
-		__set_current_state(TASK_UNINTERRUPTIBLE);
+		__set_current_state(TASK_INTERRUPTIBLE);
 		io_schedule_timeout(pause);
 
 		/*
@@ -1115,25 +1121,12 @@ void account_page_dirtied(struct page *page, struct address_space *mapping)
 {
 	if (mapping_cap_account_dirty(mapping)) {
 		__inc_zone_page_state(page, NR_FILE_DIRTY);
-		__inc_zone_page_state(page, NR_DIRTIED);
 		__inc_bdi_stat(mapping->backing_dev_info, BDI_RECLAIMABLE);
 		task_dirty_inc(current);
 		task_io_account_write(PAGE_CACHE_SIZE);
 	}
 }
 EXPORT_SYMBOL(account_page_dirtied);
-
-/*
- * Helper function for set_page_writeback family.
- * NOTE: Unlike account_page_dirtied this does not rely on being atomic
- * wrt interrupts.
- */
-void account_page_writeback(struct page *page)
-{
-	inc_zone_page_state(page, NR_WRITEBACK);
-	inc_zone_page_state(page, NR_WRITTEN);
-}
-EXPORT_SYMBOL(account_page_writeback);
 
 /*
  * For address_spaces which do not use buffers.  Just tag the page as dirty in
@@ -1373,7 +1366,7 @@ int test_set_page_writeback(struct page *page)
 		ret = TestSetPageWriteback(page);
 	}
 	if (!ret)
-		account_page_writeback(page);
+		inc_zone_page_state(page, NR_WRITEBACK);
 	return ret;
 
 }
