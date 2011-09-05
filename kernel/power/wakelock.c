@@ -266,6 +266,8 @@ long has_wake_lock(int type)
 	return ret;
 }
 
+<<<<<<< HEAD
+=======
 #ifdef CONFIG_SYS_SYNC_BLOCKING_DEBUG
 void sys_sync_debug(void);
 #endif
@@ -279,6 +281,7 @@ static void suspend_backoff(void)
 					   SUSPEND_BACKOFF_INTERVAL));
 }
 
+>>>>>>> 806f114... PM: Back off suspend if repeated attempts fail
 static void suspend(struct work_struct *work)
 {
 	int ret;
@@ -587,6 +590,8 @@ static int __init wakelocks_init(void)
 	wake_lock_init(&unknown_wakeup, WAKE_LOCK_SUSPEND, "unknown_wakeups");
 	wake_lock_init(&suspend_backoff_lock, WAKE_LOCK_SUSPEND,
 		       			"suspend_backoff");
+	wake_lock_init(&no_suspend_wake_lock, WAKE_LOCK_SUSPEND,
+					"no_suspend_wake_lock");
 
 	ret = platform_device_register(&power_device);
 	if (ret) {
@@ -617,6 +622,7 @@ err_platform_driver_register:
 	platform_device_unregister(&power_device);
 err_platform_device_register:
 	wake_lock_destroy(&suspend_backoff_lock);
+	wake_lock_destroy(&no_suspend_wake_lock);
 	wake_lock_destroy(&unknown_wakeup);
 	wake_lock_destroy(&main_wake_lock);
 #ifdef CONFIG_WAKELOCK_STAT
@@ -634,6 +640,7 @@ static void  __exit wakelocks_exit(void)
 	platform_driver_unregister(&power_driver);
 	platform_device_unregister(&power_device);
 	wake_lock_destroy(&suspend_backoff_lock);
+	wake_lock_destroy(&no_suspend_wake_lock);
 	wake_lock_destroy(&unknown_wakeup);
 	wake_lock_destroy(&main_wake_lock);
 #ifdef CONFIG_WAKELOCK_STAT
