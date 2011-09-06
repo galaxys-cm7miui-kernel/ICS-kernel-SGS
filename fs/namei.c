@@ -1753,6 +1753,11 @@ int path_lookup(const char *name, unsigned int flags,
 	return do_path_lookup(AT_FDCWD, name, flags, nd);
 }
 
+int kern_path_parent(const char *name, struct nameidata *nd)
+{
+	return do_path_lookup(AT_FDCWD, name, LOOKUP_PARENT, nd);
+}
+
 int kern_path(const char *name, unsigned int flags, struct path *path)
 {
 	struct nameidata nd;
@@ -3587,6 +3592,7 @@ EXPORT_SYMBOL(__page_symlink);
 EXPORT_SYMBOL(page_symlink);
 EXPORT_SYMBOL(page_symlink_inode_operations);
 EXPORT_SYMBOL(path_lookup);
+EXPORT_SYMBOL(kern_path_parent);
 EXPORT_SYMBOL(kern_path);
 EXPORT_SYMBOL(vfs_path_lookup);
 EXPORT_SYMBOL(inode_permission);

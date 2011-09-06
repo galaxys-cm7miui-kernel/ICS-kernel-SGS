@@ -64,10 +64,17 @@ struct bt_security {
 
 #define BT_DEFER_SETUP	7
 
-#define BT_POWER	8
+#define BT_FLUSHABLE	8
+
+#define BT_FLUSHABLE_OFF	0
+#define BT_FLUSHABLE_ON		1
+
+#define BT_POWER	9
 struct bt_power {
 	__u8 force_active;
 };
+#define BT_POWER_FORCE_ACTIVE_OFF 0
+#define BT_POWER_FORCE_ACTIVE_ON  1
 
 #define BT_INFO(fmt, arg...) printk(KERN_INFO "Bluetooth: " fmt "\n" , ## arg)
 #define BT_ERR(fmt, arg...)  printk(KERN_ERR "%s: " fmt "\n" , __func__ , ## arg)
@@ -149,8 +156,8 @@ struct bt_skb_cb {
 	__u8 tx_seq;
 	__u8 retries;
 	__u8 sar;
-	__u8 force_active;
 	unsigned short channel;
+	__u8 force_active;
 };
 #define bt_cb(skb) ((struct bt_skb_cb *)((skb)->cb))
 
@@ -205,5 +212,33 @@ extern int bt_sysfs_init(void);
 extern void bt_sysfs_cleanup(void);
 
 extern struct dentry *bt_debugfs;
+
+#ifdef CONFIG_BT_L2CAP
+int l2cap_init(void);
+void l2cap_exit(void);
+#else
+static inline int l2cap_init(void)
+{
+	return 0;
+}
+
+static inline void l2cap_exit(void)
+{
+}
+#endif
+
+#ifdef CONFIG_BT_SCO
+int sco_init(void);
+void sco_exit(void);
+#else
+static inline int sco_init(void)
+{
+	return 0;
+}
+
+static inline void sco_exit(void)
+{
+}
+#endif
 
 #endif /* __BLUETOOTH_H */

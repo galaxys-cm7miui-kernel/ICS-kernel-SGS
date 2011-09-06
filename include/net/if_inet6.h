@@ -43,6 +43,7 @@ struct inet6_ifaddr {
 	struct in6_addr		addr;
 	__u32			prefix_len;
 	
+	/* In seconds, relative to tstamp. Expiry is at tstamp + HZ * lft. */
 	__u32			valid_lft;
 	__u32			prefered_lft;
 	atomic_t		refcnt;
@@ -286,5 +287,21 @@ static inline void ipv6_ib_mc_map(const struct in6_addr *addr,
 	buf[9]  = broadcast[9];
 	memcpy(buf + 10, addr->s6_addr + 6, 10);
 }
+
+static inline int ipv6_ipgre_mc_map(const struct in6_addr *addr,
+				    const unsigned char *broadcast, char *buf)
+{
+	if ((broadcast[0] | broadcast[1] | broadcast[2] | broadcast[3]) != 0) {
+		memcpy(buf, broadcast, 4);
+	} else {
+		/* v4mapped? */
+		if ((addr->s6_addr32[0] | addr->s6_addr32[1] |
+		     (addr->s6_addr32[2] ^ htonl(0x0000ffff))) != 0)
+			return -EINVAL;
+		memcpy(buf, &addr->s6_addr32[3], 4);
+	}
+	return 0;
+}
+
 #endif
 #endif

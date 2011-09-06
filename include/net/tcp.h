@@ -196,7 +196,7 @@ extern void tcp_time_wait(struct sock *sk, int state, int timeo);
 /* TCP thin-stream limits */
 #define TCP_THIN_LINEAR_RETRIES 6       /* After 6 linear retries, do exp. backoff */
 
-/* TCP initial congestion window */
+/* TCP initial congestion window as per draft-hkchu-tcpm-initcwnd-01 */
 #define TCP_INIT_CWND		10
 
 extern struct inet_timewait_death_row tcp_death_row;
@@ -1068,8 +1068,6 @@ static inline int tcp_paws_reject(const struct tcp_options_received *rx_opt,
 	return 1;
 }
 
-#define TCP_CHECK_TIMER(sk) do { } while (0)
-
 static inline void tcp_mib_init(struct net *net)
 {
 	/* See RFC 2012 */
@@ -1398,7 +1396,7 @@ extern struct request_sock_ops tcp6_request_sock_ops;
 extern void tcp_v4_destroy_sock(struct sock *sk);
 
 extern int tcp_v4_gso_send_check(struct sk_buff *skb);
-extern struct sk_buff *tcp_tso_segment(struct sk_buff *skb, int features);
+extern struct sk_buff *tcp_tso_segment(struct sk_buff *skb, u32 features);
 extern struct sk_buff **tcp_gro_receive(struct sk_buff **head,
 					struct sk_buff *skb);
 extern struct sk_buff **tcp4_gro_receive(struct sk_buff **head,
@@ -1406,7 +1404,7 @@ extern struct sk_buff **tcp4_gro_receive(struct sk_buff **head,
 extern int tcp_gro_complete(struct sk_buff *skb);
 extern int tcp4_gro_complete(struct sk_buff *skb);
 
-extern void tcp_v4_nuke_addr(__u32 saddr);
+extern int tcp_nuke_addr(struct net *net, struct sockaddr *addr);
 
 #ifdef CONFIG_PROC_FS
 extern int tcp4_proc_init(void);

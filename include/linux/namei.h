@@ -71,6 +71,7 @@ extern int user_path_at(int, const char __user *, unsigned, struct path *);
 	user_path_at(AT_FDCWD, name, LOOKUP_FOLLOW | LOOKUP_DIRECTORY, path)
 
 extern int kern_path(const char *, unsigned, struct path *);
+extern int kern_path_parent(const char *, struct nameidata *);
 
 extern int path_lookup(const char *, unsigned, struct nameidata *);
 extern int vfs_path_lookup(struct dentry *, struct vfsmount *,

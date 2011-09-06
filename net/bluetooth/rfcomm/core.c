@@ -2153,8 +2153,6 @@ static int __init rfcomm_init(void)
 {
 	int err;
 
-	l2cap_load();
-
 	hci_register_cb(&rfcomm_cb);
 
 	rfcomm_thread = kthread_run(rfcomm_run, NULL, "krfcommd");
