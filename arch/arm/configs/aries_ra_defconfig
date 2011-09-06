@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux/arm 2.6.38 Kernel Configuration
-# Tue Sep  6 17:53:42 2011
+# Tue Sep  6 20:47:09 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -424,7 +424,8 @@ CONFIG_FLAT_NODE_MEM_MAP=y
 CONFIG_NEED_MULTIPLE_NODES=y
 CONFIG_PAGEFLAGS_EXTENDED=y
 CONFIG_SPLIT_PTLOCK_CPUS=999999
-# CONFIG_COMPACTION is not set
+CONFIG_COMPACTION=y
+CONFIG_MIGRATION=y
 # CONFIG_PHYS_ADDR_T_64BIT is not set
 CONFIG_ZONE_DMA_FLAG=0
 CONFIG_VIRT_TO_BUS=y
@@ -1078,6 +1079,7 @@ CONFIG_WLAN=y
 CONFIG_BCM4329=m
 CONFIG_BCM4329_FW_PATH="/vendor/firmware/fw_bcm4329.bin"
 CONFIG_BCM4329_NVRAM_PATH="/vendor/firmware/nvram_net.txt"
+# CONFIG_BCMDHD is not set
 # CONFIG_HOSTAP is not set
 
 #
