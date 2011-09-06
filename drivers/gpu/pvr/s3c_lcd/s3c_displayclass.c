@@ -191,7 +191,7 @@ static IMG_VOID S3C_Flip(S3C_LCD_DEVINFO  *psDevInfo,
 	int res;
 	unsigned long ulYResVirtual;
 
-	acquire_console_sem();
+	console_lock();
 
 	sFBVar = psDevInfo->psFBInfo->var;
 
@@ -221,7 +221,7 @@ static IMG_VOID S3C_Flip(S3C_LCD_DEVINFO  *psDevInfo,
 		}
 	}
 
-	release_console_sem();
+	console_unlock();
 }
 
 static void FlushInternalVSyncQueue(S3C_LCD_DEVINFO*psDevInfo)
@@ -820,7 +820,7 @@ static S3C_BOOL InitDev(struct fb_info **s3c_fb_Info)
 	struct module *psLINFBOwner;
 	S3C_BOOL eError = S3C_TRUE;
 	
-	acquire_console_sem();
+	console_lock();
 
 	if (fb_idx < 0 || fb_idx >= num_registered_fb)
 	{
@@ -856,7 +856,7 @@ static S3C_BOOL InitDev(struct fb_info **s3c_fb_Info)
 errModPut:
 	module_put(psLINFBOwner);
 errRelSem:
-	release_console_sem();
+	console_unlock();
 
 	return eError;
 }
@@ -866,7 +866,7 @@ static void DeInitDev(S3C_LCD_DEVINFO  *psDevInfo)
 	struct fb_info *psLINFBInfo = psDevInfo->psFBInfo;
 	struct module *psLINFBOwner;
 
-	acquire_console_sem();
+	console_lock();
 
 	psLINFBOwner = psLINFBInfo->fbops->owner;
 
@@ -877,7 +877,7 @@ static void DeInitDev(S3C_LCD_DEVINFO  *psDevInfo)
 
 	module_put(psLINFBOwner);
 
-	release_console_sem();
+	console_unlock();
 }
 
 int s3c_displayclass_init(void)

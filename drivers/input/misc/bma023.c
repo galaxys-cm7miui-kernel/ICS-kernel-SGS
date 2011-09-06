@@ -1024,4 +1024,4 @@ module_exit(bma023_exit);
 MODULE_DESCRIPTION("BMA023 accelerometer driver");
 MODULE_AUTHOR("tim.sk.lee@samsung.com");
 MODULE_LICENSE("GPL");
-MODULE_VERSION(1.0.0);
+MODULE_VERSION("1.0.0");

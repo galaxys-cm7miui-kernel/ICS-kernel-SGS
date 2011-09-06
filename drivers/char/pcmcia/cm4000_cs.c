@@ -830,8 +830,7 @@ static void monitor_card(unsigned long p)
 			    test_bit(IS_ANY_T1, &dev->flags))) {
 				DEBUGP(4, dev, "Perform AUTOPPS\n");
 				set_bit(IS_AUTOPPS_ACT, &dev->flags);
-				ptsreq.protocol = ptsreq.protocol =
-				    (0x01 << dev->proto);
+				ptsreq.protocol = (0x01 << dev->proto);
 				ptsreq.flags = 0x01;
 				ptsreq.pts1 = 0x00;
 				ptsreq.pts2 = 0x00;
@@ -979,8 +978,9 @@ static ssize_t cmm_read(struct file *filp, __user char *buf, size_t count,
 		if (dev->flags0 & 1) {
 			set_bit(IS_CMM_ABSENT, &dev->flags);
 			rc = -ENODEV;
+		} else {
+			rc = -EIO;
 		}
-		rc = -EIO;
 		goto release_io;
 	}
 
@@ -1666,7 +1666,7 @@ static int cmm_open(struct inode *inode, struct file *filp)
 	/* opening will always block since the
 	 * monitor will be started by open, which
 	 * means we have to wait for ATR becoming
-	 * vaild = block until valid (or card
+	 * valid = block until valid (or card
 	 * inserted)
 	 */
 	if (filp->f_flags & O_NONBLOCK) {

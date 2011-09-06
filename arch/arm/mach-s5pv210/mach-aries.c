@@ -5112,19 +5112,19 @@ static void flush_console(void)
 
 	printk("\n");
 	pr_emerg("Restarting %s\n", linux_banner);
-	if (!try_acquire_console_sem()) {
-		release_console_sem();
+	if (!console_trylock()) {
+		console_unlock();
 		return;
 	}
 
 	mdelay(50);
 
 	local_irq_disable();
-	if (try_acquire_console_sem())
+	if (console_trylock())
 		pr_emerg("flush_console: console was locked! busting!\n");
 	else
 		pr_emerg("flush_console: console was locked!\n");
-	release_console_sem();
+	console_unlock();
 }
 
 static void aries_pm_restart(char mode, const char *cmd)

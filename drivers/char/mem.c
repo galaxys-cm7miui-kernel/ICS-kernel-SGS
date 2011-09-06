@@ -824,16 +824,6 @@ static const struct file_operations oldmem_fops = {
 };
 #endif
 
-#ifdef CONFIG_S3C_MEM
-extern int s3c_mem_mmap(struct file* filp, struct vm_area_struct *vma);
-extern int s3c_mem_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg);
-
-static const struct file_operations s3c_mem_fops = {
-	.unlocked_ioctl	= s3c_mem_ioctl,
-	.mmap	= s3c_mem_mmap,
-};
-#endif
-
 static ssize_t kmsg_write(struct file *file, const char __user *buf,
 			  size_t count, loff_t *ppos)
 {
@@ -884,9 +874,6 @@ static const struct memdev {
 #ifdef CONFIG_CRASH_DUMP
 	[12] = { "oldmem", 0, &oldmem_fops, NULL },
 #endif
-#ifdef CONFIG_S3C_MEM
-	[13] = {"s3c-mem", S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, &s3c_mem_fops},
-#endif
 };
 
 static int memory_open(struct inode *inode, struct file *filp)
@@ -905,6 +892,10 @@ static int memory_open(struct inode *inode, struct file *filp)
 	filp->f_op = dev->fops;
 	if (dev->dev_info)
 		filp->f_mapping->backing_dev_info = dev->dev_info;
+
+	/* Is /dev/mem or /dev/kmem ? */
+	if (dev->dev_info == &directly_mappable_cdev_bdi)
+		filp->f_mode |= FMODE_UNSIGNED_OFFSET;
 
 	if (dev->fops->open)
 		return dev->fops->open(inode, filp);

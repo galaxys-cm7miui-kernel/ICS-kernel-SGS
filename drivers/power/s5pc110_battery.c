@@ -757,9 +757,9 @@ static __devinit int max8998_charger_probe(struct platform_device *pdev)
 	INIT_WORK(&chg->bat_work, s3c_bat_work);
 
 	chg->monitor_wqueue =
-		create_freezeable_workqueue(dev_name(&pdev->dev));
+		create_freezable_workqueue(dev_name(&pdev->dev));
 	if (!chg->monitor_wqueue) {
-		pr_err("Failed to create freezeable workqueue\n");
+		pr_err("Failed to create freezable workqueue\n");
 		ret = -ENOMEM;
 		goto err_wake_lock;
 	}
