@@ -57,7 +57,7 @@ static void ath5k_pci_read_cachesize(struct ath_common *common, int *csz)
 	*csz = (int)u8tmp;
 
 	/*
-	 * This check was put in to avoid "unplesant" consequences if
+	 * This check was put in to avoid "unpleasant" consequences if
 	 * the bootrom has not fully initialized all PCI devices.
 	 * Sometimes the cache line size register is not set
 	 */
@@ -69,7 +69,8 @@ static void ath5k_pci_read_cachesize(struct ath_common *common, int *csz)
 /*
  * Read from eeprom
  */
-bool ath5k_pci_eeprom_read(struct ath_common *common, u32 offset, u16 *data)
+static bool
+ath5k_pci_eeprom_read(struct ath_common *common, u32 offset, u16 *data)
 {
 	struct ath5k_hw *ah = (struct ath5k_hw *) common->ah;
 	u32 status, timeout;
@@ -90,15 +91,15 @@ bool ath5k_pci_eeprom_read(struct ath_common *common, u32 offset, u16 *data)
 		status = ath5k_hw_reg_read(ah, AR5K_EEPROM_STATUS);
 		if (status & AR5K_EEPROM_STAT_RDDONE) {
 			if (status & AR5K_EEPROM_STAT_RDERR)
-				return -EIO;
+				return false;
 			*data = (u16)(ath5k_hw_reg_read(ah, AR5K_EEPROM_DATA) &
 					0xffff);
-			return 0;
+			return true;
 		}
 		udelay(15);
 	}
 
-	return -ETIMEDOUT;
+	return false;
 }
 
 int ath5k_hw_read_srev(struct ath5k_hw *ah)
@@ -264,7 +265,9 @@ ath5k_pci_remove(struct pci_dev *pdev)
 #ifdef CONFIG_PM_SLEEP
 static int ath5k_pci_suspend(struct device *dev)
 {
-	struct ath5k_softc *sc = pci_get_drvdata(to_pci_dev(dev));
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
+	struct ath5k_softc *sc = hw->priv;
 
 	ath5k_led_off(sc);
 	return 0;
@@ -273,7 +276,8 @@ static int ath5k_pci_suspend(struct device *dev)
 static int ath5k_pci_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	struct ath5k_softc *sc = pci_get_drvdata(pdev);
+	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
+	struct ath5k_softc *sc = hw->priv;
 
 	/*
 	 * Suspend/Resume resets the PCI configuration space, so we have to
