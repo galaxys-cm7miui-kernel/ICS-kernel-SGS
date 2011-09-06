@@ -28,15 +28,11 @@
 static int s5pv210_serial_setsource(struct uart_port *port,
 					struct s3c24xx_uart_clksrc *clk)
 {
-	struct s3c2410_uartcfg *cfg = port->dev->platform_data;
 	unsigned long ucon = rd_regl(port, S3C2410_UCON);
-
-	if ((cfg->clocks_size) == 1)
-		return 0;
 
 	if (strcmp(clk->name, "pclk") == 0)
 		ucon &= ~S5PV210_UCON_CLKMASK;
-	else if (strcmp(clk->name, "uclk1") == 0)
+	else if (strcmp(clk->name, "sclk") == 0)
 		ucon |= S5PV210_UCON_CLKMASK;
 	else {
 		printk(KERN_ERR "unknown clock source %s\n", clk->name);
@@ -51,20 +47,16 @@ static int s5pv210_serial_setsource(struct uart_port *port,
 static int s5pv210_serial_getsource(struct uart_port *port,
 					struct s3c24xx_uart_clksrc *clk)
 {
-	struct s3c2410_uartcfg *cfg = port->dev->platform_data;
 	u32 ucon = rd_regl(port, S3C2410_UCON);
 
 	clk->divisor = 1;
-
-	if ((cfg->clocks_size) == 1)
-		return 0;
 
 	switch (ucon & S5PV210_UCON_CLKMASK) {
 	case S5PV210_UCON_PCLK:
 		clk->name = "pclk";
 		break;
 	case S5PV210_UCON_UCLK:
-		clk->name = "uclk1";
+		clk->name = "sclk";
 		break;
 	}
 
