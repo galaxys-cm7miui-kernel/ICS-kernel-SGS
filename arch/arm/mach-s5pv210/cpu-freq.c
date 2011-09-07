@@ -62,11 +62,10 @@ static struct cpufreq_frequency_table freq_table[] = {
 };
 
 extern int exp_UV_mV[8]; //Needed for uv
-unsigned int freq_uv_table[6][3] = {
+unsigned int freq_uv_table[5][3] = {
 	//freq, stock, current
 	{1000000,	1250,	1250},
 	{800000,	1200,	1200},
-	{600000,	1150,	1150},
 	{400000,	1050,	1050},
 	{200000,	950,	950},
 	{100000,	950,	950},
