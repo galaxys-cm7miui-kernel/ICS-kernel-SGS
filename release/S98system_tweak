@@ -382,8 +382,8 @@ setprop ro.ril.def.agps.mode 2 # default value
 # TWEAKS: overall
 # =========
 setprop ro.telephony.call_ring.delay 100; # let's minimize the time Android waits until it rings on a call
-setprop ro.ril.disable.power.collapse 0;
-setprop pm.sleep_mode 1; # previously 0, recommended is 1 or 2
+#setprop ro.ril.disable.power.collapse 0; # commented out - option to experiment with
+#setprop pm.sleep_mode 1; # previously 0, recommended is 1 or 2 # commented out - option to experiment with
 #setprop dalvik.vm.startheapsize 8m;
 #setprop dalvik.vm.heapsize 64m; # leave that setting to cyanogenmod settings or uncomment it if needed
 setprop wifi.supplicant_scan_interval 60; # higher is not recommended, scans while not connected anyway so shouldn't affect while connected
