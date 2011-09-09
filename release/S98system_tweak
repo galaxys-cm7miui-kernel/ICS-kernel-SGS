@@ -1,6 +1,6 @@
 #!/system/bin/sh
 #
-# 89system_tweak V58
+# 89system_tweak V59
 # by zacharias.maladroit
 # modifications and ideas taken from: ckMod SSSwitch by voku1987 and "battery tweak" (collin_ph@xda)
 # OOM/LMK settings by Juwe11
@@ -109,7 +109,6 @@ echo 0 > /proc/sys/vm/laptop_mode
 
 #		echo 60 > /proc/sys/vm/swappiness; # 20 # 70
 #		echo 10 > /proc/sys/vm/page-cluster; # 12
-		echo 0 > /proc/sys/vm/laptop_mode; # do not omit syncing
 		echo 700 > /proc/sys/vm/dirty_expire_centisecs; # 2000 # 700 is long enough [stability testing]
 		echo 500 > /proc/sys/vm/dirty_writeback_centisecs; # 1000 # 500 is long enough [stability testing]
 		echo 10 > /proc/sys/vm/dirty_background_ratio; # 15 # 10 # 50  
@@ -387,7 +386,7 @@ setprop ro.telephony.call_ring.delay 100; # let's minimize the time Android wait
 #setprop dalvik.vm.startheapsize 8m;
 #setprop dalvik.vm.heapsize 64m; # leave that setting to cyanogenmod settings or uncomment it if needed
 setprop wifi.supplicant_scan_interval 60; # higher is not recommended, scans while not connected anyway so shouldn't affect while connected
-setprop windowsmgr.max_events_per_sec 260; # smoother GUI # max at 300
+setprop windowsmgr.max_events_per_sec 60; # smoother GUI # max at 300
 #echo 64000 > /proc/sys/kernel/msgmni;
 echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
 #echo 5000 > /proc/sys/kernel/threads-max;
@@ -446,20 +445,22 @@ fi;
 # TWEAKS: new scheduler performance settings (test)
 # =========
 
+# comment out for troubleshooting [some lags have been reported]
+
 #echo "now disabling GENTLE_FAIR_SLEEPERS"
-echo "NO_GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
+#echo "NO_GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 #echo ""
 #echo "now disabling FAIR_SLEEPERS"
-echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
+#echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 #echo "now disabling NORMALIZED_SLEEPERS"
-echo "NO_NORMALIZED_SLEEPERS" > /sys/kernel/debug/sched_features
+#echo "NO_NORMALIZED_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
-echo "24319" > /proc/sys/kernel/sched_features
+#echo "24319" > /proc/sys/kernel/sched_features
 
 # =========
 # TWEAKS: raise throughput & responsiveness [reboots & instability ?!]
@@ -639,3 +640,4 @@ echo "24319" > /proc/sys/kernel/sched_features
 # V56: fixed a typo in NO_NORMALIZED_SLEEPERS;  no_new_fair_sleepers and no_normalized_sleepers are rather pointless since not available in the kernel but still setting them - just in case ;)
 # V57: enable some more network tweaks (for all network types), smoother GUI, testing with sleep mode
 # V58: fixed 2 typos in the agps tweaks - thanks to DerTeufel for spotting those !
+# V59: window events back to 60, disabling some scheduler modifications
