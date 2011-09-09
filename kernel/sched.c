@@ -32,7 +32,6 @@
 #include <linux/init.h>
 #include <linux/uaccess.h>
 #include <linux/highmem.h>
-#include <linux/smp_lock.h>
 #include <asm/mmu_context.h>
 #include <linux/interrupt.h>
 #include <linux/capability.h>
@@ -3850,39 +3849,10 @@ EXPORT_SYMBOL(sub_preempt_count);
 #endif
 
 /*
- * Print scheduling while atomic bug:
- */
-static noinline void __schedule_bug(struct task_struct *prev)
-{
-	struct pt_regs *regs = get_irq_regs();
-
-	printk(KERN_ERR "BUG: scheduling while atomic: %s/%d/0x%08x\n",
-		prev->comm, prev->pid, preempt_count());
-
-	debug_show_held_locks(prev);
-	print_modules();
-	if (irqs_disabled())
-		print_irqtrace_events(prev);
-
-	if (regs)
-		show_regs(regs);
-	else
-		dump_stack();
-}
-
-/*
  * Various schedule()-time debugging checks and statistics:
  */
 static inline void schedule_debug(struct task_struct *prev)
 {
-	/*
-	 * Test if we are atomic. Since do_exit() needs to call into
-	 * schedule() atomically, we ignore that path for now.
-	 * Otherwise, whine if we are scheduling when we should not be.
-	 */
-	if (unlikely(in_atomic_preempt_off() && !prev->exit_state))
-		__schedule_bug(prev);
-
 	profile_hit(SCHED_PROFILING, __builtin_return_address(0));
 
 	schedstat_inc(this_rq(), sched_count);
@@ -3946,9 +3916,6 @@ need_resched:
 	rcu_note_context_switch(cpu);
 	prev = rq->curr;
 
-	release_kernel_lock(prev);
-need_resched_nonpreemptible:
-
 	schedule_debug(prev);
 
 	if (sched_feat(HRTICK))
@@ -4010,9 +3977,6 @@ need_resched_nonpreemptible:
 		raw_spin_unlock_irq(&rq->lock);
 
 	post_schedule(rq);
-
-	if (unlikely(reacquire_kernel_lock(prev)))
-		goto need_resched_nonpreemptible;
 
 	preempt_enable_no_resched();
 	if (need_resched())
@@ -8076,7 +8040,7 @@ static inline int preempt_count_equals(int preempt_offset)
 {
 	int nested = (preempt_count() & ~PREEMPT_ACTIVE) + rcu_preempt_depth();
 
-	return (nested == PREEMPT_INATOMIC_BASE + preempt_offset);
+	return (nested == preempt_offset);
 }
 
 static int __might_sleep_init_called;

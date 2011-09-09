@@ -103,9 +103,7 @@ static struct map_desc s5pv210_iodesc[] __initdata = {
 
 static void s5pv210_idle(void)
 {
-	if (!need_resched())
-		cpu_do_idle();
-
+	cpu_do_idle();
 	local_irq_enable();
 }
 

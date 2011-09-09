@@ -25,7 +25,6 @@
 #include <linux/init.h>
 #include <linux/kmod.h>
 #include <linux/slab.h>
-#include <linux/smp_lock.h>
 #include <asm/uaccess.h>
 #include <asm/system.h>
 
@@ -227,9 +226,7 @@ static long v4l2_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		ret = vdev->fops->unlocked_ioctl(filp, cmd, arg);
 	} else if (vdev->fops->ioctl) {
 		/* TODO: convert all drivers to unlocked_ioctl */
-		lock_kernel();
 		ret = vdev->fops->ioctl(filp, cmd, arg);
-		unlock_kernel();
 	} else
 		ret = -ENOTTY;
 

@@ -133,8 +133,7 @@ EXPORT_SYMBOL_GPL(arm_pm_restart);
  */
 static void default_idle(void)
 {
-	if (!need_resched())
-		arch_idle();
+	arch_idle();
 	local_irq_enable();
 }
 
@@ -155,28 +154,26 @@ void cpu_idle(void)
 	while (1) {
 		tick_nohz_stop_sched_tick(1);
 		leds_event(led_idle_start);
-		while (!need_resched()) {
 #ifdef CONFIG_HOTPLUG_CPU
-			if (cpu_is_offline(smp_processor_id()))
-				cpu_die();
+		if (cpu_is_offline(smp_processor_id()))
+			cpu_die();
 #endif
 
-			local_irq_disable();
-			if (hlt_counter) {
-				local_irq_enable();
-				cpu_relax();
-			} else {
-				stop_critical_timings();
-				pm_idle();
-				start_critical_timings();
-				/*
-				 * This will eventually be removed - pm_idle
-				 * functions should always return with IRQs
-				 * enabled.
-				 */
-				WARN_ON(irqs_disabled());
-				local_irq_enable();
-			}
+		local_irq_disable();
+		if (hlt_counter) {
+			local_irq_enable();
+		cpu_relax();
+		} else {
+			stop_critical_timings();
+			pm_idle();
+			start_critical_timings();
+			/*
+			 * This will eventually be removed - pm_idle
+			 * functions should always return with IRQs
+			 * enabled.
+			 */
+			WARN_ON(irqs_disabled());
+			local_irq_enable();
 		}
 		leds_event(led_idle_end);
 		tick_nohz_restart_sched_tick();

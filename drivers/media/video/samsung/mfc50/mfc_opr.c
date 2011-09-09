@@ -35,6 +35,7 @@
 #include <linux/mm.h>
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/sched.h>
 #include <plat/regs-mfc.h>
 #include <asm/cacheflush.h>
 #include <mach/map.h>

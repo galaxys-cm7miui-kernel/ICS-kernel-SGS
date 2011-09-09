@@ -72,7 +72,6 @@
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
-#include <linux/smp_lock.h>
 #include <linux/pagemap.h>
 #include <linux/mtd/mtd.h>
 #include <linux/interrupt.h>
