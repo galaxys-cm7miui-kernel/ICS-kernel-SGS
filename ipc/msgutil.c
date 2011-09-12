@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/ipc.h>
 #include <linux/ipc_namespace.h>
+#include <linux/utsname.h>
 #include <asm/uaccess.h>
 
 #include "util.h"
@@ -32,6 +33,7 @@ struct ipc_namespace init_ipc_ns = {
 	.mq_msg_max      = DFLT_MSGMAX,
 	.mq_msgsize_max  = DFLT_MSGSIZEMAX,
 #endif
+	.user_ns = &init_user_ns,
 };
 
 atomic_t nr_ipc_ns = ATOMIC_INIT(1);
