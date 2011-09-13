@@ -106,8 +106,9 @@ truncate_complete_page(struct address_space *mapping, struct page *page)
 	cancel_dirty_page(page, PAGE_CACHE_SIZE);
 
 	clear_page_mlock(page);
-	ClearPageMappedToDisk(page);
 	delete_from_page_cache(page);
+	ClearPageMappedToDisk(page);
+	page_cache_release(page);	/* pagecache ref */
 	return 0;
 }
 
@@ -321,12 +322,11 @@ EXPORT_SYMBOL(truncate_inode_pages);
  * pagetables.
  */
 unsigned long invalidate_mapping_pages(struct address_space *mapping,
-		pgoff_t start, pgoff_t end)
+				       pgoff_t start, pgoff_t end)
 {
 	struct pagevec pvec;
 	pgoff_t next = start;
-	unsigned long ret;
-	unsigned long count = 0;
+	unsigned long ret = 0;
 	int i;
 
 	pagevec_init(&pvec, 0);
@@ -353,15 +353,9 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 			if (lock_failed)
 				continue;
 
-			ret = invalidate_inode_page(page);
+			ret += invalidate_inode_page(page);
+
 			unlock_page(page);
-			/*
-			 * Invalidation is a hint that the page is no longer
-			 * of interest and try to speed up its reclaim.
-			 */
-			if (!ret)
-				deactivate_page(page);
-			count += ret;
 			if (next > end)
 				break;
 		}
@@ -369,7 +363,7 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 		mem_cgroup_uncharge_end();
 		cond_resched();
 	}
-	return count;
+	return ret;
 }
 EXPORT_SYMBOL(invalidate_mapping_pages);
 

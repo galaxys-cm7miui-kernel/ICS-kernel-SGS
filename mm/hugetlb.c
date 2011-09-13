@@ -146,7 +146,7 @@ static long region_chg(struct list_head *head, long f, long t)
 		if (rg->from > t)
 			return chg;
 
-		/* We overlap with this area, if it extends further than
+		/* We overlap with this area, if it extends futher than
 		 * us then we must extend ourselves.  Account for its
 		 * existing reservation. */
 		if (rg->to > t) {
@@ -842,7 +842,7 @@ struct page *alloc_huge_page_node(struct hstate *h, int nid)
 }
 
 /*
- * Increase the hugetlb pool such that it can accommodate a reservation
+ * Increase the hugetlb pool such that it can accomodate a reservation
  * of size 'delta'.
  */
 static int gather_surplus_pages(struct hstate *h, int delta)
@@ -890,7 +890,7 @@ retry:
 
 	/*
 	 * The surplus_list now contains _at_least_ the number of extra pages
-	 * needed to accommodate the reservation.  Add the appropriate number
+	 * needed to accomodate the reservation.  Add the appropriate number
 	 * of pages to the hugetlb pool and free the extras back to the buddy
 	 * allocator.  Commit the entire reservation here to prevent another
 	 * process from stealing the pages as they are added to the pool but
@@ -1033,10 +1033,10 @@ static struct page *alloc_huge_page(struct vm_area_struct *vma,
 	 */
 	chg = vma_needs_reservation(h, vma, addr);
 	if (chg < 0)
-		return ERR_PTR(-VM_FAULT_OOM);
+		return ERR_PTR(chg);
 	if (chg)
 		if (hugetlb_get_quota(inode->i_mapping, chg))
-			return ERR_PTR(-VM_FAULT_SIGBUS);
+			return ERR_PTR(-ENOSPC);
 
 	spin_lock(&hugetlb_lock);
 	page = dequeue_huge_page_vma(h, vma, addr, avoid_reserve);
@@ -1111,14 +1111,6 @@ static void __init gather_bootmem_prealloc(void)
 		WARN_ON(page_count(page) != 1);
 		prep_compound_huge_page(page, h->order);
 		prep_new_huge_page(h, page, page_to_nid(page));
-		/*
-		 * If we had gigantic hugepages allocated at boot time, we need
-		 * to restore the 'stolen' pages to totalram_pages in order to
-		 * fix confusing memory reports from free(1) and another
-		 * side-effects, like CommitLimit going negative.
-		 */
-		if (h->order > (MAX_ORDER - 1))
-			totalram_pages += 1 << h->order;
 	}
 }
 
@@ -1880,7 +1872,8 @@ static int hugetlb_sysctl_handler_common(bool obey_mempolicy,
 	unsigned long tmp;
 	int ret;
 
-	tmp = h->max_huge_pages;
+	if (!write)
+		tmp = h->max_huge_pages;
 
 	if (write && h->order >= MAX_ORDER)
 		return -EINVAL;
@@ -1945,7 +1938,8 @@ int hugetlb_overcommit_handler(struct ctl_table *table, int write,
 	unsigned long tmp;
 	int ret;
 
-	tmp = h->nr_overcommit_huge_pages;
+	if (!write)
+		tmp = h->nr_overcommit_huge_pages;
 
 	if (write && h->order >= MAX_ORDER)
 		return -EINVAL;
@@ -2051,7 +2045,7 @@ static void hugetlb_vm_op_open(struct vm_area_struct *vma)
 	 * This new VMA should share its siblings reservation map if present.
 	 * The VMA will only ever have a valid reservation map pointer where
 	 * it is being copied for another still existing VMA.  As that VMA
-	 * has a reference to the reservation map it cannot disappear until
+	 * has a reference to the reservation map it cannot dissappear until
 	 * after this open call completes.  It is therefore safe to take a
 	 * new reference here without additional locking.
 	 */
@@ -2498,7 +2492,7 @@ static int hugetlb_no_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	/*
 	 * Currently, we are forced to kill the process in the event the
 	 * original mapper has unmapped pages from the child due to a failed
-	 * COW. Warn that such a situation has occurred as it may not be obvious
+	 * COW. Warn that such a situation has occured as it may not be obvious
 	 */
 	if (is_vma_resv_set(vma, HPAGE_RESV_UNMAPPED)) {
 		printk(KERN_WARNING
