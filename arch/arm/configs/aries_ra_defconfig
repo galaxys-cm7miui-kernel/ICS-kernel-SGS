@@ -1,7 +1,6 @@
 #
 # Automatically generated make config: don't edit
 # Linux/arm 2.6.38 Kernel Configuration
-# Tue Sep  6 20:47:09 2011
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -559,12 +558,7 @@ CONFIG_TCP_CONG_VEGAS=y
 # CONFIG_TCP_CONG_VENO is not set
 CONFIG_TCP_CONG_YEAH=y
 # CONFIG_TCP_CONG_ILLINOIS is not set
-# CONFIG_DEFAULT_BIC is not set
-# CONFIG_DEFAULT_CUBIC is not set
-# CONFIG_DEFAULT_HTCP is not set
 CONFIG_DEFAULT_VEGAS=y
-# CONFIG_DEFAULT_VENO is not set
-# CONFIG_DEFAULT_WESTWOOD is not set
 # CONFIG_DEFAULT_RENO is not set
 CONFIG_DEFAULT_TCP_CONG="vegas"
 # CONFIG_TCP_MD5SIG is not set
@@ -738,7 +732,11 @@ CONFIG_IP_NF_ARP_MANGLE=y
 # CONFIG_RDS is not set
 # CONFIG_TIPC is not set
 # CONFIG_ATM is not set
-# CONFIG_L2TP is not set
+CONFIG_L2TP=y
+# CONFIG_L2TP_DEBUGFS is not set
+CONFIG_L2TP_V3=y
+CONFIG_L2TP_IP=y
+CONFIG_L2TP_ETH=y
 # CONFIG_BRIDGE is not set
 # CONFIG_NET_DSA is not set
 # CONFIG_VLAN_8021Q is not set
@@ -1078,6 +1076,7 @@ CONFIG_DM_CRYPT=y
 # CONFIG_DM_MULTIPATH is not set
 # CONFIG_DM_DELAY is not set
 CONFIG_DM_UEVENT=y
+# CONFIG_DM_FLAKEY is not set
 # CONFIG_TARGET_CORE is not set
 CONFIG_NETDEVICES=y
 CONFIG_IFB=y
@@ -1089,7 +1088,26 @@ CONFIG_TUN=m
 # CONFIG_VETH is not set
 # CONFIG_MII is not set
 # CONFIG_PHYLIB is not set
-# CONFIG_NET_ETHERNET is not set
+CONFIG_NET_ETHERNET=y
+# CONFIG_AX88796 is not set
+# CONFIG_SMC91X is not set
+# CONFIG_DM9000 is not set
+# CONFIG_ENC28J60 is not set
+# CONFIG_ETHOC is not set
+# CONFIG_SMC911X is not set
+# CONFIG_SMSC911X is not set
+# CONFIG_DNET is not set
+# CONFIG_IBM_NEW_EMAC_ZMII is not set
+# CONFIG_IBM_NEW_EMAC_RGMII is not set
+# CONFIG_IBM_NEW_EMAC_TAH is not set
+# CONFIG_IBM_NEW_EMAC_EMAC4 is not set
+# CONFIG_IBM_NEW_EMAC_NO_FLOW_CTRL is not set
+# CONFIG_IBM_NEW_EMAC_MAL_CLR_ICINTSTAT is not set
+# CONFIG_IBM_NEW_EMAC_MAL_COMMON_ERR is not set
+# CONFIG_B44 is not set
+# CONFIG_KS8851 is not set
+# CONFIG_KS8851_MLL is not set
+# CONFIG_FTMAC100 is not set
 CONFIG_NETDEV_1000=y
 # CONFIG_STMMAC_ETH is not set
 CONFIG_NETDEV_10000=y
@@ -1117,6 +1135,7 @@ CONFIG_PPP_DEFLATE=y
 CONFIG_PPP_BSDCOMP=y
 CONFIG_PPP_MPPE=y
 # CONFIG_PPPOE is not set
+# CONFIG_PPPOL2TP is not set
 CONFIG_PPPOLAC=y
 CONFIG_PPPOPNS=y
 # CONFIG_SLIP is not set
@@ -1559,7 +1578,8 @@ CONFIG_FB_S3C_DEFAULT_WINDOW=2
 CONFIG_FB_S3C_NR_BUFFERS=4
 # CONFIG_FB_S3C_VIRTUAL is not set
 CONFIG_FB_S3C_TL2796=y
-# CONFIG_FB_VOODOO is not set
+CONFIG_FB_VOODOO=y
+# CONFIG_FB_VOODOO_DEBUG_LOG is not set
 # CONFIG_FB_S3C_NT35580 is not set
 # CONFIG_FB_S3C_LVDS is not set
 # CONFIG_FB_S3C_AMS701KA is not set
@@ -1830,17 +1850,11 @@ CONFIG_ANDROID_TIMED_OUTPUT=y
 CONFIG_ANDROID_TIMED_GPIO=y
 CONFIG_ANDROID_LOW_MEMORY_KILLER=y
 # CONFIG_POHMELFS is not set
-# CONFIG_AUTOFS_FS is not set
 # CONFIG_IIO is not set
+CONFIG_XVMALLOC=y
 CONFIG_ZRAM=y
+# CONFIG_ZRAM_DEBUG is not set
 # CONFIG_FB_SM7XX is not set
-
-#
-# Texas Instruments shared transport line discipline
-#
-# CONFIG_ST_BT is not set
-# CONFIG_ADIS16255 is not set
-# CONFIG_SMB_FS is not set
 CONFIG_MACH_NO_WESTBRIDGE=y
 # CONFIG_ATH6K_LEGACY is not set
 # CONFIG_FT1000 is not set
@@ -1848,6 +1862,13 @@ CONFIG_MACH_NO_WESTBRIDGE=y
 #
 # Speakup console speech
 #
+# CONFIG_TOUCHSCREEN_CLEARPAD_TM1217 is not set
+# CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4 is not set
+
+#
+# Altera FPGA firmware download module
+#
+# CONFIG_ALTERA_STAPL is not set
 
 #
 # File systems
