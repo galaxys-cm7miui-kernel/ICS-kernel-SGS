@@ -265,7 +265,7 @@ int osd_execute_request_async(struct osd_request *or,
  * @osi           - Recievs a more detailed error report information (optional).
  * @silent        - Do not print to dmsg (Even if enabled)
  * @bad_obj_list  - Some commands act on multiple objects. Failed objects will
- *                  be received here (optional)
+ *                  be recieved here (optional)
  * @max_obj       - Size of @bad_obj_list.
  * @bad_attr_list - List of failing attributes (optional)
  * @max_attr      - Size of @bad_attr_list.

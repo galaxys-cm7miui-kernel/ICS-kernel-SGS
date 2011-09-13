@@ -37,9 +37,10 @@
 
 #define MAX_TREE_SIZE (2 + MAX_SERVER_SIZE + 1 + MAX_SHARE_SIZE + 1)
 #define MAX_SERVER_SIZE 15
-#define MAX_SHARE_SIZE 80
-#define MAX_USERNAME_SIZE 256	/* reasonable maximum for current servers */
-#define MAX_PASSWORD_SIZE 512	/* max for windows seems to be 256 wide chars */
+#define MAX_SHARE_SIZE  64	/* used to be 20, this should still be enough */
+#define MAX_USERNAME_SIZE 32	/* 32 is to allow for 15 char names + null
+				   termination then *2 for unicode versions */
+#define MAX_PASSWORD_SIZE 512  /* max for windows seems to be 256 wide chars */
 
 #define CIFS_MIN_RCV_POOL 4
 
@@ -91,8 +92,7 @@ enum statusEnum {
 	CifsNew = 0,
 	CifsGood,
 	CifsExiting,
-	CifsNeedReconnect,
-	CifsNeedNegotiate
+	CifsNeedReconnect
 };
 
 enum securityEnum {
@@ -274,7 +274,7 @@ struct cifsSesInfo {
 	int capabilities;
 	char serverName[SERVER_NAME_LEN_WITH_NULL * 2];	/* BB make bigger for
 				TCP names - will ipv6 and sctp addresses fit? */
-	char *user_name;
+	char userName[MAX_USERNAME_SIZE + 1];
 	char *domainName;
 	char *password;
 	struct session_key auth_key;
@@ -817,6 +817,7 @@ GLOBAL_EXTERN unsigned int multiuser_mount; /* if enabled allows new sessions
 				have the uid/password or Kerberos credential
 				or equivalent for current user */
 GLOBAL_EXTERN unsigned int oplockEnabled;
+GLOBAL_EXTERN unsigned int experimEnabled;
 GLOBAL_EXTERN unsigned int lookupCacheEnabled;
 GLOBAL_EXTERN unsigned int global_secflags;	/* if on, session setup sent
 				with more secure ntlmssp2 challenge/resp */

@@ -727,6 +727,7 @@ static int dlm_remaster_locks(struct dlm_ctxt *dlm, u8 dead_node)
 	if (destroy)
 		dlm_destroy_recovery_area(dlm, dead_node);
 
+	mlog_exit(status);
 	return status;
 }
 
@@ -1495,9 +1496,9 @@ leave:
 			kfree(buf);
 		if (item)
 			kfree(item);
-		mlog_errno(ret);
 	}
 
+	mlog_exit(ret);
 	return ret;
 }
 
@@ -1566,6 +1567,7 @@ leave:
 		dlm_lockres_put(res);
 	}
 	kfree(data);
+	mlog_exit(ret);
 }
 
 
@@ -1984,6 +1986,7 @@ leave:
 			dlm_lock_put(newlock);
 	}
 
+	mlog_exit(ret);
 	return ret;
 }
 
@@ -2079,6 +2082,8 @@ static void dlm_finish_local_lockres_recovery(struct dlm_ctxt *dlm,
 	struct hlist_node *hash_iter;
 	struct hlist_head *bucket;
 	struct dlm_lock_resource *res, *next;
+
+	mlog_entry_void();
 
 	assert_spin_locked(&dlm->spinlock);
 
@@ -2601,6 +2606,8 @@ static int dlm_send_begin_reco_message(struct dlm_ctxt *dlm, u8 dead_node)
 	struct dlm_node_iter iter;
 	int nodenum;
 	int status;
+
+	mlog_entry("%u\n", dead_node);
 
 	mlog(0, "%s: dead node is %u\n", dlm->name, dead_node);
 

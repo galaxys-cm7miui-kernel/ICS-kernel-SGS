@@ -99,7 +99,6 @@ struct robust_list_head;
 struct bio_list;
 struct fs_struct;
 struct perf_event_context;
-struct blk_plug;
 
 /*
  * List of flags we want to share for kernel threads,
@@ -517,7 +516,7 @@ struct thread_group_cputimer {
 struct autogroup;
 
 /*
- * NOTE! "signal_struct" does not have its own
+ * NOTE! "signal_struct" does not have it's own
  * locking, because a shared signal_struct always
  * implies a shared sighand_struct, so locking
  * sighand_struct is always a proper superset of
@@ -854,7 +853,7 @@ extern int __weak arch_sd_sibiling_asym_packing(void);
 
 /*
  * Optimise SD flags for power savings:
- * SD_BALANCE_NEWIDLE helps aggressive task consolidation and power savings.
+ * SD_BALANCE_NEWIDLE helps agressive task consolidation and power savings.
  * Keep default SD flags if sched_{smt,mc}_power_saving=0
  */
 
@@ -1059,7 +1058,6 @@ struct sched_class {
 	void (*enqueue_task) (struct rq *rq, struct task_struct *p, int flags);
 	void (*dequeue_task) (struct rq *rq, struct task_struct *p, int flags);
 	void (*yield_task) (struct rq *rq);
-	bool (*yield_to_task) (struct rq *rq, struct task_struct *p, bool preempt);
 
 	void (*check_preempt_curr) (struct rq *rq, struct task_struct *p, int flags);
 
@@ -1256,9 +1254,6 @@ struct task_struct {
 #endif
 
 	struct mm_struct *mm, *active_mm;
-#ifdef CONFIG_COMPAT_BRK
-	unsigned brk_randomized:1;
-#endif
 #if defined(SPLIT_RSS_COUNTING)
 	struct task_rss_stat	rss_stat;
 #endif
@@ -1434,11 +1429,6 @@ struct task_struct {
 /* stacked block device info */
 	struct bio_list *bio_list;
 
-#ifdef CONFIG_BLOCK
-/* stack plugging */
-	struct blk_plug *plug;
-#endif
-
 /* VM state */
 	struct reclaim_state *reclaim_state;
 
@@ -1482,7 +1472,6 @@ struct task_struct {
 #ifdef CONFIG_NUMA
 	struct mempolicy *mempolicy;	/* Protected by alloc_lock */
 	short il_next;
-	short pref_node_fork;
 #endif
 	atomic_t fs_excl;	/* holding fs exclusive resources */
 	struct rcu_head rcu;

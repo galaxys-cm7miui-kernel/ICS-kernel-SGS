@@ -26,10 +26,10 @@
 #include <linux/buffer_head.h>
 #include <linux/slab.h>
 #include <linux/xz.h>
-#include <linux/bitops.h>
 
 #include "squashfs_fs.h"
 #include "squashfs_fs_sb.h"
+#include "squashfs_fs_i.h"
 #include "squashfs.h"
 #include "decompressor.h"
 
@@ -38,57 +38,24 @@ struct squashfs_xz {
 	struct xz_buf buf;
 };
 
-struct comp_opts {
-	__le32 dictionary_size;
-	__le32 flags;
-};
-
-static void *squashfs_xz_init(struct squashfs_sb_info *msblk, void *buff,
-	int len)
+static void *squashfs_xz_init(struct squashfs_sb_info *msblk)
 {
-	struct comp_opts *comp_opts = buff;
-	struct squashfs_xz *stream;
-	int dict_size = msblk->block_size;
-	int err, n;
+	int block_size = max_t(int, msblk->block_size, SQUASHFS_METADATA_SIZE);
 
-	if (comp_opts) {
-		/* check compressor options are the expected length */
-		if (len < sizeof(*comp_opts)) {
-			err = -EIO;
-			goto failed;
-		}
-
-		dict_size = le32_to_cpu(comp_opts->dictionary_size);
-
-		/* the dictionary size should be 2^n or 2^n+2^(n+1) */
-		n = ffs(dict_size) - 1;
-		if (dict_size != (1 << n) && dict_size != (1 << n) +
-						(1 << (n + 1))) {
-			err = -EIO;
-			goto failed;
-		}
-	}
-
-	dict_size = max_t(int, dict_size, SQUASHFS_METADATA_SIZE);
-
-	stream = kmalloc(sizeof(*stream), GFP_KERNEL);
-	if (stream == NULL) {
-		err = -ENOMEM;
+	struct squashfs_xz *stream = kmalloc(sizeof(*stream), GFP_KERNEL);
+	if (stream == NULL)
 		goto failed;
-	}
 
-	stream->state = xz_dec_init(XZ_PREALLOC, dict_size);
-	if (stream->state == NULL) {
-		kfree(stream);
-		err = -ENOMEM;
+	stream->state = xz_dec_init(XZ_PREALLOC, block_size);
+	if (stream->state == NULL)
 		goto failed;
-	}
 
 	return stream;
 
 failed:
-	ERROR("Failed to initialise xz decompressor\n");
-	return ERR_PTR(err);
+	ERROR("Failed to allocate xz workspace\n");
+	kfree(stream);
+	return NULL;
 }
 
 

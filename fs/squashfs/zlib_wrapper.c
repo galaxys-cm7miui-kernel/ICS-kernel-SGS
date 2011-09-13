@@ -26,19 +26,19 @@
 #include <linux/buffer_head.h>
 #include <linux/slab.h>
 #include <linux/zlib.h>
-#include <linux/vmalloc.h>
 
 #include "squashfs_fs.h"
 #include "squashfs_fs_sb.h"
 #include "squashfs.h"
 #include "decompressor.h"
 
-static void *zlib_init(struct squashfs_sb_info *dummy, void *buff, int len)
+static void *zlib_init(struct squashfs_sb_info *dummy)
 {
 	z_stream *stream = kmalloc(sizeof(z_stream), GFP_KERNEL);
 	if (stream == NULL)
 		goto failed;
-	stream->workspace = vmalloc(zlib_inflate_workspacesize());
+	stream->workspace = kmalloc(zlib_inflate_workspacesize(),
+		GFP_KERNEL);
 	if (stream->workspace == NULL)
 		goto failed;
 
@@ -47,7 +47,7 @@ static void *zlib_init(struct squashfs_sb_info *dummy, void *buff, int len)
 failed:
 	ERROR("Failed to allocate zlib workspace\n");
 	kfree(stream);
-	return ERR_PTR(-ENOMEM);
+	return NULL;
 }
 
 
@@ -56,7 +56,7 @@ static void zlib_free(void *strm)
 	z_stream *stream = strm;
 
 	if (stream)
-		vfree(stream->workspace);
+		kfree(stream->workspace);
 	kfree(stream);
 }
 

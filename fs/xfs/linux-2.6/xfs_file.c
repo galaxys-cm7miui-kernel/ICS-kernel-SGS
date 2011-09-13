@@ -381,7 +381,7 @@ xfs_aio_write_isize_update(
 
 /*
  * If this was a direct or synchronous I/O that failed (such as ENOSPC) then
- * part of the I/O may have been written to disk before the error occurred.  In
+ * part of the I/O may have been written to disk before the error occured.  In
  * this case the on-disk file size may have been adjusted beyond the in-memory
  * file size and now needs to be truncated back.
  */
@@ -896,7 +896,6 @@ xfs_file_fallocate(
 	xfs_flock64_t	bf;
 	xfs_inode_t	*ip = XFS_I(inode);
 	int		cmd = XFS_IOC_RESVSP;
-	int		attr_flags = XFS_ATTR_NOLOCK;
 
 	if (mode & ~(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE))
 		return -EOPNOTSUPP;
@@ -919,10 +918,7 @@ xfs_file_fallocate(
 			goto out_unlock;
 	}
 
-	if (file->f_flags & O_DSYNC)
-		attr_flags |= XFS_ATTR_SYNC;
-
-	error = -xfs_change_file_space(ip, cmd, &bf, 0, attr_flags);
+	error = -xfs_change_file_space(ip, cmd, &bf, 0, XFS_ATTR_NOLOCK);
 	if (error)
 		goto out_unlock;
 

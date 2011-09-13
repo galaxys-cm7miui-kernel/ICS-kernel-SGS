@@ -447,11 +447,8 @@ static int tnc_read_node_nm(struct ubifs_info *c, struct ubifs_zbranch *zbr,
  *
  * Note, this function does not check CRC of data nodes if @c->no_chk_data_crc
  * is true (it is controlled by corresponding mount option). However, if
- * @c->mounting or @c->remounting_rw is true (we are mounting or re-mounting to
- * R/W mode), @c->no_chk_data_crc is ignored and CRC is checked. This is
- * because during mounting or re-mounting from R/O mode to R/W mode we may read
- * journal nodes (when replying the journal or doing the recovery) and the
- * journal nodes may potentially be corrupted, so checking is required.
+ * @c->always_chk_crc is true, @c->no_chk_data_crc is ignored and CRC is always
+ * checked.
  */
 static int try_read_node(const struct ubifs_info *c, void *buf, int type,
 			 int len, int lnum, int offs)
@@ -479,8 +476,7 @@ static int try_read_node(const struct ubifs_info *c, void *buf, int type,
 	if (node_len != len)
 		return 0;
 
-	if (type == UBIFS_DATA_NODE && c->no_chk_data_crc && !c->mounting &&
-	    !c->remounting_rw)
+	if (type == UBIFS_DATA_NODE && !c->always_chk_crc && c->no_chk_data_crc)
 		return 1;
 
 	crc = crc32(UBIFS_CRC32_INIT, buf + 8, node_len - 8);

@@ -98,6 +98,7 @@ static int udf_adinicb_write_end(struct file *file,
 const struct address_space_operations udf_adinicb_aops = {
 	.readpage	= udf_adinicb_readpage,
 	.writepage	= udf_adinicb_writepage,
+	.sync_page	= block_sync_page,
 	.write_begin = simple_write_begin,
 	.write_end = udf_adinicb_write_end,
 };
@@ -122,8 +123,8 @@ static ssize_t udf_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		if (inode->i_sb->s_blocksize <
 				(udf_file_entry_alloc_offset(inode) +
 						pos + count)) {
-			err = udf_expand_file_adinicb(inode);
-			if (err) {
+			udf_expand_file_adinicb(inode, pos + count, &err);
+			if (iinfo->i_alloc_type == ICBTAG_FLAG_AD_IN_ICB) {
 				udf_debug("udf_expand_adinicb: err=%d\n", err);
 				up_write(&iinfo->i_data_sem);
 				return err;
@@ -236,7 +237,7 @@ static int udf_setattr(struct dentry *dentry, struct iattr *attr)
 
 	if ((attr->ia_valid & ATTR_SIZE) &&
 	    attr->ia_size != i_size_read(inode)) {
-		error = udf_setsize(inode, attr->ia_size);
+		error = vmtruncate(inode, attr->ia_size);
 		if (error)
 			return error;
 	}
@@ -248,4 +249,5 @@ static int udf_setattr(struct dentry *dentry, struct iattr *attr)
 
 const struct inode_operations udf_file_inode_operations = {
 	.setattr		= udf_setattr,
+	.truncate		= udf_truncate,
 };

@@ -2365,13 +2365,6 @@ xfs_bmap_rtalloc(
 	 */
 	if (ralen * mp->m_sb.sb_rextsize >= MAXEXTLEN)
 		ralen = MAXEXTLEN / mp->m_sb.sb_rextsize;
-
-	/*
-	 * Lock out other modifications to the RT bitmap inode.
-	 */
-	xfs_ilock(mp->m_rbmip, XFS_ILOCK_EXCL);
-	xfs_trans_ijoin_ref(ap->tp, mp->m_rbmip, XFS_ILOCK_EXCL);
-
 	/*
 	 * If it's an allocation to an empty file at offset 0,
 	 * pick an extent that will space things out in the rt area.
@@ -3526,7 +3519,7 @@ xfs_bmap_search_extents(
 
 	if (unlikely(!(gotp->br_startblock) && (*lastxp != NULLEXTNUM) &&
 		     !(XFS_IS_REALTIME_INODE(ip) && fork == XFS_DATA_FORK))) {
-		xfs_alert_tag(ip->i_mount, XFS_PTAG_FSBLOCK_ZERO,
+		xfs_cmn_err(XFS_PTAG_FSBLOCK_ZERO, CE_ALERT, ip->i_mount,
 				"Access to block zero in inode %llu "
 				"start_block: %llx start_off: %llx "
 				"blkcnt: %llx extent-state: %x lastx: %x\n",
@@ -4200,11 +4193,12 @@ xfs_bmap_read_extents(
 		num_recs = xfs_btree_get_numrecs(block);
 		if (unlikely(i + num_recs > room)) {
 			ASSERT(i + num_recs <= room);
-			xfs_warn(ip->i_mount,
+			xfs_fs_repair_cmn_err(CE_WARN, ip->i_mount,
 				"corrupt dinode %Lu, (btree extents).",
 				(unsigned long long) ip->i_ino);
-			XFS_CORRUPTION_ERROR("xfs_bmap_read_extents(1)",
-				XFS_ERRLEVEL_LOW, ip->i_mount, block);
+			XFS_ERROR_REPORT("xfs_bmap_read_extents(1)",
+					 XFS_ERRLEVEL_LOW,
+					ip->i_mount);
 			goto error0;
 		}
 		XFS_WANT_CORRUPTED_GOTO(
@@ -5778,7 +5772,7 @@ xfs_check_block(
 			else
 				thispa = XFS_BMBT_PTR_ADDR(mp, block, j, dmxr);
 			if (*thispa == *pp) {
-				xfs_warn(mp, "%s: thispa(%d) == pp(%d) %Ld",
+				cmn_err(CE_WARN, "%s: thispa(%d) == pp(%d) %Ld",
 					__func__, j, i,
 					(unsigned long long)be64_to_cpu(*thispa));
 				panic("%s: ptrs are equal in node\n",
@@ -5943,11 +5937,11 @@ xfs_bmap_check_leaf_extents(
 	return;
 
 error0:
-	xfs_warn(mp, "%s: at error0", __func__);
+	cmn_err(CE_WARN, "%s: at error0", __func__);
 	if (bp_release)
 		xfs_trans_brelse(NULL, bp);
 error_norelse:
-	xfs_warn(mp, "%s: BAD after btree leaves for %d extents",
+	cmn_err(CE_WARN, "%s: BAD after btree leaves for %d extents",
 		__func__, i);
 	panic("%s: CORRUPTED BTREE OR SOMETHING", __func__);
 	return;
@@ -6150,7 +6144,7 @@ xfs_bmap_punch_delalloc_range(
 		if (error) {
 			/* something screwed, just bail */
 			if (!XFS_FORCED_SHUTDOWN(ip->i_mount)) {
-				xfs_alert(ip->i_mount,
+				xfs_fs_cmn_err(CE_ALERT, ip->i_mount,
 			"Failed delalloc mapping lookup ino %lld fsb %lld.",
 						ip->i_ino, start_fsb);
 			}

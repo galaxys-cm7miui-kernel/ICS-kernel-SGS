@@ -281,13 +281,11 @@ static struct request *get_rdac_req(struct scsi_device *sdev,
 }
 
 static struct request *rdac_failover_get(struct scsi_device *sdev,
-			struct rdac_dh_data *h, struct list_head *list)
+					 struct rdac_dh_data *h)
 {
 	struct request *rq;
 	struct rdac_mode_common *common;
 	unsigned data_size;
-	struct rdac_queue_data *qdata;
-	u8 *lun_table;
 
 	if (h->ctlr->use_ms10) {
 		struct rdac_pg_expanded *rdac_pg;
@@ -300,7 +298,6 @@ static struct request *rdac_failover_get(struct scsi_device *sdev,
 		rdac_pg->subpage_code = 0x1;
 		rdac_pg->page_len[0] = 0x01;
 		rdac_pg->page_len[1] = 0x28;
-		lun_table = rdac_pg->lun_table;
 	} else {
 		struct rdac_pg_legacy *rdac_pg;
 
@@ -310,15 +307,10 @@ static struct request *rdac_failover_get(struct scsi_device *sdev,
 		common = &rdac_pg->common;
 		rdac_pg->page_code = RDAC_PAGE_CODE_REDUNDANT_CONTROLLER;
 		rdac_pg->page_len = 0x68;
-		lun_table = rdac_pg->lun_table;
 	}
 	common->rdac_mode[1] = RDAC_MODE_TRANSFER_SPECIFIED_LUNS;
 	common->quiescence_timeout = RDAC_QUIESCENCE_TIME;
 	common->rdac_options = RDAC_FORCED_QUIESENCE;
-
-	list_for_each_entry(qdata, list, entry) {
-		lun_table[qdata->h->lun] = 0x81;
-	}
 
 	/* get request for block layer packet command */
 	rq = get_rdac_req(sdev, &h->ctlr->mode_select, data_size, WRITE);
@@ -573,6 +565,7 @@ static void send_mode_select(struct work_struct *work)
 	int err, retry_cnt = RDAC_RETRY_COUNT;
 	struct rdac_queue_data *tmp, *qdata;
 	LIST_HEAD(list);
+	u8 *lun_table;
 
 	spin_lock(&ctlr->ms_lock);
 	list_splice_init(&ctlr->ms_head, &list);
@@ -580,11 +573,20 @@ static void send_mode_select(struct work_struct *work)
 	ctlr->ms_sdev = NULL;
 	spin_unlock(&ctlr->ms_lock);
 
+	if (ctlr->use_ms10)
+		lun_table = ctlr->mode_select.expanded.lun_table;
+	else
+		lun_table = ctlr->mode_select.legacy.lun_table;
+
 retry:
 	err = SCSI_DH_RES_TEMP_UNAVAIL;
-	rq = rdac_failover_get(sdev, h, &list);
+	rq = rdac_failover_get(sdev, h);
 	if (!rq)
 		goto done;
+
+	list_for_each_entry(qdata, &list, entry) {
+		lun_table[qdata->h->lun] = 0x81;
+	}
 
 	RDAC_LOG(RDAC_LOG_FAILOVER, sdev, "array %s, ctlr %d, "
 		"%s MODE_SELECT command",
@@ -767,7 +769,6 @@ static const struct scsi_dh_devlist rdac_dev_list[] = {
 	{"DELL", "MD32xx"},
 	{"DELL", "MD32xxi"},
 	{"DELL", "MD36xxi"},
-	{"DELL", "MD36xxf"},
 	{"LSI", "INF-01-00"},
 	{"ENGENIO", "INF-01-00"},
 	{"STK", "FLEXLINE 380"},
@@ -799,7 +800,7 @@ static int rdac_bus_attach(struct scsi_device *sdev)
 	int err;
 	char array_name[ARRAY_LABEL_LEN];
 
-	scsi_dh_data = kzalloc(sizeof(*scsi_dh_data)
+	scsi_dh_data = kzalloc(sizeof(struct scsi_device_handler *)
 			       + sizeof(*h) , GFP_KERNEL);
 	if (!scsi_dh_data) {
 		sdev_printk(KERN_ERR, sdev, "%s: Attach failed\n",
@@ -905,5 +906,4 @@ module_exit(rdac_exit);
 
 MODULE_DESCRIPTION("Multipath LSI/Engenio RDAC driver");
 MODULE_AUTHOR("Mike Christie, Chandra Seetharaman");
-MODULE_VERSION("01.00.0000.0000");
 MODULE_LICENSE("GPL");

@@ -158,7 +158,10 @@ static int fuse_dentry_revalidate(struct dentry *entry, struct nameidata *nd)
 {
 	struct inode *inode;
 
-	inode = ACCESS_ONCE(entry->d_inode);
+	if (nd && nd->flags & LOOKUP_RCU)
+		return -ECHILD;
+
+	inode = entry->d_inode;
 	if (inode && is_bad_inode(inode))
 		return 0;
 	else if (fuse_dentry_time(entry) < get_jiffies_64()) {
@@ -173,9 +176,6 @@ static int fuse_dentry_revalidate(struct dentry *entry, struct nameidata *nd)
 		/* For negative dentries, always do a fresh lookup */
 		if (!inode)
 			return 0;
-
-		if (nd && (nd->flags & LOOKUP_RCU))
-			return -ECHILD;
 
 		fc = get_fuse_conn(inode);
 		req = fuse_get_req(fc);
@@ -970,14 +970,6 @@ static int fuse_access(struct inode *inode, int mask)
 	return err;
 }
 
-static int fuse_perm_getattr(struct inode *inode, int flags)
-{
-	if (flags & IPERM_FLAG_RCU)
-		return -ECHILD;
-
-	return fuse_do_getattr(inode, NULL, NULL);
-}
-
 /*
  * Check permission.  The two basic access models of FUSE are:
  *
@@ -997,6 +989,9 @@ static int fuse_permission(struct inode *inode, int mask, unsigned int flags)
 	bool refreshed = false;
 	int err = 0;
 
+	if (flags & IPERM_FLAG_RCU)
+		return -ECHILD;
+
 	if (!fuse_allow_task(fc, current))
 		return -EACCES;
 
@@ -1005,15 +1000,9 @@ static int fuse_permission(struct inode *inode, int mask, unsigned int flags)
 	 */
 	if ((fc->flags & FUSE_DEFAULT_PERMISSIONS) ||
 	    ((mask & MAY_EXEC) && S_ISREG(inode->i_mode))) {
-		struct fuse_inode *fi = get_fuse_inode(inode);
-
-		if (fi->i_time < get_jiffies_64()) {
-			refreshed = true;
-
-			err = fuse_perm_getattr(inode, flags);
-			if (err)
-				return err;
-		}
+		err = fuse_update_attributes(inode, NULL, NULL, &refreshed);
+		if (err)
+			return err;
 	}
 
 	if (fc->flags & FUSE_DEFAULT_PERMISSIONS) {
@@ -1023,7 +1012,7 @@ static int fuse_permission(struct inode *inode, int mask, unsigned int flags)
 		   attributes.  This is also needed, because the root
 		   node will at first have no permissions */
 		if (err == -EACCES && !refreshed) {
-			err = fuse_perm_getattr(inode, flags);
+			err = fuse_do_getattr(inode, NULL, NULL);
 			if (!err)
 				err = generic_permission(inode, mask,
 							flags, NULL);
@@ -1034,16 +1023,13 @@ static int fuse_permission(struct inode *inode, int mask, unsigned int flags)
 		   noticed immediately, only after the attribute
 		   timeout has expired */
 	} else if (mask & (MAY_ACCESS | MAY_CHDIR)) {
-		if (flags & IPERM_FLAG_RCU)
-			return -ECHILD;
-
 		err = fuse_access(inode, mask);
 	} else if ((mask & MAY_EXEC) && S_ISREG(inode->i_mode)) {
 		if (!(inode->i_mode & S_IXUGO)) {
 			if (refreshed)
 				return -EACCES;
 
-			err = fuse_perm_getattr(inode, flags);
+			err = fuse_do_getattr(inode, NULL, NULL);
 			if (!err && !(inode->i_mode & S_IXUGO))
 				return -EACCES;
 		}

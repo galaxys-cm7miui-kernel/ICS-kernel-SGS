@@ -41,6 +41,12 @@
 #include "xfs_qm.h"
 #include "xfs_trace.h"
 
+#ifdef DEBUG
+# define qdprintk(s, args...)	cmn_err(CE_DEBUG, s, ## args)
+#else
+# define qdprintk(s, args...)	do { } while (0)
+#endif
+
 STATIC int	xfs_qm_log_quotaoff(xfs_mount_t *, xfs_qoff_logitem_t **, uint);
 STATIC int	xfs_qm_log_quotaoff_end(xfs_mount_t *, xfs_qoff_logitem_t *,
 					uint);
@@ -172,7 +178,7 @@ xfs_qm_scall_quotaoff(
 	/*
 	 * Next we make the changes in the quota flag in the mount struct.
 	 * This isn't protected by a particular lock directly, because we
-	 * don't want to take a mrlock every time we depend on quotas being on.
+	 * don't want to take a mrlock everytime we depend on quotas being on.
 	 */
 	mp->m_qflags &= ~(flags);
 
@@ -288,8 +294,7 @@ xfs_qm_scall_trunc_qfiles(
 	int		error = 0, error2 = 0;
 
 	if (!xfs_sb_version_hasquota(&mp->m_sb) || flags == 0) {
-		xfs_debug(mp, "%s: flags=%x m_qflags=%x\n",
-			__func__, flags, mp->m_qflags);
+		qdprintk("qtrunc flags=%x m_qflags=%x\n", flags, mp->m_qflags);
 		return XFS_ERROR(EINVAL);
 	}
 
@@ -313,19 +318,20 @@ xfs_qm_scall_quotaon(
 {
 	int		error;
 	uint		qf;
+	uint		accflags;
 	__int64_t	sbflags;
 
 	flags &= (XFS_ALL_QUOTA_ACCT | XFS_ALL_QUOTA_ENFD);
 	/*
 	 * Switching on quota accounting must be done at mount time.
 	 */
+	accflags = flags & XFS_ALL_QUOTA_ACCT;
 	flags &= ~(XFS_ALL_QUOTA_ACCT);
 
 	sbflags = 0;
 
 	if (flags == 0) {
-		xfs_debug(mp, "%s: zero flags, m_qflags=%x\n",
-			__func__, mp->m_qflags);
+		qdprintk("quotaon: zero flags, m_qflags=%x\n", mp->m_qflags);
 		return XFS_ERROR(EINVAL);
 	}
 
@@ -346,13 +352,12 @@ xfs_qm_scall_quotaon(
 	    (flags & XFS_GQUOTA_ACCT) == 0 &&
 	    (mp->m_sb.sb_qflags & XFS_GQUOTA_ACCT) == 0 &&
 	    (flags & XFS_OQUOTA_ENFD))) {
-		xfs_debug(mp,
-			"%s: Can't enforce without acct, flags=%x sbflags=%x\n",
-			__func__, flags, mp->m_sb.sb_qflags);
+		qdprintk("Can't enforce without acct, flags=%x sbflags=%x\n",
+			flags, mp->m_sb.sb_qflags);
 		return XFS_ERROR(EINVAL);
 	}
 	/*
-	 * If everything's up to-date incore, then don't waste time.
+	 * If everything's upto-date incore, then don't waste time.
 	 */
 	if ((mp->m_qflags & flags) == flags)
 		return XFS_ERROR(EEXIST);
@@ -536,7 +541,7 @@ xfs_qm_scall_setqlim(
 			q->qi_bsoftlimit = soft;
 		}
 	} else {
-		xfs_debug(mp, "blkhard %Ld < blksoft %Ld\n", hard, soft);
+		qdprintk("blkhard %Ld < blksoft %Ld\n", hard, soft);
 	}
 	hard = (newlim->d_fieldmask & FS_DQ_RTBHARD) ?
 		(xfs_qcnt_t) XFS_BB_TO_FSB(mp, newlim->d_rtb_hardlimit) :
@@ -552,7 +557,7 @@ xfs_qm_scall_setqlim(
 			q->qi_rtbsoftlimit = soft;
 		}
 	} else {
-		xfs_debug(mp, "rtbhard %Ld < rtbsoft %Ld\n", hard, soft);
+		qdprintk("rtbhard %Ld < rtbsoft %Ld\n", hard, soft);
 	}
 
 	hard = (newlim->d_fieldmask & FS_DQ_IHARD) ?
@@ -569,7 +574,7 @@ xfs_qm_scall_setqlim(
 			q->qi_isoftlimit = soft;
 		}
 	} else {
-		xfs_debug(mp, "ihard %Ld < isoft %Ld\n", hard, soft);
+		qdprintk("ihard %Ld < isoft %Ld\n", hard, soft);
 	}
 
 	/*
@@ -934,11 +939,10 @@ struct mutex  qcheck_lock;
 #define DQTEST_LIST_PRINT(l, NXT, title) \
 { \
 	  xfs_dqtest_t	*dqp; int i = 0;\
-	  xfs_debug(NULL, "%s (#%d)", title, (int) (l)->qh_nelems); \
+	  cmn_err(CE_DEBUG, "%s (#%d)", title, (int) (l)->qh_nelems); \
 	  for (dqp = (xfs_dqtest_t *)(l)->qh_next; dqp != NULL; \
 	       dqp = (xfs_dqtest_t *)dqp->NXT) { \
-		xfs_debug(dqp->q_mount,		\
-			"  %d. \"%d (%s)\"  bcnt = %d, icnt = %d", \
+		cmn_err(CE_DEBUG, "  %d. \"%d (%s)\"  bcnt = %d, icnt = %d", \
 			 ++i, dqp->d_id, DQFLAGTO_TYPESTR(dqp),	     \
 			 dqp->d_bcount, dqp->d_icount); } \
 }
@@ -962,17 +966,16 @@ xfs_qm_hashinsert(xfs_dqhash_t *h, xfs_dqtest_t *dqp)
 }
 STATIC void
 xfs_qm_dqtest_print(
-	struct xfs_mount	*mp,
-	struct dqtest		*d)
+	xfs_dqtest_t	*d)
 {
-	xfs_debug(mp, "-----------DQTEST DQUOT----------------");
-	xfs_debug(mp, "---- dquot ID = %d", d->d_id);
-	xfs_debug(mp, "---- fs       = 0x%p", d->q_mount);
-	xfs_debug(mp, "---- bcount   = %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "-----------DQTEST DQUOT----------------");
+	cmn_err(CE_DEBUG, "---- dquot ID = %d", d->d_id);
+	cmn_err(CE_DEBUG, "---- fs       = 0x%p", d->q_mount);
+	cmn_err(CE_DEBUG, "---- bcount   = %Lu (0x%x)",
 		d->d_bcount, (int)d->d_bcount);
-	xfs_debug(mp, "---- icount   = %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- icount   = %Lu (0x%x)",
 		d->d_icount, (int)d->d_icount);
-	xfs_debug(mp, "---------------------------");
+	cmn_err(CE_DEBUG, "---------------------------");
 }
 
 STATIC void
@@ -986,14 +989,12 @@ xfs_qm_dqtest_failed(
 {
 	qmtest_nfails++;
 	if (error)
-		xfs_debug(dqp->q_mount,
-			"quotacheck failed id=%d, err=%d\nreason: %s",
-			d->d_id, error, reason);
+		cmn_err(CE_DEBUG, "quotacheck failed id=%d, err=%d\nreason: %s",
+		       d->d_id, error, reason);
 	else
-		xfs_debug(dqp->q_mount,
-			"quotacheck failed id=%d (%s) [%d != %d]",
-			d->d_id, reason, (int)a, (int)b);
-	xfs_qm_dqtest_print(dqp->q_mount, d);
+		cmn_err(CE_DEBUG, "quotacheck failed id=%d (%s) [%d != %d]",
+		       d->d_id, reason, (int)a, (int)b);
+	xfs_qm_dqtest_print(d);
 	if (dqp)
 		xfs_qm_dqprint(dqp);
 }
@@ -1020,9 +1021,9 @@ xfs_dqtest_cmp2(
 	    be64_to_cpu(dqp->q_core.d_bcount) >=
 	    be64_to_cpu(dqp->q_core.d_blk_softlimit)) {
 		if (!dqp->q_core.d_btimer && dqp->q_core.d_id) {
-			xfs_debug(dqp->q_mount,
-				"%d [%s] BLK TIMER NOT STARTED",
-				d->d_id, DQFLAGTO_TYPESTR(d));
+			cmn_err(CE_DEBUG,
+				"%d [%s] [0x%p] BLK TIMER NOT STARTED",
+				d->d_id, DQFLAGTO_TYPESTR(d), d->q_mount);
 			err++;
 		}
 	}
@@ -1030,16 +1031,16 @@ xfs_dqtest_cmp2(
 	    be64_to_cpu(dqp->q_core.d_icount) >=
 	    be64_to_cpu(dqp->q_core.d_ino_softlimit)) {
 		if (!dqp->q_core.d_itimer && dqp->q_core.d_id) {
-			xfs_debug(dqp->q_mount,
-				"%d [%s] INO TIMER NOT STARTED",
-				d->d_id, DQFLAGTO_TYPESTR(d));
+			cmn_err(CE_DEBUG,
+				"%d [%s] [0x%p] INO TIMER NOT STARTED",
+				d->d_id, DQFLAGTO_TYPESTR(d), d->q_mount);
 			err++;
 		}
 	}
 #ifdef QUOTADEBUG
 	if (!err) {
-		xfs_debug(dqp->q_mount, "%d [%s] qchecked",
-			d->d_id, DQFLAGTO_TYPESTR(d));
+		cmn_err(CE_DEBUG, "%d [%s] [0x%p] qchecked",
+			d->d_id, DQFLAGTO_TYPESTR(d), d->q_mount);
 	}
 #endif
 	return (err);
@@ -1136,8 +1137,8 @@ xfs_qm_internalqcheck_adjust(
 
 	if (ino == mp->m_sb.sb_uquotino || ino == mp->m_sb.sb_gquotino) {
 		*res = BULKSTAT_RV_NOTHING;
-		xfs_debug(mp, "%s: ino=%llu, uqino=%llu, gqino=%llu\n",
-			__func__, (unsigned long long) ino,
+		qdprintk("internalqcheck: ino=%llu, uqino=%llu, gqino=%llu\n",
+			(unsigned long long) ino,
 			(unsigned long long) mp->m_sb.sb_uquotino,
 			(unsigned long long) mp->m_sb.sb_gquotino);
 		return XFS_ERROR(EINVAL);
@@ -1222,12 +1223,12 @@ xfs_qm_internalqcheck(
 				 xfs_qm_internalqcheck_adjust,
 				 0, NULL, &done);
 		if (error) {
-			xfs_debug(mp, "Bulkstat returned error 0x%x", error);
+			cmn_err(CE_DEBUG, "Bulkstat returned error 0x%x", error);
 			break;
 		}
 	} while (!done);
 
-	xfs_debug(mp, "Checking results against system dquots");
+	cmn_err(CE_DEBUG, "Checking results against system dquots");
 	for (i = 0; i < qmtest_hashmask; i++) {
 		xfs_dqtest_t	*d, *n;
 		xfs_dqhash_t	*h;
@@ -1245,10 +1246,10 @@ xfs_qm_internalqcheck(
 	}
 
 	if (qmtest_nfails) {
-		xfs_debug(mp, "******** quotacheck failed  ********");
-		xfs_debug(mp, "failures = %d", qmtest_nfails);
+		cmn_err(CE_DEBUG, "******** quotacheck failed  ********");
+		cmn_err(CE_DEBUG, "failures = %d", qmtest_nfails);
 	} else {
-		xfs_debug(mp, "******** quotacheck successful! ********");
+		cmn_err(CE_DEBUG, "******** quotacheck successful! ********");
 	}
 	kmem_free(qmtest_udqtab);
 	kmem_free(qmtest_gdqtab);

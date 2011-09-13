@@ -43,17 +43,6 @@ enum { BIO_MAX_PAGES_KMALLOC =
 		PAGE_SIZE / sizeof(struct page *),
 };
 
-unsigned exofs_max_io_pages(struct exofs_layout *layout,
-			    unsigned expected_pages)
-{
-	unsigned pages = min_t(unsigned, expected_pages, MAX_PAGES_KMALLOC);
-
-	/* TODO: easily support bio chaining */
-	pages =  min_t(unsigned, pages,
-		       layout->group_width * BIO_MAX_PAGES_KMALLOC);
-	return pages;
-}
-
 struct page_collect {
 	struct exofs_sb_info *sbi;
 	struct inode *inode;
@@ -108,7 +97,8 @@ static void _pcol_reset(struct page_collect *pcol)
 
 static int pcol_try_alloc(struct page_collect *pcol)
 {
-	unsigned pages;
+	unsigned pages = min_t(unsigned, pcol->expected_pages,
+			  MAX_PAGES_KMALLOC);
 
 	if (!pcol->ios) { /* First time allocate io_state */
 		int ret = exofs_get_io_state(&pcol->sbi->layout, &pcol->ios);
@@ -118,7 +108,8 @@ static int pcol_try_alloc(struct page_collect *pcol)
 	}
 
 	/* TODO: easily support bio chaining */
-	pages =  exofs_max_io_pages(&pcol->sbi->layout, pcol->expected_pages);
+	pages =  min_t(unsigned, pages,
+		       pcol->sbi->layout.group_width * BIO_MAX_PAGES_KMALLOC);
 
 	for (; pages; pages >>= 1) {
 		pcol->pages = kmalloc(pages * sizeof(struct page *),
@@ -359,10 +350,8 @@ static int readpage_strip(void *data, struct page *page)
 
 		if (!pcol->read_4_write)
 			unlock_page(page);
-		EXOFS_DBGMSG("readpage_strip(0x%lx) empty page len=%zx "
-			     "read_4_write=%d index=0x%lx end_index=0x%lx "
-			     "splitting\n", inode->i_ino, len,
-			     pcol->read_4_write, page->index, end_index);
+		EXOFS_DBGMSG("readpage_strip(0x%lx, 0x%lx) empty page,"
+			     " splitting\n", inode->i_ino, page->index);
 
 		return read_exec(pcol);
 	}
@@ -733,28 +722,11 @@ int exofs_write_begin(struct file *file, struct address_space *mapping,
 
 	 /* read modify write */
 	if (!PageUptodate(page) && (len != PAGE_CACHE_SIZE)) {
-		loff_t i_size = i_size_read(mapping->host);
-		pgoff_t end_index = i_size >> PAGE_CACHE_SHIFT;
-		size_t rlen;
-
-		if (page->index < end_index)
-			rlen = PAGE_CACHE_SIZE;
-		else if (page->index == end_index)
-			rlen = i_size & ~PAGE_CACHE_MASK;
-		else
-			rlen = 0;
-
-		if (!rlen) {
-			clear_highpage(page);
-			SetPageUptodate(page);
-			goto out;
-		}
-
 		ret = _readpage(page, true);
 		if (ret) {
 			/*SetPageError was done by _readpage. Is it ok?*/
 			unlock_page(page);
-			EXOFS_DBGMSG("__readpage failed\n");
+			EXOFS_DBGMSG("__readpage_filler failed\n");
 		}
 	}
 out:
@@ -823,6 +795,7 @@ const struct address_space_operations exofs_aops = {
 	.direct_IO	= NULL, /* TODO: Should be trivial to do */
 
 	/* With these NULL has special meaning or default is not exported */
+	.sync_page	= NULL,
 	.get_xip_mem	= NULL,
 	.migratepage	= NULL,
 	.launder_page	= NULL,
@@ -1057,7 +1030,6 @@ struct inode *exofs_iget(struct super_block *sb, unsigned long ino)
 		memcpy(oi->i_data, fcb.i_data, sizeof(fcb.i_data));
 	}
 
-	inode->i_mapping->backing_dev_info = sb->s_bdi;
 	if (S_ISREG(inode->i_mode)) {
 		inode->i_op = &exofs_file_inode_operations;
 		inode->i_fop = &exofs_file_operations;
@@ -1101,7 +1073,6 @@ int __exofs_wait_obj_created(struct exofs_i_info *oi)
 	}
 	return unlikely(is_bad_inode(&oi->vfs_inode)) ? -EIO : 0;
 }
-
 /*
  * Callback function from exofs_new_inode().  The important thing is that we
  * set the obj_created flag so that other methods know that the object exists on
@@ -1159,7 +1130,7 @@ struct inode *exofs_new_inode(struct inode *dir, int mode)
 
 	sbi = sb->s_fs_info;
 
-	inode->i_mapping->backing_dev_info = sb->s_bdi;
+	sb->s_dirt = 1;
 	inode_init_owner(inode, dir, mode);
 	inode->i_ino = sbi->s_nextid++;
 	inode->i_blkbits = EXOFS_BLKSHIFT;
@@ -1169,8 +1140,6 @@ struct inode *exofs_new_inode(struct inode *dir, int mode)
 	inode->i_generation = sbi->s_next_generation++;
 	spin_unlock(&sbi->s_next_gen_lock);
 	insert_inode_hash(inode);
-
-	exofs_sbi_write_stats(sbi); /* Make sure new sbi->s_nextid is on disk */
 
 	mark_inode_dirty(inode);
 
@@ -1302,8 +1271,7 @@ out:
 
 int exofs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
-	/* FIXME: fix fsync and use wbc->sync_mode == WB_SYNC_ALL */
-	return exofs_update_inode(inode, 1);
+	return exofs_update_inode(inode, wbc->sync_mode == WB_SYNC_ALL);
 }
 
 /*

@@ -544,10 +544,9 @@ xfs_qm_dqtobp(
 	/*
 	 * A simple sanity check in case we got a corrupted dquot...
 	 */
-	error = xfs_qm_dqcheck(mp, ddq, id, dqp->dq_flags & XFS_DQ_ALLTYPES,
+	if (xfs_qm_dqcheck(ddq, id, dqp->dq_flags & XFS_DQ_ALLTYPES,
 			   flags & (XFS_QMOPT_DQREPAIR|XFS_QMOPT_DOWARN),
-			   "dqtobp");
-	if (error) {
+			   "dqtobp")) {
 		if (!(flags & XFS_QMOPT_DQREPAIR)) {
 			xfs_trans_brelse(tp, bp);
 			return XFS_ERROR(EIO);
@@ -600,7 +599,7 @@ xfs_qm_dqread(
 
 	/*
 	 * Reservation counters are defined as reservation plus current usage
-	 * to avoid having to add every time.
+	 * to avoid having to add everytime.
 	 */
 	dqp->q_res_bcount = be64_to_cpu(ddqp->d_bcount);
 	dqp->q_res_icount = be64_to_cpu(ddqp->d_icount);
@@ -828,7 +827,7 @@ xfs_qm_dqget(
 	if (xfs_do_dqerror) {
 		if ((xfs_dqerror_target == mp->m_ddev_targp) &&
 		    (xfs_dqreq_num++ % xfs_dqerror_mod) == 0) {
-			xfs_debug(mp, "Returning error in dqget");
+			cmn_err(CE_DEBUG, "Returning error in dqget");
 			return (EIO);
 		}
 	}
@@ -1208,9 +1207,8 @@ xfs_qm_dqflush(
 	/*
 	 * A simple sanity check in case we got a corrupted dquot..
 	 */
-	error = xfs_qm_dqcheck(mp, &dqp->q_core, be32_to_cpu(ddqp->d_id), 0,
-			   XFS_QMOPT_DOWARN, "dqflush (incore copy)");
-	if (error) {
+	if (xfs_qm_dqcheck(&dqp->q_core, be32_to_cpu(ddqp->d_id), 0,
+			   XFS_QMOPT_DOWARN, "dqflush (incore copy)")) {
 		xfs_buf_relse(bp);
 		xfs_dqfunlock(dqp);
 		xfs_force_shutdown(mp, SHUTDOWN_CORRUPT_INCORE);
@@ -1393,8 +1391,8 @@ xfs_qm_dqpurge(
 		 */
 		error = xfs_qm_dqflush(dqp, SYNC_WAIT);
 		if (error)
-			xfs_warn(mp, "%s: dquot %p flush failed",
-				__func__, dqp);
+			xfs_fs_cmn_err(CE_WARN, mp,
+				"xfs_qm_dqpurge: dquot %p flush failed", dqp);
 		xfs_dqflock(dqp);
 	}
 	ASSERT(atomic_read(&dqp->q_pincount) == 0);
@@ -1427,38 +1425,36 @@ xfs_qm_dqpurge(
 void
 xfs_qm_dqprint(xfs_dquot_t *dqp)
 {
-	struct xfs_mount	*mp = dqp->q_mount;
-
-	xfs_debug(mp, "-----------KERNEL DQUOT----------------");
-	xfs_debug(mp, "---- dquotID =  %d",
+	cmn_err(CE_DEBUG, "-----------KERNEL DQUOT----------------");
+	cmn_err(CE_DEBUG, "---- dquotID =  %d",
 		(int)be32_to_cpu(dqp->q_core.d_id));
-	xfs_debug(mp, "---- type    =  %s", DQFLAGTO_TYPESTR(dqp));
-	xfs_debug(mp, "---- fs      =  0x%p", dqp->q_mount);
-	xfs_debug(mp, "---- blkno   =  0x%x", (int) dqp->q_blkno);
-	xfs_debug(mp, "---- boffset =  0x%x", (int) dqp->q_bufoffset);
-	xfs_debug(mp, "---- blkhlimit =  %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- type    =  %s", DQFLAGTO_TYPESTR(dqp));
+	cmn_err(CE_DEBUG, "---- fs      =  0x%p", dqp->q_mount);
+	cmn_err(CE_DEBUG, "---- blkno   =  0x%x", (int) dqp->q_blkno);
+	cmn_err(CE_DEBUG, "---- boffset =  0x%x", (int) dqp->q_bufoffset);
+	cmn_err(CE_DEBUG, "---- blkhlimit =  %Lu (0x%x)",
 		be64_to_cpu(dqp->q_core.d_blk_hardlimit),
 		(int)be64_to_cpu(dqp->q_core.d_blk_hardlimit));
-	xfs_debug(mp, "---- blkslimit =  %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- blkslimit =  %Lu (0x%x)",
 		be64_to_cpu(dqp->q_core.d_blk_softlimit),
 		(int)be64_to_cpu(dqp->q_core.d_blk_softlimit));
-	xfs_debug(mp, "---- inohlimit =  %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- inohlimit =  %Lu (0x%x)",
 		be64_to_cpu(dqp->q_core.d_ino_hardlimit),
 		(int)be64_to_cpu(dqp->q_core.d_ino_hardlimit));
-	xfs_debug(mp, "---- inoslimit =  %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- inoslimit =  %Lu (0x%x)",
 		be64_to_cpu(dqp->q_core.d_ino_softlimit),
 		(int)be64_to_cpu(dqp->q_core.d_ino_softlimit));
-	xfs_debug(mp, "---- bcount  =  %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- bcount  =  %Lu (0x%x)",
 		be64_to_cpu(dqp->q_core.d_bcount),
 		(int)be64_to_cpu(dqp->q_core.d_bcount));
-	xfs_debug(mp, "---- icount  =  %Lu (0x%x)",
+	cmn_err(CE_DEBUG, "---- icount  =  %Lu (0x%x)",
 		be64_to_cpu(dqp->q_core.d_icount),
 		(int)be64_to_cpu(dqp->q_core.d_icount));
-	xfs_debug(mp, "---- btimer  =  %d",
+	cmn_err(CE_DEBUG, "---- btimer  =  %d",
 		(int)be32_to_cpu(dqp->q_core.d_btimer));
-	xfs_debug(mp, "---- itimer  =  %d",
+	cmn_err(CE_DEBUG, "---- itimer  =  %d",
 		(int)be32_to_cpu(dqp->q_core.d_itimer));
-	xfs_debug(mp, "---------------------------");
+	cmn_err(CE_DEBUG, "---------------------------");
 }
 #endif
 

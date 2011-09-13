@@ -26,7 +26,7 @@ posix_acl_set(struct dentry *dentry, const char *name, const void *value,
 	size_t jcreate_blocks;
 	if (!reiserfs_posixacl(inode->i_sb))
 		return -EOPNOTSUPP;
-	if (!inode_owner_or_capable(inode))
+	if (!is_owner_or_cap(inode))
 		return -EPERM;
 
 	if (value) {

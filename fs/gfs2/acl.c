@@ -80,11 +80,8 @@ int gfs2_check_acl(struct inode *inode, int mask, unsigned int flags)
 	struct posix_acl *acl;
 	int error;
 
-	if (flags & IPERM_FLAG_RCU) {
-		if (!negative_cached_acl(inode, ACL_TYPE_ACCESS))
-			return -ECHILD;
-		return -EAGAIN;
-	}
+	if (flags & IPERM_FLAG_RCU)
+		return -ECHILD;
 
 	acl = gfs2_acl_get(GFS2_I(inode), ACL_TYPE_ACCESS);
 	if (IS_ERR(acl))

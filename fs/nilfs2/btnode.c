@@ -34,10 +34,15 @@
 #include "page.h"
 #include "btnode.h"
 
+
+static const struct address_space_operations def_btnode_aops = {
+	.sync_page		= block_sync_page,
+};
+
 void nilfs_btnode_cache_init(struct address_space *btnc,
 			     struct backing_dev_info *bdi)
 {
-	nilfs_mapping_init(btnc, bdi);
+	nilfs_mapping_init(btnc, bdi, &def_btnode_aops);
 }
 
 void nilfs_btnode_cache_clear(struct address_space *btnc)

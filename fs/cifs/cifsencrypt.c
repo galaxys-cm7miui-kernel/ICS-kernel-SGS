@@ -30,13 +30,12 @@
 #include <linux/ctype.h>
 #include <linux/random.h>
 
-/*
- * Calculate and return the CIFS signature based on the mac key and SMB PDU.
- * The 16 byte signature must be allocated by the caller. Note we only use the
- * 1st eight bytes and that the smb header signature field on input contains
- * the sequence number before this function is called. Also, this function
- * should be called with the server->srv_mutex held.
- */
+/* Calculate and return the CIFS signature based on the mac key and SMB PDU */
+/* the 16 byte signature must be allocated by the caller  */
+/* Note we only use the 1st eight bytes */
+/* Note that the smb header signature field on input contains the
+	sequence number before this function is called */
+
 static int cifs_calculate_signature(const struct smb_hdr *cifs_pdu,
 				struct TCP_Server_Info *server, char *signature)
 {
@@ -184,7 +183,7 @@ int cifs_verify_signature(struct smb_hdr *cifs_pdu,
 	if (cifs_pdu == NULL || server == NULL)
 		return -EINVAL;
 
-	if (!server->session_estab)
+	if (cifs_pdu->Command == SMB_COM_NEGOTIATE)
 		return 0;
 
 	if (cifs_pdu->Command == SMB_COM_LOCKING_ANDX) {
@@ -210,10 +209,8 @@ int cifs_verify_signature(struct smb_hdr *cifs_pdu,
 					cpu_to_le32(expected_sequence_number);
 	cifs_pdu->Signature.Sequence.Reserved = 0;
 
-	mutex_lock(&server->srv_mutex);
 	rc = cifs_calculate_signature(cifs_pdu, server,
 		what_we_think_sig_should_be);
-	mutex_unlock(&server->srv_mutex);
 
 	if (rc)
 		return rc;
@@ -472,15 +469,15 @@ static int calc_ntlmv2_hash(struct cifsSesInfo *ses, char *ntlmv2_hash,
 		return rc;
 	}
 
-	/* convert ses->user_name to unicode and uppercase */
-	len = strlen(ses->user_name);
+	/* convert ses->userName to unicode and uppercase */
+	len = strlen(ses->userName);
 	user = kmalloc(2 + (len * 2), GFP_KERNEL);
 	if (user == NULL) {
 		cERROR(1, "calc_ntlmv2_hash: user mem alloc failure\n");
 		rc = -ENOMEM;
 		goto calc_exit_2;
 	}
-	len = cifs_strtoUCS((__le16 *)user, ses->user_name, len, nls_cp);
+	len = cifs_strtoUCS((__le16 *)user, ses->userName, len, nls_cp);
 	UniStrupr(user);
 
 	crypto_shash_update(&ses->server->secmech.sdeschmacmd5->shash,

@@ -80,8 +80,8 @@
  *  ->i_mutex
  *    ->i_alloc_sem             (various)
  *
- *  inode_wb_list_lock
- *    sb_lock			(fs/fs-writeback.c)
+ *  ->inode_lock
+ *    ->sb_lock			(fs/fs-writeback.c)
  *    ->mapping->tree_lock	(__sync_single_inode)
  *
  *  ->i_mmap_lock
@@ -98,10 +98,8 @@
  *    ->zone.lru_lock		(check_pte_range->isolate_lru_page)
  *    ->private_lock		(page_remove_rmap->set_page_dirty)
  *    ->tree_lock		(page_remove_rmap->set_page_dirty)
- *    inode_wb_list_lock	(page_remove_rmap->set_page_dirty)
- *    ->inode->i_lock		(page_remove_rmap->set_page_dirty)
- *    inode_wb_list_lock	(zap_pte_range->set_page_dirty)
- *    ->inode->i_lock		(zap_pte_range->set_page_dirty)
+ *    ->inode_lock		(page_remove_rmap->set_page_dirty)
+ *    ->inode_lock		(zap_pte_range->set_page_dirty)
  *    ->private_lock		(zap_pte_range->__set_page_dirty_buffers)
  *
  *  (code doesn't rely on that order, so you could switch it around)
@@ -110,7 +108,7 @@
  */
 
 /*
- * Delete a page from the page cache and free it. Caller has to make
+ * Remove a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
  * is safe.  The caller must hold the mapping's tree_lock.
  */
@@ -139,14 +137,6 @@ void __delete_from_page_cache(struct page *page)
 	}
 }
 
-/**
- * delete_from_page_cache - delete page from page cache
- * @page: the page which the kernel is trying to remove from page cache
- *
- * This must be called only on pages that have been verified to be in the page
- * cache and locked.  It will never put the page into the free list, the caller
- * has a reference on the page.
- */
 void delete_from_page_cache(struct page *page)
 {
 	struct address_space *mapping = page->mapping;
@@ -162,19 +152,48 @@ void delete_from_page_cache(struct page *page)
 
 	if (freepage)
 		freepage(page);
-	page_cache_release(page);
 }
 EXPORT_SYMBOL(delete_from_page_cache);
 
-static int sleep_on_page(void *word)
+static int sync_page(void *word)
 {
+	struct address_space *mapping;
+	struct page *page;
+
+	page = container_of((unsigned long *)word, struct page, flags);
+
+	/*
+	 * page_mapping() is being called without PG_locked held.
+	 * Some knowledge of the state and use of the page is used to
+	 * reduce the requirements down to a memory barrier.
+	 * The danger here is of a stale page_mapping() return value
+	 * indicating a struct address_space different from the one it's
+	 * associated with when it is associated with one.
+	 * After smp_mb(), it's either the correct page_mapping() for
+	 * the page, or an old page_mapping() and the page's own
+	 * page_mapping() has gone NULL.
+	 * The ->sync_page() address_space operation must tolerate
+	 * page_mapping() going NULL. By an amazing coincidence,
+	 * this comes about because none of the users of the page
+	 * in the ->sync_page() methods make essential use of the
+	 * page_mapping(), merely passing the page down to the backing
+	 * device's unplug functions when it's non-NULL, which in turn
+	 * ignore it for all cases but swap, where only page_private(page) is
+	 * of interest. When page_mapping() does go NULL, the entire
+	 * call stack gracefully ignores the page and returns.
+	 * -- wli
+	 */
+	smp_mb();
+	mapping = page_mapping(page);
+	if (mapping && mapping->a_ops && mapping->a_ops->sync_page)
+		mapping->a_ops->sync_page(page);
 	io_schedule();
 	return 0;
 }
 
-static int sleep_on_page_killable(void *word)
+static int sync_page_killable(void *word)
 {
-	sleep_on_page(word);
+	sync_page(word);
 	return fatal_signal_pending(current) ? -EINTR : 0;
 }
 
@@ -368,76 +387,6 @@ int filemap_write_and_wait_range(struct address_space *mapping,
 EXPORT_SYMBOL(filemap_write_and_wait_range);
 
 /**
- * replace_page_cache_page - replace a pagecache page with a new one
- * @old:	page to be replaced
- * @new:	page to replace with
- * @gfp_mask:	allocation mode
- *
- * This function replaces a page in the pagecache with a new one.  On
- * success it acquires the pagecache reference for the new page and
- * drops it for the old page.  Both the old and new pages must be
- * locked.  This function does not add the new page to the LRU, the
- * caller must do that.
- *
- * The remove + add is atomic.  The only way this function can fail is
- * memory allocation failure.
- */
-int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
-{
-	int error;
-	struct mem_cgroup *memcg = NULL;
-
-	VM_BUG_ON(!PageLocked(old));
-	VM_BUG_ON(!PageLocked(new));
-	VM_BUG_ON(new->mapping);
-
-	/*
-	 * This is not page migration, but prepare_migration and
-	 * end_migration does enough work for charge replacement.
-	 *
-	 * In the longer term we probably want a specialized function
-	 * for moving the charge from old to new in a more efficient
-	 * manner.
-	 */
-	error = mem_cgroup_prepare_migration(old, new, &memcg, gfp_mask);
-	if (error)
-		return error;
-
-	error = radix_tree_preload(gfp_mask & ~__GFP_HIGHMEM);
-	if (!error) {
-		struct address_space *mapping = old->mapping;
-		void (*freepage)(struct page *);
-
-		pgoff_t offset = old->index;
-		freepage = mapping->a_ops->freepage;
-
-		page_cache_get(new);
-		new->mapping = mapping;
-		new->index = offset;
-
-		spin_lock_irq(&mapping->tree_lock);
-		__delete_from_page_cache(old);
-		error = radix_tree_insert(&mapping->page_tree, offset, new);
-		BUG_ON(error);
-		mapping->nrpages++;
-		__inc_zone_page_state(new, NR_FILE_PAGES);
-		if (PageSwapBacked(new))
-			__inc_zone_page_state(new, NR_SHMEM);
-		spin_unlock_irq(&mapping->tree_lock);
-		radix_tree_preload_end();
-		if (freepage)
-			freepage(old);
-		page_cache_release(old);
-		mem_cgroup_end_migration(memcg, old, new, true);
-	} else {
-		mem_cgroup_end_migration(memcg, old, new, false);
-	}
-
-	return error;
-}
-EXPORT_SYMBOL_GPL(replace_page_cache_page);
-
-/**
  * add_to_page_cache_locked - add a locked page to the pagecache
  * @page:	page to add
  * @mapping:	the page's address_space
@@ -530,6 +479,12 @@ struct page *__page_cache_alloc(gfp_t gfp)
 EXPORT_SYMBOL(__page_cache_alloc);
 #endif
 
+static int __sleep_on_page_lock(void *word)
+{
+	io_schedule();
+	return 0;
+}
+
 /*
  * In order to wait for pages to become available there must be
  * waitqueues associated with pages. By using a hash table of
@@ -557,7 +512,7 @@ void wait_on_page_bit(struct page *page, int bit_nr)
 	DEFINE_WAIT_BIT(wait, &page->flags, bit_nr);
 
 	if (test_bit(bit_nr, &page->flags))
-		__wait_on_bit(page_waitqueue(page), &wait, sleep_on_page,
+		__wait_on_bit(page_waitqueue(page), &wait, sync_page,
 							TASK_UNINTERRUPTIBLE);
 }
 EXPORT_SYMBOL(wait_on_page_bit);
@@ -621,12 +576,17 @@ EXPORT_SYMBOL(end_page_writeback);
 /**
  * __lock_page - get a lock on the page, assuming we need to sleep to get it
  * @page: the page to lock
+ *
+ * Ugly. Running sync_page() in state TASK_UNINTERRUPTIBLE is scary.  If some
+ * random driver's requestfn sets TASK_RUNNING, we could busywait.  However
+ * chances are that on the second loop, the block layer's plug list is empty,
+ * so sync_page() will then return in state TASK_UNINTERRUPTIBLE.
  */
 void __lock_page(struct page *page)
 {
 	DEFINE_WAIT_BIT(wait, &page->flags, PG_locked);
 
-	__wait_on_bit_lock(page_waitqueue(page), &wait, sleep_on_page,
+	__wait_on_bit_lock(page_waitqueue(page), &wait, sync_page,
 							TASK_UNINTERRUPTIBLE);
 }
 EXPORT_SYMBOL(__lock_page);
@@ -636,9 +596,23 @@ int __lock_page_killable(struct page *page)
 	DEFINE_WAIT_BIT(wait, &page->flags, PG_locked);
 
 	return __wait_on_bit_lock(page_waitqueue(page), &wait,
-					sleep_on_page_killable, TASK_KILLABLE);
+					sync_page_killable, TASK_KILLABLE);
 }
 EXPORT_SYMBOL_GPL(__lock_page_killable);
+
+/**
+ * __lock_page_nosync - get a lock on the page, without calling sync_page()
+ * @page: the page to lock
+ *
+ * Variant of lock_page that does not require the caller to hold a reference
+ * on the page's mapping.
+ */
+void __lock_page_nosync(struct page *page)
+{
+	DEFINE_WAIT_BIT(wait, &page->flags, PG_locked);
+	__wait_on_bit_lock(page_waitqueue(page), &wait, __sleep_on_page_lock,
+							TASK_UNINTERRUPTIBLE);
+}
 
 int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 			 unsigned int flags)
@@ -647,10 +621,8 @@ int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 		__lock_page(page);
 		return 1;
 	} else {
-		if (!(flags & FAULT_FLAG_RETRY_NOWAIT)) {
-			up_read(&mm->mmap_sem);
-			wait_on_page_locked(page);
-		}
+		up_read(&mm->mmap_sem);
+		wait_on_page_locked(page);
 		return 0;
 	}
 }
@@ -810,13 +782,9 @@ repeat:
 		page = radix_tree_deref_slot((void **)pages[i]);
 		if (unlikely(!page))
 			continue;
-
-		/*
-		 * This can only trigger when the entry at index 0 moves out
-		 * of or back to the root: none yet gotten, safe to restart.
-		 */
 		if (radix_tree_deref_retry(page)) {
-			WARN_ON(start | i);
+			if (ret)
+				start = pages[ret-1]->index;
 			goto restart;
 		}
 
@@ -832,13 +800,6 @@ repeat:
 		pages[ret] = page;
 		ret++;
 	}
-
-	/*
-	 * If all entries were removed before we could secure them,
-	 * try again, because callers stop trying once 0 is returned.
-	 */
-	if (unlikely(!ret && nr_found))
-		goto restart;
 	rcu_read_unlock();
 	return ret;
 }
@@ -873,11 +834,6 @@ repeat:
 		page = radix_tree_deref_slot((void **)pages[i]);
 		if (unlikely(!page))
 			continue;
-
-		/*
-		 * This can only trigger when the entry at index 0 moves out
-		 * of or back to the root: none yet gotten, safe to restart.
-		 */
 		if (radix_tree_deref_retry(page))
 			goto restart;
 
@@ -938,11 +894,6 @@ repeat:
 		page = radix_tree_deref_slot((void **)pages[i]);
 		if (unlikely(!page))
 			continue;
-
-		/*
-		 * This can only trigger when the entry at index 0 moves out
-		 * of or back to the root: none yet gotten, safe to restart.
-		 */
 		if (radix_tree_deref_retry(page))
 			goto restart;
 
@@ -958,13 +909,6 @@ repeat:
 		pages[ret] = page;
 		ret++;
 	}
-
-	/*
-	 * If all entries were removed before we could secure them,
-	 * try again, because callers stop trying once 0 is returned.
-	 */
-	if (unlikely(!ret && nr_found))
-		goto restart;
 	rcu_read_unlock();
 
 	if (ret)
@@ -1354,14 +1298,11 @@ generic_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 	unsigned long seg = 0;
 	size_t count;
 	loff_t *ppos = &iocb->ki_pos;
-	struct blk_plug plug;
 
 	count = 0;
 	retval = generic_segment_checks(iov, &nr_segs, &count, VERIFY_WRITE);
 	if (retval)
 		return retval;
-
-	blk_start_plug(&plug);
 
 	/* coalesce the iovecs and go direct-to-BIO for O_DIRECT */
 	if (filp->f_flags & O_DIRECT) {
@@ -1435,7 +1376,6 @@ generic_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 			break;
 	}
 out:
-	blk_finish_plug(&plug);
 	return retval;
 }
 EXPORT_SYMBOL(generic_file_aio_read);
@@ -2547,13 +2487,11 @@ ssize_t generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
-	struct blk_plug plug;
 	ssize_t ret;
 
 	BUG_ON(iocb->ki_pos != pos);
 
 	mutex_lock(&inode->i_mutex);
-	blk_start_plug(&plug);
 	ret = __generic_file_aio_write(iocb, iov, nr_segs, &iocb->ki_pos);
 	mutex_unlock(&inode->i_mutex);
 
@@ -2564,7 +2502,6 @@ ssize_t generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		if (err < 0 && ret > 0)
 			ret = err;
 	}
-	blk_finish_plug(&plug);
 	return ret;
 }
 EXPORT_SYMBOL(generic_file_aio_write);

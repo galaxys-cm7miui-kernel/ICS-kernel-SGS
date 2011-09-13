@@ -22,17 +22,30 @@
 
 static struct file *do_open(char *name, int flags)
 {
+	struct nameidata nd;
 	struct vfsmount *mnt;
-	struct file *file;
+	int error;
 
 	mnt = do_kern_mount("nfsd", 0, "nfsd", NULL);
 	if (IS_ERR(mnt))
 		return (struct file *)mnt;
 
-	file = file_open_root(mnt->mnt_root, mnt, name, flags);
-
+	error = vfs_path_lookup(mnt->mnt_root, mnt, name, 0, &nd);
 	mntput(mnt);	/* drop do_kern_mount reference */
-	return file;
+	if (error)
+		return ERR_PTR(error);
+
+	if (flags == O_RDWR)
+		error = may_open(&nd.path, MAY_READ|MAY_WRITE, flags);
+	else
+		error = may_open(&nd.path, MAY_WRITE, flags);
+
+	if (!error)
+		return dentry_open(nd.path.dentry, nd.path.mnt, flags,
+				   current_cred());
+
+	path_put(&nd.path);
+	return ERR_PTR(error);
 }
 
 static struct {

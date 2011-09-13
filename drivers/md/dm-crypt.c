@@ -991,6 +991,11 @@ static void clone_init(struct dm_crypt_io *io, struct bio *clone)
 	clone->bi_destructor = dm_crypt_bio_destructor;
 }
 
+static void kcryptd_unplug(struct crypt_config *cc)
+{
+	blk_unplug(bdev_get_queue(cc->dev->bdev));
+}
+
 static int kcryptd_io_read(struct dm_crypt_io *io, gfp_t gfp)
 {
 	struct crypt_config *cc = io->target->private;
@@ -1003,8 +1008,10 @@ static int kcryptd_io_read(struct dm_crypt_io *io, gfp_t gfp)
 	 * one in order to decrypt the whole bio data *afterwards*.
 	 */
 	clone = bio_alloc_bioset(gfp, bio_segments(base_bio), cc->bs);
-	if (!clone)
+	if (!clone) {
+		kcryptd_unplug(cc);
 		return 1;
+	}
 
 	crypt_inc_pending(io);
 
@@ -1324,29 +1331,20 @@ static int crypt_setkey_allcpus(struct crypt_config *cc)
 
 static int crypt_set_key(struct crypt_config *cc, char *key)
 {
-	int r = -EINVAL;
-	int key_string_len = strlen(key);
-
 	/* The key size may not be changed. */
-	if (cc->key_size != (key_string_len >> 1))
-		goto out;
+	if (cc->key_size != (strlen(key) >> 1))
+		return -EINVAL;
 
 	/* Hyphen (which gives a key_size of zero) means there is no key. */
 	if (!cc->key_size && strcmp(key, "-"))
-		goto out;
+		return -EINVAL;
 
 	if (cc->key_size && crypt_decode_key(cc->key, key, cc->key_size) < 0)
-		goto out;
+		return -EINVAL;
 
 	set_bit(DM_CRYPT_KEY_VALID, &cc->flags);
 
-	r = crypt_setkey_allcpus(cc);
-
-out:
-	/* Hex key string not needed after here, so wipe it. */
-	memset(key, '0', key_string_len);
-
-	return r;
+	return crypt_setkey_allcpus(cc);
 }
 
 static int crypt_wipe_key(struct crypt_config *cc)

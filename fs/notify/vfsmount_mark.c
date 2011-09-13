@@ -23,6 +23,7 @@
 #include <linux/mount.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
+#include <linux/writeback.h> /* for inode_lock */
 
 #include <asm/atomic.h>
 

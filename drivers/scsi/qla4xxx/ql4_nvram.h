@@ -28,7 +28,7 @@
 #define	 FM93C56A_ERASE	      0x3
 #define	 FM93C56A_ERASE_ALL   0x0
 
-/* Command Extensions */
+/* Command Extentions */
 #define	 FM93C56A_WEN_EXT	 0x3
 #define	 FM93C56A_WRITE_ALL_EXT	 0x1
 #define	 FM93C56A_WDS_EXT	 0x0

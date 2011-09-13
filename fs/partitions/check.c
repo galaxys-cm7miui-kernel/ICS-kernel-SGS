@@ -290,8 +290,7 @@ ssize_t part_inflight_show(struct device *dev,
 {
 	struct hd_struct *p = dev_to_part(dev);
 
-	return sprintf(buf, "%8u %8u\n", atomic_read(&p->in_flight[0]),
-		atomic_read(&p->in_flight[1]));
+	return sprintf(buf, "%8u %8u\n", p->in_flight[0], p->in_flight[1]);
 }
 
 #ifdef CONFIG_FAIL_MAKE_REQUEST
@@ -511,7 +510,7 @@ struct hd_struct *add_partition(struct gendisk *disk, int partno,
 	/* everything is up and running, commence */
 	rcu_assign_pointer(ptbl->part[partno], p);
 
-	/* suppress uevent if the disk suppresses it */
+	/* suppress uevent if the disk supresses it */
 	if (!dev_get_uevent_suppress(ddev))
 		kobject_uevent(&pdev->kobj, KOBJ_ADD);
 
@@ -596,7 +595,7 @@ rescan:
 	/*
 	 * If any partition code tried to read beyond EOD, try
 	 * unlocking native capacity even if partition table is
-	 * successfully read as we could be missing some partitions.
+	 * sucessfully read as we could be missing some partitions.
 	 */
 	if (state->access_beyond_eod) {
 		printk(KERN_WARNING

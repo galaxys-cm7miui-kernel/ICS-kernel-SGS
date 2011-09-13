@@ -437,12 +437,9 @@ int __log_space_left(journal_t *journal)
 int __log_start_commit(journal_t *journal, tid_t target)
 {
 	/*
-	 * The only transaction we can possibly wait upon is the
-	 * currently running transaction (if it exists).  Otherwise,
-	 * the target tid must be an old one.
+	 * Are we already doing a recent enough commit?
 	 */
-	if (journal->j_running_transaction &&
-	    journal->j_running_transaction->t_tid == target) {
+	if (!tid_geq(journal->j_commit_request, target)) {
 		/*
 		 * We want a new commit: OK, mark the request and wakeup the
 		 * commit thread.  We do _not_ do the commit ourselves.
@@ -454,14 +451,7 @@ int __log_start_commit(journal_t *journal, tid_t target)
 			  journal->j_commit_sequence);
 		wake_up(&journal->j_wait_commit);
 		return 1;
-	} else if (!tid_geq(journal->j_commit_request, target))
-		/* This should never happen, but if it does, preserve
-		   the evidence before kjournald goes into a loop and
-		   increments j_commit_sequence beyond all recognition. */
-		WARN_ONCE(1, "jbd: bad log_start_commit: %u %u %u %u\n",
-		    journal->j_commit_request, journal->j_commit_sequence,
-		    target, journal->j_running_transaction ?
-		    journal->j_running_transaction->t_tid : 0);
+	}
 	return 0;
 }
 
@@ -780,7 +770,7 @@ journal_t * journal_init_dev(struct block_device *bdev,
 	journal->j_wbufsize = n;
 	journal->j_wbuf = kmalloc(n * sizeof(struct buffer_head*), GFP_KERNEL);
 	if (!journal->j_wbuf) {
-		printk(KERN_ERR "%s: Can't allocate bhs for commit thread\n",
+		printk(KERN_ERR "%s: Cant allocate bhs for commit thread\n",
 			__func__);
 		goto out_err;
 	}
@@ -841,7 +831,7 @@ journal_t * journal_init_inode (struct inode *inode)
 	journal->j_wbufsize = n;
 	journal->j_wbuf = kmalloc(n * sizeof(struct buffer_head*), GFP_KERNEL);
 	if (!journal->j_wbuf) {
-		printk(KERN_ERR "%s: Can't allocate bhs for commit thread\n",
+		printk(KERN_ERR "%s: Cant allocate bhs for commit thread\n",
 			__func__);
 		goto out_err;
 	}
@@ -849,7 +839,7 @@ journal_t * journal_init_inode (struct inode *inode)
 	err = journal_bmap(journal, 0, &blocknr);
 	/* If that failed, give up */
 	if (err) {
-		printk(KERN_ERR "%s: Cannot locate journal superblock\n",
+		printk(KERN_ERR "%s: Cannnot locate journal superblock\n",
 		       __func__);
 		goto out_err;
 	}

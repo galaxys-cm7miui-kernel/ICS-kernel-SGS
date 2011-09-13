@@ -46,6 +46,8 @@ static void proc_evict_inode(struct inode *inode)
 	}
 }
 
+struct vfsmount *proc_mnt;
+
 static struct kmem_cache * proc_inode_cachep;
 
 static struct inode *proc_alloc_inode(struct super_block *sb)

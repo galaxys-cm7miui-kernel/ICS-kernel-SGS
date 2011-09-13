@@ -30,8 +30,7 @@ int btrfs_find_highest_inode(struct btrfs_root *root, u64 *objectid)
 	int slot;
 
 	path = btrfs_alloc_path();
-	if (!path)
-		return -ENOMEM;
+	BUG_ON(!path);
 
 	search_key.objectid = BTRFS_LAST_FREE_OBJECTID;
 	search_key.type = -1;

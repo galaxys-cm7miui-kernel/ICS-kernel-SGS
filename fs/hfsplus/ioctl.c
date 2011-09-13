@@ -47,7 +47,7 @@ static int hfsplus_ioctl_setflags(struct file *file, int __user *user_flags)
 	if (err)
 		goto out;
 
-	if (!inode_owner_or_capable(inode)) {
+	if (!is_owner_or_cap(inode)) {
 		err = -EACCES;
 		goto out_drop_write;
 	}

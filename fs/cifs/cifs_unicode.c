@@ -90,7 +90,7 @@ cifs_mapchar(char *target, const __u16 src_char, const struct nls_table *cp,
 	case UNI_COLON:
 		*target = ':';
 		break;
-	case UNI_ASTERISK:
+	case UNI_ASTERIK:
 		*target = '*';
 		break;
 	case UNI_QUESTION:
@@ -264,41 +264,40 @@ cifs_strndup_from_ucs(const char *src, const int maxlen, const bool is_unicode,
  * names are little endian 16 bit Unicode on the wire
  */
 int
-cifsConvertToUCS(__le16 *target, const char *source, int srclen,
+cifsConvertToUCS(__le16 *target, const char *source, int maxlen,
 		 const struct nls_table *cp, int mapChars)
 {
 	int i, j, charlen;
+	int len_remaining = maxlen;
 	char src_char;
-	__le16 dst_char;
-	wchar_t tmp;
+	__u16 temp;
 
 	if (!mapChars)
 		return cifs_strtoUCS(target, source, PATH_MAX, cp);
 
-	for (i = 0, j = 0; i < srclen; j++) {
+	for (i = 0, j = 0; i < maxlen; j++) {
 		src_char = source[i];
-		charlen = 1;
 		switch (src_char) {
 		case 0:
-			put_unaligned(0, &target[j]);
+			put_unaligned_le16(0, &target[j]);
 			goto ctoUCS_out;
 		case ':':
-			dst_char = cpu_to_le16(UNI_COLON);
+			temp = UNI_COLON;
 			break;
 		case '*':
-			dst_char = cpu_to_le16(UNI_ASTERISK);
+			temp = UNI_ASTERIK;
 			break;
 		case '?':
-			dst_char = cpu_to_le16(UNI_QUESTION);
+			temp = UNI_QUESTION;
 			break;
 		case '<':
-			dst_char = cpu_to_le16(UNI_LESSTHAN);
+			temp = UNI_LESSTHAN;
 			break;
 		case '>':
-			dst_char = cpu_to_le16(UNI_GRTRTHAN);
+			temp = UNI_GRTRTHAN;
 			break;
 		case '|':
-			dst_char = cpu_to_le16(UNI_PIPE);
+			temp = UNI_PIPE;
 			break;
 		/*
 		 * FIXME: We can not handle remapping backslash (UNI_SLASH)
@@ -306,24 +305,28 @@ cifsConvertToUCS(__le16 *target, const char *source, int srclen,
 		 * as they use backslash as separator.
 		 */
 		default:
-			charlen = cp->char2uni(source + i, srclen - i, &tmp);
-			dst_char = cpu_to_le16(tmp);
-
+			charlen = cp->char2uni(source+i, len_remaining,
+						&temp);
 			/*
 			 * if no match, use question mark, which at least in
 			 * some cases serves as wild card
 			 */
 			if (charlen < 1) {
-				dst_char = cpu_to_le16(0x003f);
+				temp = 0x003f;
 				charlen = 1;
 			}
+			len_remaining -= charlen;
+			/*
+			 * character may take more than one byte in the source
+			 * string, but will take exactly two bytes in the
+			 * target string
+			 */
+			i += charlen;
+			continue;
 		}
-		/*
-		 * character may take more than one byte in the source string,
-		 * but will take exactly two bytes in the target string
-		 */
-		i += charlen;
-		put_unaligned(dst_char, &target[j]);
+		put_unaligned_le16(temp, &target[j]);
+		i++; /* move to next char in source string */
+		len_remaining--;
 	}
 
 ctoUCS_out:

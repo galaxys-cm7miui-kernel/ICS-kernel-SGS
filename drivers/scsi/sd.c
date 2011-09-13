@@ -96,7 +96,6 @@ MODULE_ALIAS_SCSI_DEVICE(TYPE_RBC);
 #define SD_MINORS	0
 #endif
 
-static void sd_config_discard(struct scsi_disk *, unsigned int);
 static int  sd_revalidate_disk(struct gendisk *);
 static void sd_unlock_native_capacity(struct gendisk *disk);
 static int  sd_probe(struct device *);
@@ -295,54 +294,7 @@ sd_show_thin_provisioning(struct device *dev, struct device_attribute *attr,
 {
 	struct scsi_disk *sdkp = to_scsi_disk(dev);
 
-	return snprintf(buf, 20, "%u\n", sdkp->lbpme);
-}
-
-static const char *lbp_mode[] = {
-	[SD_LBP_FULL]		= "full",
-	[SD_LBP_UNMAP]		= "unmap",
-	[SD_LBP_WS16]		= "writesame_16",
-	[SD_LBP_WS10]		= "writesame_10",
-	[SD_LBP_ZERO]		= "writesame_zero",
-	[SD_LBP_DISABLE]	= "disabled",
-};
-
-static ssize_t
-sd_show_provisioning_mode(struct device *dev, struct device_attribute *attr,
-			  char *buf)
-{
-	struct scsi_disk *sdkp = to_scsi_disk(dev);
-
-	return snprintf(buf, 20, "%s\n", lbp_mode[sdkp->provisioning_mode]);
-}
-
-static ssize_t
-sd_store_provisioning_mode(struct device *dev, struct device_attribute *attr,
-			   const char *buf, size_t count)
-{
-	struct scsi_disk *sdkp = to_scsi_disk(dev);
-	struct scsi_device *sdp = sdkp->device;
-
-	if (!capable(CAP_SYS_ADMIN))
-		return -EACCES;
-
-	if (sdp->type != TYPE_DISK)
-		return -EINVAL;
-
-	if (!strncmp(buf, lbp_mode[SD_LBP_UNMAP], 20))
-		sd_config_discard(sdkp, SD_LBP_UNMAP);
-	else if (!strncmp(buf, lbp_mode[SD_LBP_WS16], 20))
-		sd_config_discard(sdkp, SD_LBP_WS16);
-	else if (!strncmp(buf, lbp_mode[SD_LBP_WS10], 20))
-		sd_config_discard(sdkp, SD_LBP_WS10);
-	else if (!strncmp(buf, lbp_mode[SD_LBP_ZERO], 20))
-		sd_config_discard(sdkp, SD_LBP_ZERO);
-	else if (!strncmp(buf, lbp_mode[SD_LBP_DISABLE], 20))
-		sd_config_discard(sdkp, SD_LBP_DISABLE);
-	else
-		return -EINVAL;
-
-	return count;
+	return snprintf(buf, 20, "%u\n", sdkp->thin_provisioning);
 }
 
 static struct device_attribute sd_disk_attrs[] = {
@@ -357,8 +309,6 @@ static struct device_attribute sd_disk_attrs[] = {
 	__ATTR(protection_mode, S_IRUGO, sd_show_protection_mode, NULL),
 	__ATTR(app_tag_own, S_IRUGO, sd_show_app_tag_own, NULL),
 	__ATTR(thin_provisioning, S_IRUGO, sd_show_thin_provisioning, NULL),
-	__ATTR(provisioning_mode, S_IRUGO|S_IWUSR, sd_show_provisioning_mode,
-	       sd_store_provisioning_mode),
 	__ATTR_NULL,
 };
 
@@ -483,49 +433,6 @@ static void sd_prot_op(struct scsi_cmnd *scmd, unsigned int dif)
 	scsi_set_prot_type(scmd, dif);
 }
 
-static void sd_config_discard(struct scsi_disk *sdkp, unsigned int mode)
-{
-	struct request_queue *q = sdkp->disk->queue;
-	unsigned int logical_block_size = sdkp->device->sector_size;
-	unsigned int max_blocks = 0;
-
-	q->limits.discard_zeroes_data = sdkp->lbprz;
-	q->limits.discard_alignment = sdkp->unmap_alignment;
-	q->limits.discard_granularity =
-		max(sdkp->physical_block_size,
-		    sdkp->unmap_granularity * logical_block_size);
-
-	switch (mode) {
-
-	case SD_LBP_DISABLE:
-		q->limits.max_discard_sectors = 0;
-		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
-		return;
-
-	case SD_LBP_UNMAP:
-		max_blocks = min_not_zero(sdkp->max_unmap_blocks, 0xffffffff);
-		break;
-
-	case SD_LBP_WS16:
-		max_blocks = min_not_zero(sdkp->max_ws_blocks, 0xffffffff);
-		break;
-
-	case SD_LBP_WS10:
-		max_blocks = min_not_zero(sdkp->max_ws_blocks, (u32)0xffff);
-		break;
-
-	case SD_LBP_ZERO:
-		max_blocks = min_not_zero(sdkp->max_ws_blocks, (u32)0xffff);
-		q->limits.discard_zeroes_data = 1;
-		break;
-	}
-
-	q->limits.max_discard_sectors = max_blocks * (logical_block_size >> 9);
-	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
-
-	sdkp->provisioning_mode = mode;
-}
-
 /**
  * scsi_setup_discard_cmnd - unmap blocks on thinly provisioned device
  * @sdp: scsi device to operate one
@@ -542,7 +449,6 @@ static int scsi_setup_discard_cmnd(struct scsi_device *sdp, struct request *rq)
 	unsigned int nr_sectors = bio_sectors(bio);
 	unsigned int len;
 	int ret;
-	char *buf;
 	struct page *page;
 
 	if (sdkp->device->sector_size == 4096) {
@@ -558,9 +464,8 @@ static int scsi_setup_discard_cmnd(struct scsi_device *sdp, struct request *rq)
 	if (!page)
 		return BLKPREP_DEFER;
 
-	switch (sdkp->provisioning_mode) {
-	case SD_LBP_UNMAP:
-		buf = page_address(page);
+	if (sdkp->unmap) {
+		char *buf = page_address(page);
 
 		rq->cmd_len = 10;
 		rq->cmd[0] = UNMAP;
@@ -572,9 +477,7 @@ static int scsi_setup_discard_cmnd(struct scsi_device *sdp, struct request *rq)
 		put_unaligned_be32(nr_sectors, &buf[16]);
 
 		len = 24;
-		break;
-
-	case SD_LBP_WS16:
+	} else {
 		rq->cmd_len = 16;
 		rq->cmd[0] = WRITE_SAME_16;
 		rq->cmd[1] = 0x8; /* UNMAP */
@@ -582,30 +485,11 @@ static int scsi_setup_discard_cmnd(struct scsi_device *sdp, struct request *rq)
 		put_unaligned_be32(nr_sectors, &rq->cmd[10]);
 
 		len = sdkp->device->sector_size;
-		break;
-
-	case SD_LBP_WS10:
-	case SD_LBP_ZERO:
-		rq->cmd_len = 10;
-		rq->cmd[0] = WRITE_SAME;
-		if (sdkp->provisioning_mode == SD_LBP_WS10)
-			rq->cmd[1] = 0x8; /* UNMAP */
-		put_unaligned_be32(sector, &rq->cmd[2]);
-		put_unaligned_be16(nr_sectors, &rq->cmd[7]);
-
-		len = sdkp->device->sector_size;
-		break;
-
-	default:
-		ret = BLKPREP_KILL;
-		goto out;
 	}
 
 	blk_add_request_payload(rq, page, len);
 	ret = scsi_setup_blk_pc_cmnd(sdp, rq);
 	rq->buffer = page_address(page);
-
-out:
 	if (ret != BLKPREP_OK) {
 		__free_page(page);
 		rq->buffer = NULL;
@@ -1055,7 +939,7 @@ static int sd_getgeo(struct block_device *bdev, struct hd_geometry *geo)
  *	@arg: this is third argument given to ioctl(2) system call.
  *	Often contains a pointer.
  *
- *	Returns 0 if successful (some ioctls return positive numbers on
+ *	Returns 0 if successful (some ioctls return postive numbers on
  *	success as well). Returns a negated errno value in case of error.
  *
  *	Note: most ioctls are forward onto the block subsystem or further
@@ -1367,10 +1251,12 @@ static int sd_done(struct scsi_cmnd *SCpnt)
 	struct scsi_disk *sdkp = scsi_disk(SCpnt->request->rq_disk);
 	int sense_valid = 0;
 	int sense_deferred = 0;
-	unsigned char op = SCpnt->cmnd[0];
 
-	if ((SCpnt->request->cmd_flags & REQ_DISCARD) && !result)
-		scsi_set_resid(SCpnt, 0);
+	if (SCpnt->request->cmd_flags & REQ_DISCARD) {
+		if (!result)
+			scsi_set_resid(SCpnt, 0);
+		return good_bytes;
+	}
 
 	if (result) {
 		sense_valid = scsi_command_normalize_sense(SCpnt, &sshdr);
@@ -1409,17 +1295,10 @@ static int sd_done(struct scsi_cmnd *SCpnt)
 		SCpnt->result = 0;
 		memset(SCpnt->sense_buffer, 0, SCSI_SENSE_BUFFERSIZE);
 		break;
-	case ABORTED_COMMAND:
-		if (sshdr.asc == 0x10)  /* DIF: Target detected corruption */
+	case ABORTED_COMMAND: /* DIF: Target detected corruption */
+	case ILLEGAL_REQUEST: /* DIX: Host detected corruption */
+		if (sshdr.asc == 0x10)
 			good_bytes = sd_completed_bytes(SCpnt);
-		break;
-	case ILLEGAL_REQUEST:
-		if (sshdr.asc == 0x10)  /* DIX: Host detected corruption */
-			good_bytes = sd_completed_bytes(SCpnt);
-		/* INVALID COMMAND OPCODE or INVALID FIELD IN CDB */
-		if ((sshdr.asc == 0x20 || sshdr.asc == 0x24) &&
-		    (op == UNMAP || op == WRITE_SAME_16 || op == WRITE_SAME))
-			sd_config_discard(sdkp, SD_LBP_DISABLE);
 		break;
 	default:
 		break;
@@ -1717,13 +1596,17 @@ static int read_capacity_16(struct scsi_disk *sdkp, struct scsi_device *sdp,
 		sd_printk(KERN_NOTICE, sdkp,
 			  "physical block alignment offset: %u\n", alignment);
 
-	if (buffer[14] & 0x80) { /* LBPME */
-		sdkp->lbpme = 1;
+	if (buffer[14] & 0x80) { /* TPE */
+		struct request_queue *q = sdp->request_queue;
 
-		if (buffer[14] & 0x40) /* LBPRZ */
-			sdkp->lbprz = 1;
+		sdkp->thin_provisioning = 1;
+		q->limits.discard_granularity = sdkp->physical_block_size;
+		q->limits.max_discard_sectors = 0xffffffff;
 
-		sd_config_discard(sdkp, SD_LBP_WS16);
+		if (buffer[14] & 0x40) /* TPRZ */
+			q->limits.discard_zeroes_data = 1;
+
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 	}
 
 	sdkp->capacity = lba + 1;
@@ -2027,10 +1910,14 @@ sd_read_cache_type(struct scsi_disk *sdkp, unsigned char *buffer)
 	int old_rcd = sdkp->RCD;
 	int old_dpofua = sdkp->DPOFUA;
 
-	if (sdp->skip_ms_page_8)
-		goto defaults;
-
-	if (sdp->type == TYPE_RBC) {
+	if (sdp->skip_ms_page_8) {
+		if (sdp->type == TYPE_RBC)
+			goto defaults;
+		else {
+			modepage = 0x3F;
+			dbd = 0;
+		}
+	} else if (sdp->type == TYPE_RBC) {
 		modepage = 6;
 		dbd = 8;
 	} else {
@@ -2058,13 +1945,11 @@ sd_read_cache_type(struct scsi_disk *sdkp, unsigned char *buffer)
 	 */
 	if (len < 3)
 		goto bad_sense;
-	if (len > 20)
-		len = 20;
-
-	/* Take headers and block descriptors into account */
-	len += data.header_length + data.block_descriptor_length;
-	if (len > SD_BUF_SIZE)
-		goto bad_sense;
+	else if (len > SD_BUF_SIZE) {
+		sd_printk(KERN_NOTICE, sdkp, "Truncating mode parameter "
+			  "data from %d to %d bytes\n", len, SD_BUF_SIZE);
+		len = SD_BUF_SIZE;
+	}
 
 	/* Get the data */
 	res = sd_do_mode_sense(sdp, dbd, modepage, buffer, len, &data, &sshdr);
@@ -2072,16 +1957,45 @@ sd_read_cache_type(struct scsi_disk *sdkp, unsigned char *buffer)
 	if (scsi_status_is_good(res)) {
 		int offset = data.header_length + data.block_descriptor_length;
 
-		if (offset >= SD_BUF_SIZE - 2) {
-			sd_printk(KERN_ERR, sdkp, "Malformed MODE SENSE response\n");
-			goto defaults;
+		while (offset < len) {
+			u8 page_code = buffer[offset] & 0x3F;
+			u8 spf       = buffer[offset] & 0x40;
+
+			if (page_code == 8 || page_code == 6) {
+				/* We're interested only in the first 3 bytes.
+				 */
+				if (len - offset <= 2) {
+					sd_printk(KERN_ERR, sdkp, "Incomplete "
+						  "mode parameter data\n");
+					goto defaults;
+				} else {
+					modepage = page_code;
+					goto Page_found;
+				}
+			} else {
+				/* Go to the next page */
+				if (spf && len - offset > 3)
+					offset += 4 + (buffer[offset+2] << 8) +
+						buffer[offset+3];
+				else if (!spf && len - offset > 1)
+					offset += 2 + buffer[offset+1];
+				else {
+					sd_printk(KERN_ERR, sdkp, "Incomplete "
+						  "mode parameter data\n");
+					goto defaults;
+				}
+			}
 		}
 
-		if ((buffer[offset] & 0x3f) != modepage) {
+		if (modepage == 0x3F) {
+			sd_printk(KERN_ERR, sdkp, "No Caching mode page "
+				  "present\n");
+			goto defaults;
+		} else if ((buffer[offset] & 0x3f) != modepage) {
 			sd_printk(KERN_ERR, sdkp, "Got wrong page\n");
 			goto defaults;
 		}
-
+	Page_found:
 		if (modepage == 8) {
 			sdkp->WCE = ((buffer[offset + 2] & 0x04) != 0);
 			sdkp->RCD = ((buffer[offset + 2] & 0x01) != 0);
@@ -2177,6 +2091,7 @@ static void sd_read_app_tag_own(struct scsi_disk *sdkp, unsigned char *buffer)
  */
 static void sd_read_block_limits(struct scsi_disk *sdkp)
 {
+	struct request_queue *q = sdkp->disk->queue;
 	unsigned int sector_sz = sdkp->device->sector_size;
 	const int vpd_len = 64;
 	unsigned char *buffer = kmalloc(vpd_len, GFP_KERNEL);
@@ -2191,46 +2106,39 @@ static void sd_read_block_limits(struct scsi_disk *sdkp)
 	blk_queue_io_opt(sdkp->disk->queue,
 			 get_unaligned_be32(&buffer[12]) * sector_sz);
 
-	if (buffer[3] == 0x3c) {
-		unsigned int lba_count, desc_count;
-
-		sdkp->max_ws_blocks =
-			(u32) min_not_zero(get_unaligned_be64(&buffer[36]),
-					   (u64)0xffffffff);
-
-		if (!sdkp->lbpme)
-			goto out;
+	/* Thin provisioning enabled and page length indicates TP support */
+	if (sdkp->thin_provisioning && buffer[3] == 0x3c) {
+		unsigned int lba_count, desc_count, granularity;
 
 		lba_count = get_unaligned_be32(&buffer[20]);
 		desc_count = get_unaligned_be32(&buffer[24]);
 
-		if (lba_count && desc_count)
-			sdkp->max_unmap_blocks = lba_count;
+		if (lba_count && desc_count) {
+			if (sdkp->tpvpd && !sdkp->tpu)
+				sdkp->unmap = 0;
+			else
+				sdkp->unmap = 1;
+		}
 
-		sdkp->unmap_granularity = get_unaligned_be32(&buffer[28]);
+		if (sdkp->tpvpd && !sdkp->tpu && !sdkp->tpws) {
+			sd_printk(KERN_ERR, sdkp, "Thin provisioning is " \
+				  "enabled but neither TPU, nor TPWS are " \
+				  "set. Disabling discard!\n");
+			goto out;
+		}
+
+		if (lba_count)
+			q->limits.max_discard_sectors =
+				lba_count * sector_sz >> 9;
+
+		granularity = get_unaligned_be32(&buffer[28]);
+
+		if (granularity)
+			q->limits.discard_granularity = granularity * sector_sz;
 
 		if (buffer[32] & 0x80)
-			sdkp->unmap_alignment =
+			q->limits.discard_alignment =
 				get_unaligned_be32(&buffer[32]) & ~(1 << 31);
-
-		if (!sdkp->lbpvpd) { /* LBP VPD page not provided */
-
-			if (sdkp->max_unmap_blocks)
-				sd_config_discard(sdkp, SD_LBP_UNMAP);
-			else
-				sd_config_discard(sdkp, SD_LBP_WS16);
-
-		} else {	/* LBP VPD page tells us what to use */
-
-			if (sdkp->lbpu && sdkp->max_unmap_blocks)
-				sd_config_discard(sdkp, SD_LBP_UNMAP);
-			else if (sdkp->lbpws)
-				sd_config_discard(sdkp, SD_LBP_WS16);
-			else if (sdkp->lbpws10)
-				sd_config_discard(sdkp, SD_LBP_WS10);
-			else
-				sd_config_discard(sdkp, SD_LBP_DISABLE);
-		}
 	}
 
  out:
@@ -2264,15 +2172,15 @@ static void sd_read_block_characteristics(struct scsi_disk *sdkp)
 }
 
 /**
- * sd_read_block_provisioning - Query provisioning VPD page
+ * sd_read_thin_provisioning - Query thin provisioning VPD page
  * @disk: disk to query
  */
-static void sd_read_block_provisioning(struct scsi_disk *sdkp)
+static void sd_read_thin_provisioning(struct scsi_disk *sdkp)
 {
 	unsigned char *buffer;
 	const int vpd_len = 8;
 
-	if (sdkp->lbpme == 0)
+	if (sdkp->thin_provisioning == 0)
 		return;
 
 	buffer = kmalloc(vpd_len, GFP_KERNEL);
@@ -2280,10 +2188,9 @@ static void sd_read_block_provisioning(struct scsi_disk *sdkp)
 	if (!buffer || scsi_get_vpd_page(sdkp->device, 0xb2, buffer, vpd_len))
 		goto out;
 
-	sdkp->lbpvpd	= 1;
-	sdkp->lbpu	= (buffer[5] >> 7) & 1;	/* UNMAP */
-	sdkp->lbpws	= (buffer[5] >> 6) & 1;	/* WRITE SAME(16) with UNMAP */
-	sdkp->lbpws10	= (buffer[5] >> 5) & 1;	/* WRITE SAME(10) with UNMAP */
+	sdkp->tpvpd = 1;
+	sdkp->tpu   = (buffer[5] >> 7) & 1;	/* UNMAP */
+	sdkp->tpws  = (buffer[5] >> 6) & 1;	/* WRITE SAME(16) with UNMAP */
 
  out:
 	kfree(buffer);
@@ -2340,7 +2247,7 @@ static int sd_revalidate_disk(struct gendisk *disk)
 		sd_read_capacity(sdkp, buffer);
 
 		if (sd_try_extended_inquiry(sdp)) {
-			sd_read_block_provisioning(sdkp);
+			sd_read_thin_provisioning(sdkp);
 			sd_read_block_limits(sdkp);
 			sd_read_block_characteristics(sdkp);
 		}
