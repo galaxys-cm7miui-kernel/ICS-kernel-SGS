@@ -264,7 +264,7 @@ static void notify_led_off(void) {
 	if (unlikely(bl_devdata->is_dead))
 		return;
 
-	if (bl_on)
+	if (bl_on && bl_timer.expires < jiffies) // Don't disable if there's a timer scheduled
 		i2c_touchkey_write_byte(bl_devdata, bl_devdata->backlight_off);
 
 	bl_devdata->pdata->touchkey_sleep_onoff(TOUCHKEY_OFF);
