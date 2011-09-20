@@ -1444,7 +1444,6 @@ int blkdev_put(struct block_device *bdev, fmode_t mode)
 		 * unblock evpoll if it was a write holder.
 		 */
 		if (bdev_free) {
-			bd_unlink_disk_holder(bdev);
 			if (bdev->bd_write_holder) {
 				disk_unblock_events(bdev->bd_disk);
 				bdev->bd_write_holder = false;
