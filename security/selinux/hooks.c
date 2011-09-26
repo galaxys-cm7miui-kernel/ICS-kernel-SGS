@@ -79,7 +79,6 @@
 #include <linux/mutex.h>
 #include <linux/posix-timers.h>
 #include <linux/syslog.h>
-#include <linux/user_namespace.h>
 
 #include "avc.h"
 #include "objsec.h"
@@ -1446,11 +1445,8 @@ static int task_has_capability(struct task_struct *tsk,
 	}
 
 	rc = avc_has_perm_noaudit(sid, sid, sclass, av, 0, &avd);
-	if (audit == SECURITY_CAP_AUDIT) {
-		int rc2 = avc_audit(sid, sid, sclass, av, &avd, rc, &ad, 0);
-		if (rc2)
-			return rc2;
-	}
+	if (audit == SECURITY_CAP_AUDIT)
+		avc_audit(sid, sid, sclass, av, &avd, rc, &ad);
 	return rc;
 }
 
@@ -1470,8 +1466,7 @@ static int task_has_system(struct task_struct *tsk,
 static int inode_has_perm(const struct cred *cred,
 			  struct inode *inode,
 			  u32 perms,
-			  struct common_audit_data *adp,
-			  unsigned flags)
+			  struct common_audit_data *adp)
 {
 	struct inode_security_struct *isec;
 	struct common_audit_data ad;
@@ -1491,7 +1486,7 @@ static int inode_has_perm(const struct cred *cred,
 		ad.u.fs.inode = inode;
 	}
 
-	return avc_has_perm_flags(sid, isec->sid, isec->sclass, perms, adp, flags);
+	return avc_has_perm(sid, isec->sid, isec->sclass, perms, adp);
 }
 
 /* Same as inode_has_perm, but pass explicit audit data containing
@@ -1508,7 +1503,7 @@ static inline int dentry_has_perm(const struct cred *cred,
 	COMMON_AUDIT_DATA_INIT(&ad, FS);
 	ad.u.fs.path.mnt = mnt;
 	ad.u.fs.path.dentry = dentry;
-	return inode_has_perm(cred, inode, av, &ad, 0);
+	return inode_has_perm(cred, inode, av, &ad);
 }
 
 /* Check whether a task can use an open file descriptor to
@@ -1544,7 +1539,7 @@ static int file_has_perm(const struct cred *cred,
 	/* av is zero if only checking access to the descriptor. */
 	rc = 0;
 	if (av)
-		rc = inode_has_perm(cred, inode, av, &ad, 0);
+		rc = inode_has_perm(cred, inode, av, &ad);
 
 out:
 	return rc;
@@ -1578,8 +1573,7 @@ static int may_create(struct inode *dir,
 		return rc;
 
 	if (!newsid || !(sbsec->flags & SE_SBLABELSUPP)) {
-		rc = security_transition_sid(sid, dsec->sid, tclass,
-					     &dentry->d_name, &newsid);
+		rc = security_transition_sid(sid, dsec->sid, tclass, NULL, &newsid);
 		if (rc)
 			return rc;
 	}
@@ -1852,11 +1846,11 @@ static int selinux_capset(struct cred *new, const struct cred *old,
  */
 
 static int selinux_capable(struct task_struct *tsk, const struct cred *cred,
-			   struct user_namespace *ns, int cap, int audit)
+			   int cap, int audit)
 {
 	int rc;
 
-	rc = cap_capable(tsk, cred, ns, cap, audit);
+	rc = cap_capable(tsk, cred, cap, audit);
 	if (rc)
 		return rc;
 
@@ -1937,8 +1931,7 @@ static int selinux_vm_enough_memory(struct mm_struct *mm, long pages)
 {
 	int rc, cap_sys_admin = 0;
 
-	rc = selinux_capable(current, current_cred(),
-			     &init_user_ns, CAP_SYS_ADMIN,
+	rc = selinux_capable(current, current_cred(), CAP_SYS_ADMIN,
 			     SECURITY_CAP_NOAUDIT);
 	if (rc == 0)
 		cap_sys_admin = 1;
@@ -2108,7 +2101,7 @@ static inline void flush_unauthorized_files(const struct cred *cred,
 			file = file_priv->file;
 			inode = file->f_path.dentry->d_inode;
 			if (inode_has_perm(cred, inode,
-					   FILE__READ | FILE__WRITE, NULL, 0)) {
+					   FILE__READ | FILE__WRITE, NULL)) {
 				drop_tty = 1;
 			}
 		}
@@ -2640,7 +2633,7 @@ static int selinux_inode_follow_link(struct dentry *dentry, struct nameidata *na
 	return dentry_has_perm(cred, NULL, dentry, FILE__READ);
 }
 
-static int selinux_inode_permission(struct inode *inode, int mask, unsigned flags)
+static int selinux_inode_permission(struct inode *inode, int mask)
 {
 	const struct cred *cred = current_cred();
 	struct common_audit_data ad;
@@ -2662,7 +2655,7 @@ static int selinux_inode_permission(struct inode *inode, int mask, unsigned flag
 
 	perms = file_mask_to_av(inode->i_mode, mask);
 
-	return inode_has_perm(cred, inode, perms, &ad, flags);
+	return inode_has_perm(cred, inode, perms, &ad);
 }
 
 static int selinux_inode_setattr(struct dentry *dentry, struct iattr *iattr)
@@ -2730,7 +2723,7 @@ static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 	if (!(sbsec->flags & SE_SBLABELSUPP))
 		return -EOPNOTSUPP;
 
-	if (!inode_owner_or_capable(inode))
+	if (!is_owner_or_cap(inode))
 		return -EPERM;
 
 	COMMON_AUDIT_DATA_INIT(&ad, FS);
@@ -2841,8 +2834,7 @@ static int selinux_inode_getsecurity(const struct inode *inode, const char *name
 	 * and lack of permission just means that we fall back to the
 	 * in-core context value, not a denial.
 	 */
-	error = selinux_capable(current, current_cred(),
-				&init_user_ns, CAP_MAC_ADMIN,
+	error = selinux_capable(current, current_cred(), CAP_MAC_ADMIN,
 				SECURITY_CAP_NOAUDIT);
 	if (!error)
 		error = security_sid_to_context_force(isec->sid, &context,
@@ -2976,7 +2968,7 @@ static int selinux_file_ioctl(struct file *file, unsigned int cmd,
 	case KDSKBENT:
 	case KDSKBSENT:
 		error = task_has_capability(current, cred, CAP_SYS_TTY_CONFIG,
-					SECURITY_CAP_AUDIT);
+					    SECURITY_CAP_AUDIT);
 		break;
 
 	/* default case assumes that the command will go
@@ -3210,7 +3202,7 @@ static int selinux_dentry_open(struct file *file, const struct cred *cred)
 	 * new inode label or new policy.
 	 * This check is not redundant - do not remove.
 	 */
-	return inode_has_perm(cred, inode, open_file_to_av(file), NULL, 0);
+	return inode_has_perm(cred, inode, open_file_to_av(file), NULL);
 }
 
 /* task security operations */
@@ -4354,7 +4346,7 @@ static void selinux_secmark_refcount_dec(void)
 static void selinux_req_classify_flow(const struct request_sock *req,
 				      struct flowi *fl)
 {
-	fl->flowi_secid = req->secid;
+	fl->secid = req->secid;
 }
 
 static int selinux_tun_dev_create(void)
@@ -4703,7 +4695,6 @@ static int selinux_netlink_recv(struct sk_buff *skb, int capability)
 {
 	int err;
 	struct common_audit_data ad;
-	u32 sid;
 
 	err = cap_netlink_recv(skb, capability);
 	if (err)
@@ -4712,9 +4703,8 @@ static int selinux_netlink_recv(struct sk_buff *skb, int capability)
 	COMMON_AUDIT_DATA_INIT(&ad, CAP);
 	ad.u.cap = capability;
 
-	security_task_getsecid(current, &sid);
-	return avc_has_perm(sid, sid, SECCLASS_CAPABILITY,
-			    CAP_TO_MASK(capability), &ad);
+	return avc_has_perm(NETLINK_CB(skb).sid, NETLINK_CB(skb).sid,
+			    SECCLASS_CAPABILITY, CAP_TO_MASK(capability), &ad);
 }
 
 static int ipc_alloc_security(struct task_struct *task,
