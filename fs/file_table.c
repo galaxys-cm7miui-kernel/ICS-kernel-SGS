@@ -190,8 +190,7 @@ struct file *alloc_file(struct path *path, fmode_t mode,
 		file_take_write(file);
 		WARN_ON(mnt_clone_write(path->mnt));
 	}
-	if ((mode & (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
-		i_readcount_inc(path->dentry->d_inode);
+	ima_counts_get(file);
 	return file;
 }
 EXPORT_SYMBOL(alloc_file);
@@ -247,15 +246,11 @@ static void __fput(struct file *file)
 		file->f_op->release(inode, file);
 	security_file_free(file);
 	ima_file_free(file);
-	if (unlikely(S_ISCHR(inode->i_mode) && inode->i_cdev != NULL &&
-		     !(file->f_mode & FMODE_PATH))) {
+	if (unlikely(S_ISCHR(inode->i_mode) && inode->i_cdev != NULL))
 		cdev_put(inode->i_cdev);
-	}
 	fops_put(file->f_op);
 	put_pid(file->f_owner.pid);
 	file_sb_list_del(file);
-	if ((file->f_mode & (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
-		i_readcount_dec(inode);
 	if (file->f_mode & FMODE_WRITE)
 		drop_file_write_access(file);
 	file->f_path.dentry = NULL;
@@ -309,8 +304,6 @@ struct file *fget_raw(unsigned int fd)
 
 	return file;
 }
-
-EXPORT_SYMBOL(fget_raw);
 
 /*
  * Lightweight file lookup - no refcnt increment if fd table isn't shared.

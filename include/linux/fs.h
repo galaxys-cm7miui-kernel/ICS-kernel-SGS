@@ -1885,6 +1885,8 @@ extern void drop_collected_mounts(struct vfsmount *);
 extern int iterate_mounts(int (*)(struct vfsmount *, void *), void *,
 			  struct vfsmount *);
 extern int vfs_statfs(struct path *, struct kstatfs *);
+extern int user_statfs(const char __user *, struct kstatfs *);
+extern int fd_statfs(int, struct kstatfs *);
 extern int statfs_by_dentry(struct dentry *, struct kstatfs *);
 extern int freeze_super(struct super_block *super);
 extern int thaw_super(struct super_block *super);
@@ -2001,6 +2003,8 @@ extern int do_fallocate(struct file *file, int mode, loff_t offset,
 extern long do_sys_open(int dfd, const char __user *filename, int flags,
 			int mode);
 extern struct file *filp_open(const char *, int, int);
+extern struct file *file_open_root(struct dentry *, struct vfsmount *,
+				   const char *, int);
 extern struct file * dentry_open(struct dentry *, struct vfsmount *, int,
 				 const struct cred *);
 extern int filp_close(struct file *, fl_owner_t id);
@@ -2211,34 +2215,10 @@ static inline void allow_write_access(struct file *file)
 	if (file)
 		atomic_inc(&file->f_path.dentry->d_inode->i_writecount);
 }
-#ifdef CONFIG_IMA
-static inline void i_readcount_dec(struct inode *inode)
-{
-	BUG_ON(!atomic_read(&inode->i_readcount));
-	atomic_dec(&inode->i_readcount);
-}
-static inline void i_readcount_inc(struct inode *inode)
-{
-	atomic_inc(&inode->i_readcount);
-}
-#else
-static inline void i_readcount_dec(struct inode *inode)
-{
-	return;
-}
-static inline void i_readcount_inc(struct inode *inode)
-{
-	return;
-}
-#endif
 extern int do_pipe_flags(int *, int);
 extern struct file *create_read_pipe(struct file *f, int flags);
 extern struct file *create_write_pipe(int flags);
 extern void free_write_pipe(struct file *);
-
-extern struct file *do_filp_open(int dfd, const char *pathname,
-		int open_flag, int mode, int acc_mode);
-extern int may_open(struct path *, int, int);
 
 extern int kernel_read(struct file *, loff_t, char *, unsigned long);
 extern struct file * open_exec(const char *);
