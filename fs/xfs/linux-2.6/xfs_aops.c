@@ -853,7 +853,7 @@ xfs_aops_discard_page(
 	if (XFS_FORCED_SHUTDOWN(ip->i_mount))
 		goto out_invalidate;
 
-	xfs_fs_cmn_err(CE_ALERT, ip->i_mount,
+	xfs_alert(ip->i_mount,
 		"page discard on page %p, inode 0x%llx, offset %llu.",
 			page, ip->i_ino, offset);
 
@@ -871,7 +871,7 @@ xfs_aops_discard_page(
 		if (error) {
 			/* something screwed, just bail */
 			if (!XFS_FORCED_SHUTDOWN(ip->i_mount)) {
-				xfs_fs_cmn_err(CE_ALERT, ip->i_mount,
+				xfs_alert(ip->i_mount,
 			"page discard unable to remove delalloc mapping.");
 			}
 			break;
@@ -1295,7 +1295,7 @@ xfs_get_blocks_direct(
  * If the private argument is non-NULL __xfs_get_blocks signals us that we
  * need to issue a transaction to convert the range from unwritten to written
  * extents.  In case this is regular synchronous I/O we just call xfs_end_io
- * to do this and we are done.  But in case this was a successfull AIO
+ * to do this and we are done.  But in case this was a successful AIO
  * request this handler is called from interrupt context, from which we
  * can't start transactions.  In that case offload the I/O completion to
  * the workqueues we also use for buffered I/O completion.
@@ -1410,7 +1410,7 @@ xfs_vm_write_failed(
 		if (error) {
 			/* something screwed, just bail */
 			if (!XFS_FORCED_SHUTDOWN(ip->i_mount)) {
-				xfs_fs_cmn_err(CE_ALERT, ip->i_mount,
+				xfs_alert(ip->i_mount,
 			"xfs_vm_write_failed: unable to clean up ino %lld",
 						ip->i_ino);
 			}

@@ -573,13 +573,15 @@ SYSCALL_DEFINE5(fchownat, int, dfd, const char __user *, filename, uid_t, user,
 {
 	struct path path;
 	int error = -EINVAL;
-	int follow;
+	int lookup_flags;
 
-	if ((flag & ~AT_SYMLINK_NOFOLLOW) != 0)
+	if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_EMPTY_PATH)) != 0)
 		goto out;
 
-	follow = (flag & AT_SYMLINK_NOFOLLOW) ? 0 : LOOKUP_FOLLOW;
-	error = user_path_at(dfd, filename, follow, &path);
+	lookup_flags = (flag & AT_SYMLINK_NOFOLLOW) ? 0 : LOOKUP_FOLLOW;
+	if (flag & AT_EMPTY_PATH)
+		lookup_flags |= LOOKUP_EMPTY;
+	error = user_path_at(dfd, filename, lookup_flags, &path);
 	if (error)
 		goto out;
 	error = mnt_want_write(path.mnt);
@@ -833,17 +835,8 @@ struct file *dentry_open(struct dentry *dentry, struct vfsmount *mnt, int flags,
 
 	validate_creds(cred);
 
-	/*
-	 * We must always pass in a valid mount pointer.   Historically
-	 * callers got away with not passing it, but we must enforce this at
-	 * the earliest possible point now to avoid strange problems deep in the
-	 * filesystem stack.
-	 */
-	if (!mnt) {
-		printk(KERN_WARNING "%s called with NULL vfsmount\n", __func__);
-		dump_stack();
-		return ERR_PTR(-EINVAL);
-	}
+	/* We must always pass in a valid mount pointer. */
+	BUG_ON(!mnt);
 
 	error = -ENFILE;
 	f = get_empty_filp();

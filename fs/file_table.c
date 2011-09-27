@@ -247,8 +247,10 @@ static void __fput(struct file *file)
 		file->f_op->release(inode, file);
 	security_file_free(file);
 	ima_file_free(file);
-	if (unlikely(S_ISCHR(inode->i_mode) && inode->i_cdev != NULL))
+	if (unlikely(S_ISCHR(inode->i_mode) && inode->i_cdev != NULL &&
+		     !(file->f_mode & FMODE_PATH))) {
 		cdev_put(inode->i_cdev);
+	}
 	fops_put(file->f_op);
 	put_pid(file->f_owner.pid);
 	file_sb_list_del(file);
@@ -307,6 +309,8 @@ struct file *fget_raw(unsigned int fd)
 
 	return file;
 }
+
+EXPORT_SYMBOL(fget_raw);
 
 /*
  * Lightweight file lookup - no refcnt increment if fd table isn't shared.

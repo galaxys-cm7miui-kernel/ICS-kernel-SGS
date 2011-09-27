@@ -1275,8 +1275,10 @@ struct btrfs_root *btrfs_read_fs_root_no_radix(struct btrfs_root *tree_root,
 	root->commit_root = btrfs_root_node(root);
 	BUG_ON(!root->node);
 out:
-	if (location->objectid != BTRFS_TREE_LOG_OBJECTID)
+	if (location->objectid != BTRFS_TREE_LOG_OBJECTID) {
 		root->ref_cows = 1;
+		btrfs_check_and_init_root_item(&root->root_item);
+	}
 
 	return root;
 }
@@ -2529,7 +2531,7 @@ int close_ctree(struct btrfs_root *root)
 	 * ERROR state on disk.
 	 *
 	 * 2. when btrfs flips readonly just in btrfs_commit_super,
-	 * and in such case, btrfs cannnot write sb via btrfs_commit_super,
+	 * and in such case, btrfs cannot write sb via btrfs_commit_super,
 	 * and since fs_state has been set BTRFS_SUPER_FLAG_ERROR flag,
 	 * btrfs will cleanup all FS resources first and write sb then.
 	 */
@@ -2822,6 +2824,7 @@ static int btrfs_destroy_delayed_refs(struct btrfs_transaction *trans,
 
 	spin_lock(&delayed_refs->lock);
 	if (delayed_refs->num_entries == 0) {
+		spin_unlock(&delayed_refs->lock);
 		printk(KERN_INFO "delayed_refs has NO entry\n");
 		return ret;
 	}
@@ -3055,7 +3058,7 @@ static int btrfs_cleanup_transaction(struct btrfs_root *root)
 		btrfs_destroy_pinned_extent(root,
 					    root->fs_info->pinned_extents);
 
-		t->use_count = 0;
+		atomic_set(&t->use_count, 0);
 		list_del_init(&t->list);
 		memset(t, 0, sizeof(*t));
 		kmem_cache_free(btrfs_transaction_cachep, t);

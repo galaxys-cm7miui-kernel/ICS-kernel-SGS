@@ -144,7 +144,7 @@ __bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
  *
  * Description:
  *   This does WB_SYNC_NONE opportunistic writeback. The IO is only
- *   started when this function returns, we make no guarentees on
+ *   started when this function returns, we make no guarantees on
  *   completion. Caller need not hold sb s_umount semaphore.
  *
  */
@@ -1041,7 +1041,7 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	if ((inode->i_state & flags) == flags)
 		return;
 
-	if (unlikely(block_dump))
+	if (unlikely(block_dump > 1))
 		block_dump___mark_inode_dirty(inode);
 
 	spin_lock(&inode->i_lock);
