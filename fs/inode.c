@@ -1739,11 +1739,14 @@ void inode_init_owner(struct inode *inode, const struct inode *dir,
 }
 EXPORT_SYMBOL(inode_init_owner);
 
-/*
- * return true if current either has CAP_FOWNER to the
- * file, or owns the file.
+/**
+ * inode_owner_or_capable - check current task permissions to inode
+ * @inode: inode being checked
+ *
+ * Return true if current either has CAP_FOWNER to the inode, or
+ * owns the file.
  */
-bool is_owner_or_cap(const struct inode *inode)
+bool inode_owner_or_capable(const struct inode *inode)
 {
 	struct user_namespace *ns = inode_userns(inode);
 
@@ -1753,4 +1756,4 @@ bool is_owner_or_cap(const struct inode *inode)
 		return true;
 	return false;
 }
-EXPORT_SYMBOL(is_owner_or_cap);
+EXPORT_SYMBOL(inode_owner_or_capable);
