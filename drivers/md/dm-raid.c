@@ -390,6 +390,13 @@ static int raid_is_congested(struct dm_target_callbacks *cb, int bits)
 	return md_raid5_congested(&rs->md, bits);
 }
 
+static void raid_unplug(struct dm_target_callbacks *cb)
+{
+	struct raid_set *rs = container_of(cb, struct raid_set, callbacks);
+
+	md_raid5_kick_device(rs->md.private);
+}
+
 /*
  * Construct a RAID4/5/6 mapping:
  * Args:
@@ -480,6 +487,7 @@ static int raid_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	}
 
 	rs->callbacks.congested_fn = raid_is_congested;
+	rs->callbacks.unplug_fn = raid_unplug;
 	dm_table_add_target_callbacks(ti->table, &rs->callbacks);
 
 	return 0;

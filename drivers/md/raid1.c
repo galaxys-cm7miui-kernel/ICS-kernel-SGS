@@ -565,6 +565,12 @@ static void flush_pending_writes(conf_t *conf)
 		spin_unlock_irq(&conf->device_lock);
 }
 
+static void md_kick_device(mddev_t *mddev)
+{
+	blk_flush_plug(current);
+	md_wakeup_thread(mddev->thread);
+}
+
 /* Barriers....
  * Sometimes we need to suspend IO while we do something else,
  * either some resync/recovery, or reconfigure the array.
@@ -594,7 +600,7 @@ static void raise_barrier(conf_t *conf)
 
 	/* Wait until no block IO is waiting */
 	wait_event_lock_irq(conf->wait_barrier, !conf->nr_waiting,
-			    conf->resync_lock, );
+			    conf->resync_lock, md_kick_device(conf->mddev));
 
 	/* block any new IO from starting */
 	conf->barrier++;
@@ -602,7 +608,7 @@ static void raise_barrier(conf_t *conf)
 	/* Now wait for all pending IO to complete */
 	wait_event_lock_irq(conf->wait_barrier,
 			    !conf->nr_pending && conf->barrier < RESYNC_DEPTH,
-			    conf->resync_lock, );
+			    conf->resync_lock, md_kick_device(conf->mddev));
 
 	spin_unlock_irq(&conf->resync_lock);
 }
@@ -624,7 +630,7 @@ static void wait_barrier(conf_t *conf)
 		conf->nr_waiting++;
 		wait_event_lock_irq(conf->wait_barrier, !conf->barrier,
 				    conf->resync_lock,
-				    );
+				    md_kick_device(conf->mddev));
 		conf->nr_waiting--;
 	}
 	conf->nr_pending++;
@@ -660,7 +666,8 @@ static void freeze_array(conf_t *conf)
 	wait_event_lock_irq(conf->wait_barrier,
 			    conf->nr_pending == conf->nr_queued+1,
 			    conf->resync_lock,
-			    flush_pending_writes(conf));
+			    ({ flush_pending_writes(conf);
+			       md_kick_device(conf->mddev); }));
 	spin_unlock_irq(&conf->resync_lock);
 }
 static void unfreeze_array(conf_t *conf)
@@ -722,7 +729,6 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 	const unsigned long do_sync = (bio->bi_rw & REQ_SYNC);
 	const unsigned long do_flush_fua = (bio->bi_rw & (REQ_FLUSH | REQ_FUA));
 	mdk_rdev_t *blocked_rdev;
-	int plugged;
 
 	/*
 	 * Register the new request and wait if the reconstruction
@@ -814,8 +820,6 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 	 * inc refcount on their rdev.  Record them by setting
 	 * bios[x] to bio
 	 */
-	plugged = mddev_check_plugged(mddev);
-
 	disks = conf->raid_disks;
  retry_write:
 	blocked_rdev = NULL;
@@ -921,7 +925,7 @@ static int make_request(mddev_t *mddev, struct bio * bio)
 	/* In case raid1d snuck in to freeze_array */
 	wake_up(&conf->wait_barrier);
 
-	if (do_sync || !bitmap || !plugged)
+	if (do_sync || !bitmap)
 		md_wakeup_thread(mddev->thread);
 
 	return 0;
@@ -1512,16 +1516,13 @@ static void raid1d(mddev_t *mddev)
 	conf_t *conf = mddev->private;
 	struct list_head *head = &conf->retry_list;
 	mdk_rdev_t *rdev;
-	struct blk_plug plug;
 
 	md_check_recovery(mddev);
-
-	blk_start_plug(&plug);
+	
 	for (;;) {
 		char b[BDEVNAME_SIZE];
 
-		if (atomic_read(&mddev->plug_cnt) == 0)
-			flush_pending_writes(conf);
+		flush_pending_writes(conf);
 
 		spin_lock_irqsave(&conf->device_lock, flags);
 		if (list_empty(head)) {
@@ -1592,7 +1593,6 @@ static void raid1d(mddev_t *mddev)
 		}
 		cond_resched();
 	}
-	blk_finish_plug(&plug);
 }
 
 
@@ -2039,6 +2039,7 @@ static int stop(mddev_t *mddev)
 
 	md_unregister_thread(mddev->thread);
 	mddev->thread = NULL;
+	blk_sync_queue(mddev->queue); /* the unplug fn references 'conf'*/
 	if (conf->r1bio_pool)
 		mempool_destroy(conf->r1bio_pool);
 	kfree(conf->mirrors);
