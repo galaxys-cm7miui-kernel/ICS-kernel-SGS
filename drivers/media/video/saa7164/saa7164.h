@@ -53,6 +53,17 @@
 #include <media/tveeprom.h>
 #include <media/videobuf-dma-sg.h>
 #include <media/videobuf-dvb.h>
+<<<<<<< HEAD
+=======
+#include <dvb_demux.h>
+#include <dvb_frontend.h>
+#include <dvb_net.h>
+#include <dvbdev.h>
+#include <dmxdev.h>
+#include <media/v4l2-common.h>
+#include <media/v4l2-ioctl.h>
+#include <media/v4l2-chip-ident.h>
+>>>>>>> 451a3c2... BKL: remove extraneous #include <smp_lock.h>
 
 #include "saa7164-reg.h"
 #include "saa7164-types.h"
