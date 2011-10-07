@@ -62,14 +62,15 @@ static struct cpufreq_frequency_table freq_table[] = {
 	{L5, 1200*1000},
 	{L6, 1000*1000},
 	{L7, 800*1000},
-	{L8, 400*1000},
-	{L9, 200*1000},
-	{L10, 100*1000},
+	{L8, 600*1000},
+	{L9, 400*1000},
+	{L10, 200*1000},
+	{L11, 100*1000},
 	{0, CPUFREQ_TABLE_END},
 };
 
-extern int exp_UV_mV[11]; //Needed for uv
-unsigned int freq_uv_table[11][3] = {
+extern int exp_UV_mV[12]; //Needed for uv
+unsigned int freq_uv_table[12][3] = {
 	//freq, stock, current
 	{1600000,	1500,	1500},
 	{1500000,	1500,	1500},
@@ -79,11 +80,12 @@ unsigned int freq_uv_table[11][3] = {
 	{1200000,	1350,	1350},
 	{1000000,	1250,	1250},
 	{800000,	1200,	1200},
+	{600000,	1150,	1150},
 	{400000,	1050,	1050},
 	{200000,	950,	950},
 	{100000,	950,	950}
 };
-//extern int enabled_freqs[11];
+//extern int enabled_freqs[12];
 //extern int update_states = 0;
 
 struct s5pv210_dvs_conf {
@@ -93,7 +95,7 @@ struct s5pv210_dvs_conf {
 
 #ifdef CONFIG_DVFS_LIMIT
 static unsigned int g_dvfs_high_lock_token = 0;
-static unsigned int g_dvfs_high_lock_limit = 10;
+static unsigned int g_dvfs_high_lock_limit = 11; // check that
 static unsigned int g_dvfslockval[DVFS_LOCK_TOKEN_NUM];
 //static DEFINE_MUTEX(dvfs_high_lock);
 #endif
@@ -104,54 +106,70 @@ const unsigned long int_volt_max = 1250000;
 
 // added more voltage levels for the added frequencies
 static struct s5pv210_dvs_conf dvs_conf[] = {
+	//1600
 	[L0] = {
 		.arm_volt   = 1500000,
 		.int_volt   = 1225000,
 	},
+	//1500
 	[L1] = {
 		.arm_volt   = 1500000,
 		.int_volt   = 1225000,
 	},
+	//1440
 	[L2] = {
 		.arm_volt   = 1475000,
 		.int_volt   = 1200000,
 	},
+	//1400
 	[L3] = {
 		.arm_volt   = 1450000,
 		.int_volt   = 1175000,
 	},
+	//1300
 	[L4] = { 
 		.arm_volt   = 1400000,
 		.int_volt   = 1150000,
 	},
+	//1200
 	[L5] = {
 		.arm_volt   = 1350000,
 		.int_volt   = 1125000,
 	},
+	//1000
 	[L6] = {
 		.arm_volt   = 1250000,
 		.int_volt   = 1100000,
 	},
+	//800
 	[L7] = {
 		.arm_volt   = 1200000,
 		.int_volt   = 1050000,
 	},
+	//600
 	[L8] = {
+		.arm_volt   = 1150000,
+		.int_volt   = 1150000,
+	},
+	//400
+	[L9] = {
 		.arm_volt   = 1050000,
 		.int_volt   = 1050000,
 	},
-	[L9] = {
+	//200
+	[L10] = {
 		.arm_volt   = 950000,
 		.int_volt   = 1050000,
 	},
-	[L10] = {
+	//100
+	[L11] = {
 		.arm_volt   = 950000,
 		.int_volt   = 1000000,
 	},
 };
 
 //more clocks 
-static u32 clkdiv_val[11][11] = {
+static u32 clkdiv_val[12][12] = {
 	/*{ APLL, A2M, HCLK_MSYS, PCLK_MSYS,
 	 * HCLK_DSYS, PCLK_DSYS, HCLK_PSYS, PCLK_PSYS, ONEDRAM,
 	 * MFC, G3D }
@@ -166,17 +184,19 @@ static u32 clkdiv_val[11][11] = {
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
 	//L4: 1300
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
-	/* L5 : [1200/200/200/100][166/83][133/66][200/200] */
+	/* L5 : [1200/200/200/100][166/83][133/66][200/200] */ //1200
 	{0, 5, 5, 1, 3, 1, 4, 1, 3, 0, 0},
-	/* L6 : [1000/200/200/100][166/83][133/66][200/200] */
+	/* L6 : [1000/200/200/100][166/83][133/66][200/200] */ //1000
 	{0, 4, 4, 1, 3, 1, 4, 1, 3, 0, 0},
-	/* L7 : [800/200/200/100][166/83][133/66][200/200] */
+	/* L7 : [800/200/200/100][166/83][133/66][200/200] */ //800
 	{0, 3, 3, 1, 3, 1, 4, 1, 3, 0, 0},
-	/* L8: [400/200/200/100][166/83][133/66][200/200] */
+	/* L8 : */ //600
+	{1, 3, 2, 1, 3, 1, 4, 1, 3, 0, 0},
+	/* L9: [400/200/200/100][166/83][133/66][200/200] */ //400
 	{1, 3, 1, 1, 3, 1, 4, 1, 3, 0, 0},
-	/* L9 : [200/200/200/100][166/83][133/66][200/200] */
+	/* L10 : [200/200/200/100][166/83][133/66][200/200] */ //200
 	{3, 3, 0, 1, 3, 1, 4, 1, 3, 0, 0},
-	/* L10 : [100/100/100/100][83/83][66/66][100/100] */
+	/* L11 : [100/100/100/100][83/83][66/66][100/100] */ //100
 	{7, 7, 0, 0, 7, 0, 9, 0, 7, 0, 0},
 };
 
@@ -271,7 +291,18 @@ static struct s3c_freq clk_info[] = {
 		.hclk_dsys  = 166750,
 		.pclk_dsys  = 83375,
 	},
-	[L8] = {	/* L8: 400MHz */
+	[L8] = {	/* L8: 600MHz */
+		.fclk       = 800000,
+		.armclk     = 600000,
+		.hclk_tns   = 0,
+		.hclk       = 133000,
+		.pclk       = 66000,
+		.hclk_msys  = 200000,
+		.pclk_msys  = 100000,
+		.hclk_dsys  = 166750,
+		.pclk_dsys  = 83375,
+	},
+	[L9] = {	/* L9: 400MHz */
 		.fclk       = 800000,
 		.armclk     = 400000,
 		.hclk_tns   = 0,
@@ -282,7 +313,7 @@ static struct s3c_freq clk_info[] = {
 		.hclk_dsys  = 166750,
 		.pclk_dsys  = 83375,
 	},
-	[L9] = {	/* L9: 200MHz */
+	[L10] = {	/* L10: 200MHz */
 		.fclk       = 800000,
 		.armclk     = 200000,
 		.hclk_tns   = 0,
@@ -293,7 +324,7 @@ static struct s3c_freq clk_info[] = {
 		.hclk_dsys  = 166750,
 		.pclk_dsys  = 83375,
 	},
-	[L10] = {	/* L10: 100MHz */
+	[L11] = {	/* L11: 100MHz */
 		.fclk       = 800000,
 		.armclk     = 100000,
 		.hclk_tns   = 0,
