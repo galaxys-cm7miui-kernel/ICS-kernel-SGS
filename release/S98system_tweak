@@ -1,6 +1,6 @@
 #!/system/bin/sh
 #
-# 89system_tweak V59
+# 89system_tweak V62
 # by zacharias.maladroit
 # modifications and ideas taken from: ckMod SSSwitch by voku1987 and "battery tweak" (collin_ph@xda)
 # OOM/LMK settings by Juwe11
@@ -25,7 +25,7 @@ MMC=`ls -d /sys/block/mmc*`;
 # set the cfq scheduler as default i/o scheduler (Samsung ROMs)
 for i in $STL $BML $MMC;
 do
-	echo "bfq" > $i/queue/scheduler; 
+	echo "deadline" > $i/queue/scheduler; 
 done;
 
 # Optimize non-rotating storage; 
@@ -40,11 +40,11 @@ do
 	echo 1024 > $i/queue/iosched/nr_requests; # for starters: keep it sane
 done;
 
-#disable iostats to reduce overhead
+#disable iostats to reduce overhead # idea by kodos96 - thanks !
 for k in $STL $BML $MMC;
 do
  echo "0" > $k/queue/iostats
-done
+done;
 
 # Optimize for read- & write-throughput; 
 
@@ -109,6 +109,7 @@ echo 0 > /proc/sys/vm/laptop_mode
 
 #		echo 60 > /proc/sys/vm/swappiness; # 20 # 70
 #		echo 10 > /proc/sys/vm/page-cluster; # 12
+		echo 0 > /proc/sys/vm/laptop_mode; # do not omit syncing
 		echo 700 > /proc/sys/vm/dirty_expire_centisecs; # 2000 # 700 is long enough [stability testing]
 		echo 500 > /proc/sys/vm/dirty_writeback_centisecs; # 1000 # 500 is long enough [stability testing]
 		echo 10 > /proc/sys/vm/dirty_background_ratio; # 15 # 10 # 50  
@@ -380,15 +381,15 @@ setprop ro.ril.def.agps.mode 2 # default value
 # =========
 # TWEAKS: overall
 # =========
-setprop ro.telephony.call_ring.delay 100; # let's minimize the time Android waits until it rings on a call
+setprop ro.telephony.call_ring.delay 1000; # let's minimize the time Android waits until it rings on a call # don't make it too low - the system might screw up (our phone model is quite fragile)
 #setprop ro.ril.disable.power.collapse 0; # commented out - option to experiment with
 #setprop pm.sleep_mode 1; # previously 0, recommended is 1 or 2 # commented out - option to experiment with
 #setprop dalvik.vm.startheapsize 8m;
 #setprop dalvik.vm.heapsize 64m; # leave that setting to cyanogenmod settings or uncomment it if needed
-setprop wifi.supplicant_scan_interval 60; # higher is not recommended, scans while not connected anyway so shouldn't affect while connected
-setprop windowsmgr.max_events_per_sec 60; # smoother GUI # max at 300
+setprop wifi.supplicant_scan_interval 30; # higher is not recommended, scans while not connected anyway so shouldn't affect while connected
+setprop windowsmgr.max_events_per_sec 76; # smoother GUI -> set to 76 # max at 300
 #echo 64000 > /proc/sys/kernel/msgmni;
-echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
+#echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
 #echo 5000 > /proc/sys/kernel/threads-max;
 echo 0 > /proc/sys/kernel/hung_task_timeout_secs;
 
@@ -423,29 +424,27 @@ done;
 # ==============================================================
 # =========
 
-if [ -e /proc/sys/kernel/rr_interval ];
-then
+#if [ -e /proc/sys/kernel/rr_interval ];
+#then
 	# BFS;
-	echo 6 > /proc/sys/kernel/rr_interval;
-	echo 100 > /proc/sys/kernel/iso_cpu;
-else
+#	echo 6 > /proc/sys/kernel/rr_interval;
+#	echo 100 > /proc/sys/kernel/iso_cpu;
+#else
 	# CFS
-	# following 2 settings are to be handled with care - could lead to bootlooping phone or other issues if too low !
-	echo 100000 > /proc/sys/kernel/sched_latency_ns; # 1000000 # 18000000 # 1000000 # 100000 ## new
-	echo 500000 > /proc/sys/kernel/sched_wakeup_granularity_ns	; # 500000 # 3000000 # 25000 # 0 (?)
-	echo 750000 > /proc/sys/kernel/sched_min_granularity_ns; # 1000000 # 1500000 # 100000 # 1000000 ## 750000 (upstream)
+#	# following 2 settings are to be handled with care - could lead to bootlooping phone or other issues if too low !
+#	echo 100000 > /proc/sys/kernel/sched_latency_ns; # 1000000 # 18000000 # 1000000 # 100000 ## new
+#	echo 500000 > /proc/sys/kernel/sched_wakeup_granularity_ns	; # 500000 # 3000000 # 25000 # 0 (?)
+#	echo 750000 > /proc/sys/kernel/sched_min_granularity_ns; # 1000000 # 1500000 # 100000 # 1000000 ## 750000 (upstream)
 	#echo -1 > /proc/sys/kernel/sched_rt_runtime_us; 
 	#echo 100000 > /proc/sys/kernel/sched_rt_period_us;
 	#echo 95000 > /proc/sys/kernel/sched_rt_runtime_us; # default: 950000; very small values in sched_rt_runtime_us can result in an unstable system when the runtime is so small 
 		      # the system has difficulty making forward progress (the migration thread and kstopmachine both are real-time processes)
-fi;
+#fi;
 
 
 # =========
 # TWEAKS: new scheduler performance settings (test)
 # =========
-
-# comment out for troubleshooting [some lags have been reported]
 
 #echo "now disabling GENTLE_FAIR_SLEEPERS"
 #echo "NO_GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
@@ -640,4 +639,7 @@ fi;
 # V56: fixed a typo in NO_NORMALIZED_SLEEPERS;  no_new_fair_sleepers and no_normalized_sleepers are rather pointless since not available in the kernel but still setting them - just in case ;)
 # V57: enable some more network tweaks (for all network types), smoother GUI, testing with sleep mode
 # V58: fixed 2 typos in the agps tweaks - thanks to DerTeufel for spotting those !
-# V59: window events back to 60, disabling some scheduler modifications
+# V59: (only cosmetic change in script version) commented out ro.ril.disable.power.collapse & pm.sleep_mode - troubleshooting attempt against SODs
+# V60: disable scheduler optimizations [stability testing]
+# V61: max_events_per_sec back to 60, wifi scanning to 30, leave semaphores at default number
+# V62: max_events_per_sec set to 76 (testing for smoother GUI)
