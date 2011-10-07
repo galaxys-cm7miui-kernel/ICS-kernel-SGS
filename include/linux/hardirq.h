@@ -5,7 +5,6 @@
 #include <linux/lockdep.h>
 #include <linux/ftrace_irq.h>
 #include <asm/hardirq.h>
-#include <asm/system.h>
 
 /*
  * We put the hardirq and softirq counter into the preemption
@@ -93,6 +92,12 @@
  * Are we in NMI context?
  */
 #define in_nmi()	(preempt_count() & NMI_MASK)
+
+#if defined(CONFIG_PREEMPT)
+# define PREEMPT_CHECK_OFFSET 1
+#else
+# define PREEMPT_CHECK_OFFSET 0
+#endif
 
 /*
  * Are we running in atomic context?  WARNING: this macro cannot
