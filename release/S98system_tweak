@@ -100,7 +100,7 @@ echo 0 > /proc/sys/vm/swappiness # 70 for zram, Talon # 0 for CM7 / MIUI (no zra
 echo 3 > /proc/sys/vm/page-cluster # when swapping then hesitate to swap out pages & pull them in again in a fast manner
 
 ##echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50
-echo 20 > /proc/sys/vm/vfs_cache_pressure; # same value for both: screen on & off - needs some testing due to RAM filling and OOM killer triggering # 20 (on talon & testing)
+echo 50 > /proc/sys/vm/vfs_cache_pressure; # same value for both: screen on & off - needs some testing due to RAM filling and OOM killer triggering # 20 (on talon & testing)
 
 # make sure we don't use laptop-mode
 echo 0 > /proc/sys/vm/laptop_mode
@@ -642,4 +642,4 @@ done;
 # V59: (only cosmetic change in script version) commented out ro.ril.disable.power.collapse & pm.sleep_mode - troubleshooting attempt against SODs
 # V60: disable scheduler optimizations [stability testing]
 # V61: max_events_per_sec back to 60, wifi scanning to 30, leave semaphores at default number
-# V62: max_events_per_sec set to 76 (testing for smoother GUI)
+# V62: max_events_per_sec set to 76 (testing for smoother GUI), bump vfs_cache_pressure up to 50
