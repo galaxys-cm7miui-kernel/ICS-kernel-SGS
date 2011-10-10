@@ -1134,7 +1134,12 @@ static DEFINE_PCI_DEVICE_TABLE(rt2800pci_device_table) = {
 	{ PCI_DEVICE(0x1814, 0x3593), PCI_DEVICE_DATA(&rt2800pci_ops) },
 #endif
 #ifdef CONFIG_RT2800PCI_RT53XX
+<<<<<<< HEAD
 	{ PCI_DEVICE(0x1814, 0x5390), PCI_DEVICE_DATA(&rt2800pci_ops) },
+=======
+	{ PCI_DEVICE(0x1814, 0x5390) },
+	{ PCI_DEVICE(0x1814, 0x539f) },
+>>>>>>> 9abd59b... Merge commit 'v3.0.1' into android-3.0
 #endif
 	{ 0, }
 };
