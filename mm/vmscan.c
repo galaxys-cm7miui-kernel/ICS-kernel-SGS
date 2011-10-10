@@ -42,6 +42,7 @@
 #include <linux/delayacct.h>
 #include <linux/sysctl.h>
 #include <linux/oom.h>
+#include <linux/prefetch.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -221,11 +222,13 @@ EXPORT_SYMBOL(unregister_shrinker);
  *
  * Returns the number of slab objects which we shrunk.
  */
-unsigned long shrink_slab(unsigned long scanned, gfp_t gfp_mask,
-			unsigned long lru_pages)
+unsigned long shrink_slab(struct shrink_control *shrink,
+			  unsigned long lru_pages)
 {
 	struct shrinker *shrinker;
 	unsigned long ret = 0;
+	unsigned long scanned = shrink->nr_scanned;
+	gfp_t gfp_mask = shrink->gfp_mask;
 
 	if (scanned == 0)
 		scanned = SWAP_CLUSTER_MAX;
@@ -1114,20 +1117,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 					nr_lumpy_dirty++;
 				scan++;
 			} else {
-				/*
-				 * Check if the page is freed already.
-				 *
-				 * We can't use page_count() as that
-				 * requires compound_head and we don't
-				 * have a pin on the page here. If a
-				 * page is tail, we may or may not
-				 * have isolated the head, so assume
-				 * it's not free, it'd be tricky to
-				 * track the head status without a
-				 * page pin.
-				 */
-				if (!PageTail(cursor_page) &&
-				    !atomic_read(&cursor_page->_count))
+				/* the page is freed already. */
+				if (!page_count(cursor_page))
 					continue;
 				break;
 			}
@@ -1218,13 +1209,16 @@ int isolate_lru_page(struct page *page)
 {
 	int ret = -EBUSY;
 
+	VM_BUG_ON(!page_count(page));
+
 	if (PageLRU(page)) {
 		struct zone *zone = page_zone(page);
 
 		spin_lock_irq(&zone->lru_lock);
-		if (PageLRU(page) && get_page_unless_zero(page)) {
+		if (PageLRU(page)) {
 			int lru = page_lru(page);
 			ret = 0;
+			get_page(page);
 			ClearPageLRU(page);
 
 			del_page_from_lru_list(zone, page, lru);
@@ -2043,7 +2037,8 @@ static bool all_unreclaimable(struct zonelist *zonelist,
  * 		else, the number of pages reclaimed
  */
 static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
-					struct scan_control *sc)
+					struct scan_control *sc,
+					struct shrink_control *shrink)
 {
 	int priority;
 	unsigned long total_scanned = 0;
@@ -2077,7 +2072,8 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 				lru_pages += zone_reclaimable_pages(zone);
 			}
 
-			shrink_slab(sc->nr_scanned, sc->gfp_mask, lru_pages);
+			shrink->nr_scanned = sc->nr_scanned;
+			shrink_slab(shrink, lru_pages);
 			if (reclaim_state) {
 				sc->nr_reclaimed += reclaim_state->reclaimed_slab;
 				reclaim_state->reclaimed_slab = 0;
@@ -2149,12 +2145,15 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.mem_cgroup = NULL,
 		.nodemask = nodemask,
 	};
+	struct shrink_control shrink = {
+		.gfp_mask = sc.gfp_mask,
+	};
 
 	trace_mm_vmscan_direct_reclaim_begin(order,
 				sc.may_writepage,
 				gfp_mask);
 
-	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+	nr_reclaimed = do_try_to_free_pages(zonelist, &sc, &shrink);
 
 	trace_mm_vmscan_direct_reclaim_end(nr_reclaimed);
 
@@ -2214,17 +2213,20 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *mem_cont,
 		.order = 0,
 		.mem_cgroup = mem_cont,
 		.nodemask = NULL, /* we don't care the placement */
+		.gfp_mask = (gfp_mask & GFP_RECLAIM_MASK) |
+				(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
+	};
+	struct shrink_control shrink = {
+		.gfp_mask = sc.gfp_mask,
 	};
 
-	sc.gfp_mask = (gfp_mask & GFP_RECLAIM_MASK) |
-			(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK);
 	zonelist = NODE_DATA(numa_node_id())->node_zonelists;
 
 	trace_mm_vmscan_memcg_reclaim_begin(0,
 					    sc.may_writepage,
 					    sc.gfp_mask);
 
-	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+	nr_reclaimed = do_try_to_free_pages(zonelist, &sc, &shrink);
 
 	trace_mm_vmscan_memcg_reclaim_end(nr_reclaimed);
 
@@ -2257,8 +2259,7 @@ static bool pgdat_balanced(pg_data_t *pgdat, unsigned long balanced_pages,
 	for (i = 0; i <= classzone_idx; i++)
 		present_pages += pgdat->node_zones[i].present_pages;
 
-	/* A special case here: if zone has no page, we think it's balanced */
-	return balanced_pages >= (present_pages >> 2);
+	return balanced_pages > (present_pages >> 2);
 }
 
 /* is kswapd sleeping prematurely? */
@@ -2274,7 +2275,7 @@ static bool sleeping_prematurely(pg_data_t *pgdat, int order, long remaining,
 		return true;
 
 	/* Check the watermark levels */
-	for (i = 0; i <= classzone_idx; i++) {
+	for (i = 0; i < pgdat->nr_zones; i++) {
 		struct zone *zone = pgdat->node_zones + i;
 
 		if (!populated_zone(zone))
@@ -2292,7 +2293,7 @@ static bool sleeping_prematurely(pg_data_t *pgdat, int order, long remaining,
 		}
 
 		if (!zone_watermark_ok_safe(zone, order, high_wmark_pages(zone),
-							i, 0))
+							classzone_idx, 0))
 			all_zones_ok = false;
 		else
 			balanced += zone->present_pages;
@@ -2353,6 +2354,9 @@ static unsigned long balance_pgdat(pg_data_t *pgdat, int order,
 		.order = order,
 		.mem_cgroup = NULL,
 	};
+	struct shrink_control shrink = {
+		.gfp_mask = sc.gfp_mask,
+	};
 loop_again:
 	total_scanned = 0;
 	sc.nr_reclaimed = 0;
@@ -2394,6 +2398,7 @@ loop_again:
 			if (!zone_watermark_ok_safe(zone, order,
 					high_wmark_pages(zone), 0, 0)) {
 				end_zone = i;
+				*classzone_idx = i;
 				break;
 			}
 		}
@@ -2448,19 +2453,19 @@ loop_again:
 				KSWAPD_ZONE_BALANCE_GAP_RATIO);
 			if (!zone_watermark_ok_safe(zone, order,
 					high_wmark_pages(zone) + balance_gap,
-					end_zone, 0)) {
+					end_zone, 0))
 				shrink_zone(priority, zone, &sc);
+			reclaim_state->reclaimed_slab = 0;
+			shrink.nr_scanned = sc.nr_scanned;
+			nr_slab = shrink_slab(&shrink, lru_pages);
+			sc.nr_reclaimed += reclaim_state->reclaimed_slab;
+			total_scanned += sc.nr_scanned;
 
-				reclaim_state->reclaimed_slab = 0;
-				nr_slab = shrink_slab(sc.nr_scanned, GFP_KERNEL,
-							lru_pages);
-				sc.nr_reclaimed += reclaim_state->reclaimed_slab;
-				total_scanned += sc.nr_scanned;
-
-				if (nr_slab == 0 && !zone_reclaimable(zone))
-					zone->all_unreclaimable = 1;
-			}
-
+			if (zone->all_unreclaimable)
+				continue;
+			if (nr_slab == 0 &&
+			    !zone_reclaimable(zone))
+				zone->all_unreclaimable = 1;
 			/*
 			 * If we've done a decent amount of scanning and
 			 * the reclaim ratio is low, start doing writepage
@@ -2469,12 +2474,6 @@ loop_again:
 			if (total_scanned > SWAP_CLUSTER_MAX * 2 &&
 			    total_scanned > sc.nr_reclaimed + sc.nr_reclaimed / 2)
 				sc.may_writepage = 1;
-
-			if (zone->all_unreclaimable) {
-				if (end_zone && end_zone == i)
-					end_zone--;
-				continue;
-			}
 
 			if (!zone_watermark_ok_safe(zone, order,
 					high_wmark_pages(zone), end_zone, 0)) {
@@ -2654,8 +2653,8 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order, int classzone_idx)
  */
 static int kswapd(void *p)
 {
-	unsigned long order, new_order;
-	int classzone_idx, new_classzone_idx;
+	unsigned long order;
+	int classzone_idx;
 	pg_data_t *pgdat = (pg_data_t*)p;
 	struct task_struct *tsk = current;
 
@@ -2685,23 +2684,17 @@ static int kswapd(void *p)
 	tsk->flags |= PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD;
 	set_freezable();
 
-	order = new_order = 0;
-	classzone_idx = new_classzone_idx = pgdat->nr_zones - 1;
+	order = 0;
+	classzone_idx = MAX_NR_ZONES - 1;
 	for ( ; ; ) {
+		unsigned long new_order;
+		int new_classzone_idx;
 		int ret;
 
-		/*
-		 * If the last balance_pgdat was unsuccessful it's unlikely a
-		 * new request of a similar or harder type will succeed soon
-		 * so consider going to sleep on the basis we reclaimed at
-		 */
-		if (classzone_idx >= new_classzone_idx && order == new_order) {
-			new_order = pgdat->kswapd_max_order;
-			new_classzone_idx = pgdat->classzone_idx;
-			pgdat->kswapd_max_order =  0;
-			pgdat->classzone_idx = pgdat->nr_zones - 1;
-		}
-
+		new_order = pgdat->kswapd_max_order;
+		new_classzone_idx = pgdat->classzone_idx;
+		pgdat->kswapd_max_order = 0;
+		pgdat->classzone_idx = MAX_NR_ZONES - 1;
 		if (order < new_order || classzone_idx > new_classzone_idx) {
 			/*
 			 * Don't sleep if someone wants a larger 'order'
@@ -2714,7 +2707,7 @@ static int kswapd(void *p)
 			order = pgdat->kswapd_max_order;
 			classzone_idx = pgdat->classzone_idx;
 			pgdat->kswapd_max_order = 0;
-			pgdat->classzone_idx = pgdat->nr_zones - 1;
+			pgdat->classzone_idx = MAX_NR_ZONES - 1;
 		}
 
 		ret = try_to_freeze();
@@ -2816,7 +2809,10 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 		.swappiness = vm_swappiness,
 		.order = 0,
 	};
-	struct zonelist * zonelist = node_zonelist(numa_node_id(), sc.gfp_mask);
+	struct shrink_control shrink = {
+		.gfp_mask = sc.gfp_mask,
+	};
+	struct zonelist *zonelist = node_zonelist(numa_node_id(), sc.gfp_mask);
 	struct task_struct *p = current;
 	unsigned long nr_reclaimed;
 
@@ -2825,7 +2821,7 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 	reclaim_state.reclaimed_slab = 0;
 	p->reclaim_state = &reclaim_state;
 
-	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+	nr_reclaimed = do_try_to_free_pages(zonelist, &sc, &shrink);
 
 	p->reclaim_state = NULL;
 	lockdep_clear_current_reclaim_state();
@@ -3000,6 +2996,9 @@ static int __zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
 		.swappiness = vm_swappiness,
 		.order = order,
 	};
+	struct shrink_control shrink = {
+		.gfp_mask = sc.gfp_mask,
+	};
 	unsigned long nr_slab_pages0, nr_slab_pages1;
 
 	cond_resched();
@@ -3026,6 +3025,7 @@ static int __zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
 	}
 
 	nr_slab_pages0 = zone_page_state(zone, NR_SLAB_RECLAIMABLE);
+	shrink.nr_scanned = sc.nr_scanned;
 	if (nr_slab_pages0 > zone->min_slab_pages) {
 		/*
 		 * shrink_slab() does not currently allow us to determine how
@@ -3041,7 +3041,7 @@ static int __zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
 			unsigned long lru_pages = zone_reclaimable_pages(zone);
 
 			/* No reclaimable slab or very low memory pressure */
-			if (!shrink_slab(sc.nr_scanned, gfp_mask, lru_pages))
+			if (!shrink_slab(&shrink, lru_pages))
 				break;
 
 			/* Freed enough memory */
