@@ -16,6 +16,7 @@
 #include <linux/nodemask.h>
 #include <linux/sort.h>
 #include <linux/fs.h>
+#include <linux/pagemap.h>
 
 #include <asm/cputype.h>
 #include <asm/mach-types.h>

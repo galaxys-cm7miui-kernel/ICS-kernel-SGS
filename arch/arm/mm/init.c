@@ -17,6 +17,7 @@
 #include <linux/initrd.h>
 #include <linux/highmem.h>
 #include <linux/gfp.h>
+#include <linux/pagemap.h>
 
 #include <asm/mach-types.h>
 #include <asm/sections.h>
