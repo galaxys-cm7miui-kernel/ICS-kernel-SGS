@@ -14,7 +14,6 @@
 #include <linux/slab.h>
 #include <linux/ipc.h>
 #include <linux/ipc_namespace.h>
-#include <linux/utsname.h>
 #include <asm/uaccess.h>
 
 #include "util.h"
