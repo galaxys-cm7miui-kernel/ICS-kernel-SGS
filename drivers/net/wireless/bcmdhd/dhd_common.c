@@ -70,7 +70,6 @@ char nv_path[MOD_PARAM_PATHLEN];
 
 #ifdef SOFTAP
 char fw_path2[MOD_PARAM_PATHLEN];
-extern bool softap_enabled;
 #endif
 
 /* Last connection success/failure status */
@@ -1534,10 +1533,8 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	uint32 dongle_align = DHD_SDALIGN;
 	uint32 glom = 0;
 	uint bcn_timeout = 4;
-	uint retry_max = 3;
-#if defined(ARP_OFFLOAD_SUPPORT)
 	int arpoe = 1;
-#endif
+	int arp_ol = 0xf;
 	int scan_assoc_time = 40;
 	int scan_unassoc_time = 40;
 	const char 				*str;
@@ -1554,17 +1551,14 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #if defined(SOFTAP)
 	uint dtim = 1;
 #endif
-#if (defined(AP) && !defined(WLP2P)) || (!defined(AP) && defined(WL_CFG80211))
+#ifdef AP
 	uint32 mpc = 0; /* Turn MPC off for AP/APSTA mode */
-#endif /* AP */
-#if defined(AP) || defined(WLP2P)
 	uint32 apsta = 1; /* Enable APSTA mode */
-#endif /* defined(AP) || defined(WLP2P) */
+#endif
 #ifdef GET_CUSTOM_MAC_ENABLE
 	struct ether_addr ea_addr;
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
-	dhd->op_mode = 0;
 #ifdef GET_CUSTOM_MAC_ENABLE
 	ret = dhd_custom_get_mac_address(ea_addr.octet);
 	if (!ret) {
@@ -1592,7 +1586,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
 #ifdef SET_RANDOM_MAC_SOFTAP
-	if (strstr(fw_path, "_apsta") != NULL) {
+	if (strstr(fw_path, "apsta") != NULL) {
 		uint rand_mac;
 
 		srandom32((uint)jiffies);
@@ -1613,52 +1607,9 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	}
 #endif /* SET_RANDOM_MAC_SOFTAP */
 
-	DHD_TRACE(("Firmware = %s\n", fw_path));
-#if !defined(AP) && defined(WLP2P)
-	/* Check if firmware with WFD support used */
-	if (strstr(fw_path, "_p2p") != NULL) {
-		bcm_mkiovar("apsta", (char *)&apsta, 4, iovbuf, sizeof(iovbuf));
-		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR,
-			iovbuf, sizeof(iovbuf), TRUE, 0)) < 0) {
-			DHD_ERROR(("%s APSTA for WFD failed ret= %d\n", __FUNCTION__, ret));
-		} else {
-			dhd->op_mode |= WFD_MASK;
-#if defined(ARP_OFFLOAD_SUPPORT)
-			arpoe = 0;
-#endif /* (ARP_OFFLOAD_SUPPORT) */
-			dhd_pkt_filter_enable = FALSE;
-		}
-	}
-#endif /* !defined(AP) && defined(WLP2P) */
-
-#if !defined(AP) && defined(WL_CFG80211)
-	/* Check if firmware with HostAPD support used */
-	if (strstr(fw_path, "_apsta") != NULL) {
-			/* Turn off MPC in AP mode */
-			bcm_mkiovar("mpc", (char *)&mpc, 4, iovbuf, sizeof(iovbuf));
-			if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
-				sizeof(iovbuf), TRUE, 0)) < 0) {
-				DHD_ERROR(("%s mpc for HostAPD failed  %d\n", __FUNCTION__, ret));
-			} else {
-				dhd->op_mode |= HOSTAPD_MASK;
-#if defined(ARP_OFFLOAD_SUPPORT)
-				arpoe = 0;
-#endif /* (ARP_OFFLOAD_SUPPORT) */
-				dhd_pkt_filter_enable = FALSE;
-			}
-	}
-#endif /* !defined(AP) && defined(WL_CFG80211) */
-
-	if ((dhd->op_mode != WFD_MASK) && (dhd->op_mode != HOSTAPD_MASK)) {
-		/* STA only operation mode */
-		dhd->op_mode |= STA_MASK;
-		dhd_pkt_filter_enable = TRUE;
-	}
-	DHD_ERROR(("Firmware up: op_mode=%d, "
-			"Broadcom Dongle Host Driver mac=%.2x:%.2x:%.2x:%.2x:%.2x:%.2x\n",
-			dhd->op_mode,
-			dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2],
-			dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5]));
+	DHD_ERROR(("Firmware up: Broadcom Dongle Host Driver mac=%.2x:%.2x:%.2x:%.2x:%.2x:%.2x\n",
+	       dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2],
+	       dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5]));
 
 	/* Set Country code  */
 	if (dhd->dhd_cspec.ccode[0] != 0) {
@@ -1698,16 +1649,15 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	/* Setup timeout if Beacons are lost and roam is off to report link down */
 	bcm_mkiovar("bcn_timeout", (char *)&bcn_timeout, 4, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
-	/* Setup assoc_retry_max count to reconnect target AP in dongle */
-	bcm_mkiovar("assoc_retry_max", (char *)&retry_max, 4, iovbuf, sizeof(iovbuf));
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
-#if defined(AP) && !defined(WLP2P)
+#ifdef AP
 	/* Turn off MPC in AP mode */
 	bcm_mkiovar("mpc", (char *)&mpc, 4, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+
+	/* Enable APSTA mode */
 	bcm_mkiovar("apsta", (char *)&apsta, 4, iovbuf, sizeof(iovbuf));
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
-#endif /* defined(AP) && !defined(WLP2P) */
+#endif
 #if defined(SOFTAP)
 	if (ap_fw_loaded == TRUE) {
 		dhd_wl_ioctl_cmd(dhd, WLC_SET_DTIMPRD, (char *)&dtim, sizeof(dtim), TRUE, 0);
@@ -1770,6 +1720,12 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_UNASSOC_TIME, (char *)&scan_unassoc_time,
 		sizeof(scan_unassoc_time), TRUE, 0);
 
+	/* Set ARP offload */
+	bcm_mkiovar("arpoe", (char *)&arpoe, 4, iovbuf, sizeof(iovbuf));
+	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+	bcm_mkiovar("arp_ol", (char *)&arp_ol, 4, iovbuf, sizeof(iovbuf));
+	dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+
 	/* add a default packet filter pattern */
 	str = "pkt_filter_add";
 	str_len = strlen(str);
@@ -1823,9 +1779,9 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 
 #ifdef ARP_OFFLOAD_SUPPORT
 	/* Set and enable ARP offload feature for STA only  */
-	if (arpoe && !ap_fw_loaded) {
+	if (dhd_arp_enable && !ap_fw_loaded) {
 		dhd_arp_offload_set(dhd, dhd_arp_mode);
-		dhd_arp_offload_enable(dhd, arpoe);
+		dhd_arp_offload_enable(dhd, dhd_arp_enable);
 	} else {
 		dhd_arp_offload_set(dhd, 0);
 		dhd_arp_offload_enable(dhd, FALSE);
@@ -2105,17 +2061,6 @@ exit:
 	return bcn_li_dtim;
 }
 
-/* Check if HostAPD or WFD mode setup */
-bool dhd_check_ap_wfd_mode_set(dhd_pub_t *dhd)
-{
-#ifdef  WL_CFG80211
-	if (((dhd->op_mode & HOSTAPD_MASK) == HOSTAPD_MASK) ||
-		((dhd->op_mode & WFD_MASK) == WFD_MASK))
-		return TRUE;
-	else
-#endif /* WL_CFG80211 */
-		return FALSE;
-}
 
 #ifdef PNO_SUPPORT
 int
@@ -2160,8 +2105,6 @@ dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled)
 		return ret;
 	}
 
-	if (dhd_check_ap_wfd_mode_set(dhd) == TRUE)
-		return (ret);
 	memset(iovbuf, 0, sizeof(iovbuf));
 	/* Check if disassoc to enable pno */
 	if ((pfn_enabled) &&
@@ -2209,8 +2152,6 @@ dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, ushort scan_fr,
 		DHD_ERROR(("%s error exit\n", __FUNCTION__));
 		err = -1;
 	}
-	if (dhd_check_ap_wfd_mode_set(dhd) == TRUE)
-		return (err);
 
 	/* Check for broadcast ssid */
 	for (k = 0; k < nssid; k++) {
@@ -2327,10 +2268,7 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 	int			str_len;
 	int res			= -1;
 
-	if (dhd_check_ap_wfd_mode_set(dhd) == TRUE)
-		return (res);
-
-	DHD_TRACE(("%s execution\n", __FUNCTION__));
+	DHD_ERROR(("%s Enter\n", __FUNCTION__));
 
 	str = "mkeep_alive";
 	str_len = strlen(str);
