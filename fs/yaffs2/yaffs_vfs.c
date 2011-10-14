@@ -72,7 +72,7 @@
 #include <linux/init.h>
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39))
 #include <linux/smp_lock.h>
 #endif
 #include <linux/pagemap.h>
@@ -239,7 +239,7 @@ static int yaffs_file_flush(struct file *file, fl_owner_t id);
 static int yaffs_file_flush(struct file *file);
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 static int yaffs_sync_object(struct file *file, loff_t start, loff_t end, int datasync);
 #elif (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 34))
 static int yaffs_sync_object(struct file *file, int datasync);
@@ -1830,7 +1830,7 @@ static int yaffs_symlink(struct inode *dir, struct dentry *dentry,
 	return -ENOMEM;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 static int yaffs_sync_object(struct file *file, loff_t start, loff_t end, int datasync)
 #elif (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 34))
 static int yaffs_sync_object(struct file *file, int datasync)
@@ -2979,7 +2979,7 @@ static int yaffs_internal_read_super_mtd(struct super_block *sb, void *data,
 	return yaffs_internal_read_super(1, sb, data, silent) ? 0 : -EINVAL;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 static struct dentry *yaffs_mount(struct file_system_type *fs_type, int flags,
         const char *dev_name, void *data)
 {
@@ -3008,7 +3008,7 @@ static struct super_block *yaffs_read_super(struct file_system_type *fs,
 static struct file_system_type yaffs_fs_type = {
 	.owner = THIS_MODULE,
 	.name = "yaffs",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
         .mount = yaffs_mount,
 #else
         .get_sb = yaffs_read_super,
@@ -3035,7 +3035,7 @@ static int yaffs2_internal_read_super_mtd(struct super_block *sb, void *data,
 	return yaffs_internal_read_super(2, sb, data, silent) ? 0 : -EINVAL;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 static struct dentry *yaffs2_mount(struct file_system_type *fs_type, int flags,
         const char *dev_name, void *data)
 {
@@ -3063,7 +3063,7 @@ static struct super_block *yaffs2_read_super(struct file_system_type *fs,
 static struct file_system_type yaffs2_fs_type = {
 	.owner = THIS_MODULE,
 	.name = "yaffs2",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
         .mount = yaffs2_mount,
 #else
         .get_sb = yaffs2_read_super,
