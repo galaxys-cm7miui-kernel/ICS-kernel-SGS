@@ -633,5 +633,11 @@ config MSM_SMD_PKT
 	  Enables userspace clients to read and write to some packet SMD
 	  ports via device interface for MSM chipset.
 
+config S3C_MEM
+        bool "Support for /dev/s3c-mem"
+        default y
+        help
+         you do say Y here, you can allocate physically linear memory
+
 endmenu
 
