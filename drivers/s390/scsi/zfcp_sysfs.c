@@ -105,8 +105,7 @@ static ssize_t zfcp_sysfs_port_failed_store(struct device *dev,
 		return -EINVAL;
 
 	zfcp_erp_set_port_status(port, ZFCP_STATUS_COMMON_RUNNING);
-	zfcp_erp_port_reopen(port, ZFCP_STATUS_COMMON_ERP_FAILED, "sypfai2",
-			     NULL);
+	zfcp_erp_port_reopen(port, ZFCP_STATUS_COMMON_ERP_FAILED, "sypfai2");
 	zfcp_erp_wait(port->adapter);
 
 	return count;
@@ -148,7 +147,7 @@ static ssize_t zfcp_sysfs_unit_failed_store(struct device *dev,
 	if (sdev) {
 		zfcp_erp_set_lun_status(sdev, ZFCP_STATUS_COMMON_RUNNING);
 		zfcp_erp_lun_reopen(sdev, ZFCP_STATUS_COMMON_ERP_FAILED,
-				    "syufai2", NULL);
+				    "syufai2");
 		zfcp_erp_wait(unit->port->adapter);
 	} else
 		zfcp_unit_scsi_scan(unit);
@@ -198,7 +197,7 @@ static ssize_t zfcp_sysfs_adapter_failed_store(struct device *dev,
 
 	zfcp_erp_set_adapter_status(adapter, ZFCP_STATUS_COMMON_RUNNING);
 	zfcp_erp_adapter_reopen(adapter, ZFCP_STATUS_COMMON_ERP_FAILED,
-				"syafai2", NULL);
+				"syafai2");
 	zfcp_erp_wait(adapter);
 out:
 	zfcp_ccw_adapter_put(adapter);
@@ -256,7 +255,7 @@ static ssize_t zfcp_sysfs_port_remove_store(struct device *dev,
 
 	put_device(&port->dev);
 
-	zfcp_erp_port_shutdown(port, 0, "syprs_1", NULL);
+	zfcp_erp_port_shutdown(port, 0, "syprs_1");
 	zfcp_device_unregister(&port->dev, &zfcp_sysfs_port_attrs);
  out:
 	zfcp_ccw_adapter_put(adapter);
@@ -297,16 +296,7 @@ static ssize_t zfcp_sysfs_unit_add_store(struct device *dev,
 	if (zfcp_unit_add(port, fcp_lun))
 		return -EINVAL;
 
-<<<<<<< HEAD
-	zfcp_erp_unit_reopen(unit, 0, "syuas_1", NULL);
-	zfcp_erp_wait(unit->port->adapter);
-	flush_work(&unit->scsi_work);
-out:
-	put_device(&port->dev);
-	return retval ? retval : (ssize_t) count;
-=======
 	return count;
->>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 }
 static DEVICE_ATTR(unit_add, S_IWUSR, NULL, zfcp_sysfs_unit_add_store);
 
@@ -316,36 +306,12 @@ static ssize_t zfcp_sysfs_unit_remove_store(struct device *dev,
 {
 	struct zfcp_port *port = container_of(dev, struct zfcp_port, dev);
 	u64 fcp_lun;
-<<<<<<< HEAD
-	int retval = -EINVAL;
-
-	if (!(port && get_device(&port->dev)))
-		return -EBUSY;
-=======
->>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 
 	if (strict_strtoull(buf, 0, (unsigned long long *) &fcp_lun))
 		return -EINVAL;
 
-<<<<<<< HEAD
-	unit = zfcp_get_unit_by_lun(port, fcp_lun);
-	if (!unit)
-		goto out;
-	else
-		retval = 0;
-
-	/* wait for possible timeout during SCSI probe */
-	flush_work(&unit->scsi_work);
-
-	write_lock_irq(&port->unit_list_lock);
-	list_del(&unit->list);
-	write_unlock_irq(&port->unit_list_lock);
-
-	put_device(&unit->dev);
-=======
 	if (zfcp_unit_remove(port, fcp_lun))
 		return -EINVAL;
->>>>>>> c70b529... Merge git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi-misc-2.6
 
 	return count;
 }

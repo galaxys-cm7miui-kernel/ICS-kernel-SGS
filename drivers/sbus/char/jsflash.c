@@ -13,7 +13,7 @@
  * TODO: Erase/program both banks of a 8MB SIMM.
  *
  * It is anticipated that programming an OS Flash will be a routine
- * procedure. In the same time it is exeedingly dangerous because
+ * procedure. In the same time it is exceedingly dangerous because
  * a user can program its OBP flash with OS image and effectively
  * kill the machine.
  *
@@ -461,13 +461,13 @@ static int jsflash_init(void)
 {
 	int rc;
 	struct jsflash *jsf;
-	int node;
+	phandle node;
 	char banner[128];
 	struct linux_prom_registers reg0;
 
 	node = prom_getchild(prom_root_node);
 	node = prom_searchsiblings(node, "flash-memory");
-	if (node != 0 && node != -1) {
+	if (node != 0 && (s32)node != -1) {
 		if (prom_getproperty(node, "reg",
 		    (char *)&reg0, sizeof(reg0)) == -1) {
 			printk("jsflash: no \"reg\" property\n");
