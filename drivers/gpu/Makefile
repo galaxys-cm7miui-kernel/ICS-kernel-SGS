@@ -1,3 +1,2 @@
-obj-y			+= drm/ vga/
-
-obj-$(CONFIG_PVR_SGX) += pvr/
+obj-y			+= drm/ vga/ stub/ ion/
+obj-$(CONFIG_PVR_SGX)	+= pvr/
