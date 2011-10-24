@@ -21,6 +21,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/delay.h>
+#include <linux/fsa9480.h>
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
@@ -383,6 +384,11 @@ static int wm8994_set_path(struct snd_kcontrol *kcontrol,
 	}
 	if (path_num == 4 && _dockredir) 
 		path_num = 11;
+
+#if defined(CONFIG_SAMSUNG_FASCINATE)
+	if (fsa9480_get_dock_status())
+		path_num = 11;
+#endif
 
 	switch (path_num) {
 	case OFF:
