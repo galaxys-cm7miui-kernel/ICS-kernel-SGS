@@ -21,7 +21,10 @@ TEST=experimental
 
 . ./setenv.sh
 
-echo "building kernel"
+echo "building kernel with voodoo color"
+sed -i 's/^.*FB_VOODOO.*$//' .config
+echo 'CONFIG_FB_VOODOO=y
+# CONFIG_FB_VOODOO_DEBUG_LOG is not set' >> .config
 
 make -j8
 
