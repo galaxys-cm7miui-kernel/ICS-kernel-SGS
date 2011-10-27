@@ -40,7 +40,11 @@
 #include "s3cfb.h"
 
 #ifdef CONFIG_MACH_ARIES
-#include "logo_rgb24_wvga_portrait.h"
+#ifndef CONFIG_BW_SPLASH
+#include "fugumod_boot.h"
+#else
+#include "fugumod_boot_bw.h"
+#endif
 #include <mach/regs-clock.h>
 #endif
 
