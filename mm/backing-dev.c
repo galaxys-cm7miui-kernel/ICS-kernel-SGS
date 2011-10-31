@@ -92,20 +92,28 @@ static int bdi_debug_stats_show(struct seq_file *m, void *v)
 
 #define K(x) ((x) << (PAGE_SHIFT - 10))
 	seq_printf(m,
-		   "BdiWriteback:     %8lu kB\n"
-		   "BdiReclaimable:   %8lu kB\n"
-		   "BdiDirtyThresh:   %8lu kB\n"
-		   "DirtyThresh:      %8lu kB\n"
-		   "BackgroundThresh: %8lu kB\n"
-		   "b_dirty:          %8lu\n"
-		   "b_io:             %8lu\n"
-		   "b_more_io:        %8lu\n"
-		   "bdi_list:         %8u\n"
-		   "state:            %8lx\n",
+		   "BdiWriteback:       %10lu kB\n"
+		   "BdiReclaimable:     %10lu kB\n"
+		   "BdiDirtyThresh:     %10lu kB\n"
+		   "DirtyThresh:        %10lu kB\n"
+		   "BackgroundThresh:   %10lu kB\n"
+		   "BdiWritten:         %10lu kB\n"
+		   "BdiWriteBandwidth:  %10lu kBps\n"
+		   "b_dirty:            %10lu\n"
+		   "b_io:               %10lu\n"
+		   "b_more_io:          %10lu\n"
+		   "bdi_list:           %10u\n"
+		   "state:              %10lx\n",
 		   (unsigned long) K(bdi_stat(bdi, BDI_WRITEBACK)),
 		   (unsigned long) K(bdi_stat(bdi, BDI_RECLAIMABLE)),
-		   K(bdi_thresh), K(dirty_thresh),
-		   K(background_thresh), nr_dirty, nr_io, nr_more_io,
+		   K(bdi_thresh),
+		   K(dirty_thresh),
+		   K(background_thresh),
+		   (unsigned long) K(bdi_stat(bdi, BDI_WRITTEN)),
+		   (unsigned long) K(bdi->write_bandwidth),
+		   nr_dirty,
+		   nr_io,
+		   nr_more_io,
 		   !list_empty(&bdi->bdi_list), bdi->state);
 #undef K
 
@@ -260,18 +268,6 @@ int bdi_has_dirty_io(struct backing_dev_info *bdi)
 	return wb_has_dirty_io(&bdi->wb);
 }
 
-static void bdi_flush_io(struct backing_dev_info *bdi)
-{
-	struct writeback_control wbc = {
-		.sync_mode		= WB_SYNC_NONE,
-		.older_than_this	= NULL,
-		.range_cyclic		= 1,
-		.nr_to_write		= 1024,
-	};
-
-	writeback_inodes_wb(&bdi->wb, &wbc);
-}
-
 /*
  * kupdated() used to do this. We cannot do it from the bdi_forker_thread()
  * or we risk deadlocking on ->s_umount. The longer term solution would be
@@ -363,6 +359,17 @@ static unsigned long bdi_longest_inactive(void)
 	return max(5UL * 60 * HZ, interval);
 }
 
+/*
+ * Clear pending bit and wakeup anybody waiting for flusher thread creation or
+ * shutdown
+ */
+static void bdi_clear_pending(struct backing_dev_info *bdi)
+{
+	clear_bit(BDI_pending, &bdi->state);
+	smp_mb__after_clear_bit();
+	wake_up_bit(&bdi->state, BDI_pending);
+}
+
 static int bdi_forker_thread(void *ptr)
 {
 	struct bdi_writeback *me = ptr;
@@ -394,6 +401,13 @@ static int bdi_forker_thread(void *ptr)
 		}
 
 		spin_lock_bh(&bdi_lock);
+		/*
+		 * In the following loop we are going to check whether we have
+		 * some work to do without any synchronization with tasks
+		 * waking us up to do work for them. So we have to set task
+		 * state already here so that we don't miss wakeups coming
+		 * after we verify some condition.
+		 */
 		set_current_state(TASK_INTERRUPTIBLE);
 
 		list_for_each_entry(bdi, &bdi_list, bdi_list) {
@@ -457,9 +471,10 @@ static int bdi_forker_thread(void *ptr)
 			if (IS_ERR(task)) {
 				/*
 				 * If thread creation fails, force writeout of
-				 * the bdi from the thread.
+				 * the bdi from the thread. Hopefully 1024 is
+				 * large enough for efficient IO.
 				 */
-				bdi_flush_io(bdi);
+				writeback_inodes_wb(&bdi->wb, 1024);
 			} else {
 				/*
 				 * The spinlock makes sure we do not lose
@@ -472,11 +487,13 @@ static int bdi_forker_thread(void *ptr)
 				spin_unlock_bh(&bdi->wb_lock);
 				wake_up_process(task);
 			}
+			bdi_clear_pending(bdi);
 			break;
 
 		case KILL_THREAD:
 			__set_current_state(TASK_RUNNING);
 			kthread_stop(task);
+			bdi_clear_pending(bdi);
 			break;
 
 		case NO_ACTION:
@@ -492,16 +509,8 @@ static int bdi_forker_thread(void *ptr)
 			else
 				schedule_timeout(msecs_to_jiffies(dirty_writeback_interval * 10));
 			try_to_freeze();
-			/* Back to the main loop */
-			continue;
+			break;
 		}
-
-		/*
-		 * Clear pending bit and wakeup anybody waiting to tear us down.
-		 */
-		clear_bit(BDI_pending, &bdi->state);
-		smp_mb__after_clear_bit();
-		wake_up_bit(&bdi->state, BDI_pending);
 	}
 
 	return 0;
@@ -516,7 +525,7 @@ static void bdi_remove_from_list(struct backing_dev_info *bdi)
 	list_del_rcu(&bdi->bdi_list);
 	spin_unlock_bh(&bdi_lock);
 
-	synchronize_rcu();
+	synchronize_rcu_expedited();
 }
 
 int bdi_register(struct backing_dev_info *bdi, struct device *parent,
@@ -644,6 +653,11 @@ static void bdi_wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi)
 	setup_timer(&wb->wakeup_timer, wakeup_timer_fn, (unsigned long)bdi);
 }
 
+/*
+ * Initial write bandwidth: 100 MB/s
+ */
+#define INIT_BW		(100 << (20 - PAGE_SHIFT))
+
 int bdi_init(struct backing_dev_info *bdi)
 {
 	int i, err;
@@ -666,6 +680,13 @@ int bdi_init(struct backing_dev_info *bdi)
 	}
 
 	bdi->dirty_exceeded = 0;
+
+	bdi->bw_time_stamp = jiffies;
+	bdi->written_stamp = 0;
+
+	bdi->write_bandwidth = INIT_BW;
+	bdi->avg_write_bandwidth = INIT_BW;
+
 	err = prop_local_init_percpu(&bdi->completions);
 
 	if (err) {
