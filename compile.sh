@@ -1,6 +1,8 @@
 #!/bin/sh
 
-if [ "$1" == "DEBUG" ]; then
+PARAM=$1
+
+if [ "${PARAM}" == "DEBUG" ]; then
 	echo '##################### DEBUG VERSION #################'
 	sed -i 's/# CONFIG_FRAMEBUFFER_CONSOLE is not set/CONFIG_FRAMEBUFFER_CONSOLE=y/' .config
 	sed -i 's/# CONFIG_CMDLINE_FORCE is not set/CONFIG_CMDLINE_FORCE=y/' .config
@@ -17,7 +19,11 @@ RELVER=`cat .version`
 #ensure there is no more old bcm4329 module
 rm drivers/net/wireless/bcm4329/bcm4329.ko drivers/net/wireless/bcmdhd/bcm4329.ko
 
-TEST=experimental
+if [ "${PARAM}" == "DAILY" ]; then
+	FOLDER=daily
+else
+	FOLDER=experimental
+fi
 
 . ./setenv.sh
 
@@ -34,5 +40,5 @@ echo "creating boot.img with voodoo color"
 echo "launching packaging script with voodoo color"
 ./release/doit.sh ${RELVER}v
 
-mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd/${TEST}/
+mv release/CM7_FuguMod* ../../public_html/CM7_galaxysmtd/${FOLDER}/
 
