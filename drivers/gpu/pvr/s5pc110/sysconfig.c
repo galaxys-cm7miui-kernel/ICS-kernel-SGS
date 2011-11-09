@@ -789,7 +789,7 @@ PVRSRV_ERROR SysOEMFunction(IMG_UINT32	ui32ID,
 }
 
 
-PVRSRV_ERROR SysPowerLockWrap(IMG_VOID)
+PVRSRV_ERROR SysPowerLockWrap(IMG_BOOL bTryLock)
 {                                                               
 	return PVRSRV_OK;                                       
 }                                                               

@@ -376,16 +376,34 @@ PVRSRV_BridgeDispatchKM(struct file *pFile, unsigned int unref__ ioctlCmd, unsig
 			PVRSRV_BRIDGE_OUT_EXPORTDEVICEMEM *psExportDeviceMemOUT =
 				(PVRSRV_BRIDGE_OUT_EXPORTDEVICEMEM *)psBridgePackageKM->pvParamOut;
 			PVRSRV_FILE_PRIVATE_DATA *psPrivateData = PRIVATE_DATA(pFile);
+			PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo;
+
+			
+			if(PVRSRVLookupHandle(KERNEL_HANDLE_BASE,
+								  (IMG_PVOID *)&psKernelMemInfo,
+								  psExportDeviceMemOUT->hMemInfo,
+								  PVRSRV_HANDLE_TYPE_MEM_INFO) != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: Failed to look up export handle", __FUNCTION__));
+				err = -EFAULT;
+				goto unlock_and_return;
+			}
+
+			
+			psKernelMemInfo->ui32RefCount++;
 
 			psPrivateData->hKernelMemInfo = psExportDeviceMemOUT->hMemInfo;
 #if defined(SUPPORT_MEMINFO_IDS)
-			psExportDeviceMemOUT->ui64Stamp = psPrivateData->ui64Stamp = ++ui64Stamp;
+			psKernelMemInfo->ui64Stamp =
+				psExportDeviceMemOUT->ui64Stamp =
+				psPrivateData->ui64Stamp = ++ui64Stamp;
 #endif
 			break;
 		}
 
 #if defined(SUPPORT_MEMINFO_IDS)
 		case PVRSRV_BRIDGE_MAP_DEV_MEMORY:
+		case PVRSRV_BRIDGE_MAP_DEV_MEMORY_2:
 		{
 			PVRSRV_BRIDGE_OUT_MAP_DEV_MEMORY *psMapDeviceMemoryOUT =
 				(PVRSRV_BRIDGE_OUT_MAP_DEV_MEMORY *)psBridgePackageKM->pvParamOut;
