@@ -1,10 +1,11 @@
 #!/system/bin/sh
 #
-# 89system_tweak V63
+# 89system_tweak V66
 # by zacharias.maladroit
 # modifications and ideas taken from: ckMod SSSwitch by voku1987 and "battery tweak" (collin_ph@xda)
 # OOM/LMK settings by Juwe11
 # network security settings inspired by various security, server guides on the web
+# some ideas from hardcore & Pikachu01
 
 
 
@@ -25,7 +26,7 @@ MMC=`ls -d /sys/block/mmc*`;
 # set the cfq scheduler as default i/o scheduler (Samsung ROMs)
 for i in $STL $BML $MMC;
 do
-	echo "deadline" > $i/queue/scheduler; 
+	echo "cfq" > $i/queue/scheduler; 
 done;
 
 # Optimize non-rotating storage; 
@@ -36,8 +37,27 @@ do
 	echo 1 > $i/queue/iosched/low_latency;	
 	echo 3 > $i/queue/iosched/slice_idle; # previous: 1
 	echo 1 > $i/queue/iosched/fifo_batch; # deadline scheduler specific
-	echo 16 > $i/queue/iosched/quantum;
-	echo 1024 > $i/queue/iosched/nr_requests; # for starters: keep it sane
+	echo 8 > $i/queue/iosched/quantum;
+	echo 256 > $i/queue/iosched/nr_requests; # for starters: keep it sane (1024 probably too much)
+
+	# deadline/VR/SIO scheduler specific
+	if [ -e $i/queue/iosched/fifo_batch ]
+	then
+		echo 1 > $i/queue/iosched/fifo_batch;
+	fi;
+	if [ -e $i/queue/iosched/writes_starved ]
+	then
+		echo 1 > $i/queue/iosched/writes_starved;
+	fi;
+	#VR Specific
+	if [ -e $i/queue/iosched/rev_penalty ]
+	then
+		echo 1 > $i/queue/iosched/rev_penalty;
+	fi;
+	if [ -e $i/queue/rq_affinity ]
+	then
+	echo "1"   >  $i/queue/rq_affinity;   
+	fi;
 done;
 
 #disable iostats to reduce overhead # idea by kodos96 - thanks !
@@ -45,6 +65,15 @@ for k in $STL $BML $MMC;
 do
  echo "0" > $k/queue/iostats
 done;
+
+
+# Remount all partitions with noatime
+for k in $(busybox mount | grep relatime | cut -d " " -f3);
+do
+sync;
+busybox mount -o remount,noatime $k;
+done;
+
 
 # Optimize for read- & write-throughput; 
 
@@ -65,21 +94,37 @@ done;
 # improved approach of the readahead-tweak:
 
 
-if [ -e /sys/devices/virtual/bdi/179:0/read_ahead_kb ]
-  then
-    /system/xbin/echo "1024" > /sys/devices/virtual/bdi/179:0/read_ahead_kb;
-fi;
+#if [ -e /sys/devices/virtual/bdi/179:0/read_ahead_kb ]
+#  then
+#    /system/xbin/echo "1024" > /sys/devices/virtual/bdi/179:0/read_ahead_kb;
+#fi;
 	
-if [ -e /sys/devices/virtual/bdi/179:8/read_ahead_kb ]
-  then
-    /system/xbin/echo "1024" > /sys/devices/virtual/bdi/179:8/read_ahead_kb;
-fi;
+#if [ -e /sys/devices/virtual/bdi/179:8/read_ahead_kb ]
+#  then
+#    /system/xbin/echo "1024" > /sys/devices/virtual/bdi/179:8/read_ahead_kb;
+#fi;
 
-if [ -e /sys/devices/virtual/bdi/default/read_ahead_kb ]
-  then
-    /system/xbin/echo "128" > /sys/devices/virtual/bdi/default/read_ahead_kb;
-fi;
+#if [ -e /sys/devices/virtual/bdi/default/read_ahead_kb ]
+#  then
+#    /system/xbin/echo "128" > /sys/devices/virtual/bdi/default/read_ahead_kb;
+#fi;
 
+
+if [ -e /sys/devices/virtual/bdi/179:0/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/179:0/read_ahead_kb
+fi
+
+if [ -e /sys/devices/virtual/bdi/179:8/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/179:8/read_ahead_kb;
+fi
+
+if [ -e /sys/devices/virtual/bdi/179:8/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/179:16/read_ahead_kb;
+fi
+
+if [ -e /sys/devices/virtual/bdi/default/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/default/read_ahead_kb;
+fi
 
 
 # ==============================================================
@@ -100,7 +145,6 @@ echo 0 > /proc/sys/vm/swappiness # 70 for zram, Talon # 0 for CM7 / MIUI (no zra
 echo 3 > /proc/sys/vm/page-cluster # when swapping then hesitate to swap out pages & pull them in again in a fast manner
 
 ##echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50
-echo 50 > /proc/sys/vm/vfs_cache_pressure; # same value for both: screen on & off - needs some testing due to RAM filling and OOM killer triggering # 20 (on talon & testing)
 
 # make sure we don't use laptop-mode
 echo 0 > /proc/sys/vm/laptop_mode
@@ -112,10 +156,15 @@ echo 0 > /proc/sys/vm/laptop_mode
 		echo 0 > /proc/sys/vm/laptop_mode; # do not omit syncing
 		echo 700 > /proc/sys/vm/dirty_expire_centisecs; # 2000 # 700 is long enough [stability testing]
 		echo 500 > /proc/sys/vm/dirty_writeback_centisecs; # 1000 # 500 is long enough [stability testing]
-		echo 10 > /proc/sys/vm/dirty_background_ratio; # 15 # 10 # 50  
+		echo 55 > /proc/sys/vm/dirty_background_ratio; # 15 # 10 # 50 # 55 (is writing fast enough with our media ?)
 		echo 80 > /proc/sys/vm/dirty_ratio; # 40 # 90
-#		echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50 # 20 [less reclaim]
+		echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50 # 20 [less reclaim]
 
+#		echo 0 > /proc/sys/vm/overcommit_memory; # keep it at default
+		echo 0 > /proc/sys/vm/oom_kill_allocating_task;
+		echo 0 > /proc/sys/vm/panic_on_oom;
+		echo 0 > /proc/sys/kernel/panic_on_oops;
+		echo 0 > /proc/sys/kernel/panic;
 
 # =========
 # TWEAKS: Memory tweaks of the OOM behavior by Juwe11 (thanks !)
@@ -382,14 +431,14 @@ setprop ro.ril.def.agps.mode 2 # default value
 # TWEAKS: overall
 # =========
 setprop ro.telephony.call_ring.delay 1000; # let's minimize the time Android waits until it rings on a call # don't make it too low - the system might screw up (our phone model is quite fragile)
-#setprop ro.ril.disable.power.collapse 0; # commented out - option to experiment with
-#setprop pm.sleep_mode 1; # previously 0, recommended is 1 or 2 # commented out - option to experiment with
+setprop ro.ril.disable.power.collapse 0; # commented out - option to experiment with
+setprop pm.sleep_mode 1; # previously 0, recommended is 1 or 2 # commented out - option to experiment with
 #setprop dalvik.vm.startheapsize 8m;
 #setprop dalvik.vm.heapsize 64m; # leave that setting to cyanogenmod settings or uncomment it if needed
 setprop wifi.supplicant_scan_interval 30; # higher is not recommended, scans while not connected anyway so shouldn't affect while connected
 setprop windowsmgr.max_events_per_sec 76; # smoother GUI -> set to 76 # max at 300
 #echo 64000 > /proc/sys/kernel/msgmni;
-#echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
+echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
 #echo 5000 > /proc/sys/kernel/threads-max;
 echo 0 > /proc/sys/kernel/hung_task_timeout_secs;
 
@@ -414,6 +463,24 @@ do \
 	sqlite3 $i 'VACUUM;'; 
 done;
 
+for i in \
+`find /dbdata -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done;
+
+for i in \
+`find /sdcard -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done;
+
+for i in \
+`find /datadata -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done;
+
 
 # ==============================================================
 # ==============================================================
@@ -432,9 +499,9 @@ done;
 #else
 	# CFS
 #	# following 2 settings are to be handled with care - could lead to bootlooping phone or other issues if too low !
-#	echo 100000 > /proc/sys/kernel/sched_latency_ns; # 1000000 # 18000000 # 1000000 # 100000 ## new
-#	echo 500000 > /proc/sys/kernel/sched_wakeup_granularity_ns	; # 500000 # 3000000 # 25000 # 0 (?)
-#	echo 750000 > /proc/sys/kernel/sched_min_granularity_ns; # 1000000 # 1500000 # 100000 # 1000000 ## 750000 (upstream)
+	echo 100000 > /proc/sys/kernel/sched_latency_ns; # 1000000 # 18000000 # 1000000 # 100000 ## new
+	echo 25000 > /proc/sys/kernel/sched_wakeup_granularity_ns	; # 500000 # 3000000 # 25000 # 0 (?) # 500000
+	echo 750000 > /proc/sys/kernel/sched_min_granularity_ns; # 1000000 # 1500000 # 100000 # 1000000 ## 750000 (upstream)
 	#echo -1 > /proc/sys/kernel/sched_rt_runtime_us; 
 	#echo 100000 > /proc/sys/kernel/sched_rt_period_us;
 	#echo 95000 > /proc/sys/kernel/sched_rt_runtime_us; # default: 950000; very small values in sched_rt_runtime_us can result in an unstable system when the runtime is so small 
@@ -447,16 +514,17 @@ done;
 # =========
 
 #echo "now disabling GENTLE_FAIR_SLEEPERS"
-#echo "NO_GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
+echo "NO_GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 #echo ""
 #echo "now disabling FAIR_SLEEPERS"
-#echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
+echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 #echo "now disabling NORMALIZED_SLEEPERS"
-#echo "NO_NORMALIZED_SLEEPERS" > /sys/kernel/debug/sched_features
+echo "NO_NORMALIZED_SLEEPER" > /sys/kernel/debug/sched_features
+echo "NO_NORMALIZED_SLEEPERS" > /sys/kernel/debug/sched_features
 #cat /sys/kernel/debug/sched_features
 #echo "done"
 #echo "24319" > /proc/sys/kernel/sched_features
@@ -644,3 +712,6 @@ done;
 # V61: max_events_per_sec back to 60, wifi scanning to 30, leave semaphores at default number
 # V62: max_events_per_sec set to 76 (testing for smoother GUI), bump vfs_cache_pressure up to 50
 # V63: corrected a few proc -> /proc + ro.ril.enable.gea typos - thanks to DerTeufel !
+# V64: re-enable scheduler tweaks (should be stable), reduce nr_requests & quantum
+# V65: added some stuff from crunchengine tweak script & fixed some typos - thanks to Pikachu01
+# V66: re-enable disabled power-collapse & sleep_mode

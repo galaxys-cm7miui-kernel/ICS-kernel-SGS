@@ -16,6 +16,7 @@ delete("/system/etc/init.d/S_volt_scheduler");
 delete("/system/etc/init.d/89system_tweak");
 delete("/system/etc/init.d/S89system_tweak");
 delete("/system/etc/init.d/S98system_tweak");
+delete("/system/etc/init.d/98crunchengine");
 delete("/system/etc/init.d/S90screenstate_scaling");
 delete("/system/etc/init.d/90screenstate_scaling");
 delete("/system/etc/init.d/98screenstate_scaling");
@@ -30,6 +31,8 @@ delete("/system/etc/init.d/00banner");
 delete("/system/etc/init.d/02firstboot");
 delete("/system/etc/init.d/S90scheduler");
 delete("/system/etc/init.d/S99finish");
+delete("/system/etc/init.d/03sdcardspeedfix");
+delete("/system/etc/init.d/05modules");
 ui_print("");
 ui_print("Removing OC/UV script [2nd time - just in case]");
 delete("/system/etc/init.d/S_volt_scheduler");
@@ -46,11 +49,19 @@ set_perm(0, 0, 755, "/tmp/script/cleaningmodules");
 run_program("/tmp/script/cleaningmodules");
 ui_print("");
 ui_print("Done...");
-
+ui_print("		                                             ");
+ui_print("Extracting kernel flash tools ... 			     ");
+show_progress(0.200000, 10);
 package_extract_file("bml_over_mtd", "/tmp/bml_over_mtd");
 set_perm(0, 0, 0777, "/tmp/bml_over_mtd");
 package_extract_file("bml_over_mtd.sh", "/tmp/bml_over_mtd.sh");
 set_perm(0, 0, 0777, "/tmp/bml_over_mtd.sh");
+package_extract_file("flash_image", "/tmp/flash_image");
+set_perm(0, 0, 0777, "/tmp/flash_image");
+package_extract_file("erase_image", "/tmp/erase_image");
+set_perm(0, 0, 0777, "/tmp/erase_image");
+show_progress(0.100000, 0);
+
 show_progress(0.200000, 10);
 ui_print("		                                             ");
 ui_print("Extracting init scripts ... 				     ");
@@ -59,13 +70,15 @@ ui_print("		                                             ");
 ui_print("Setting permissions ... 				     ");
 set_perm(0, 1000, 0777, "/system/bin/logcat-on.sh");
 set_perm(0, 1000, 0777, "/system/bin/logcat-off.sh");
+set_perm_recursive(0, 2000, 0755, 0755, "/system/bin");
 set_perm_recursive(0, 2000, 0755, 0750, "/system/etc/init.d");
 set_perm(0, 0, 0644, "/system/lib/hw/lights.aries.so");
 show_progress(0.200000, 10);
 ui_print("		                                             ");
 ui_print("Setting up the kernel ... 				     ");
+
+assert(run_program("/tmp/erase_image", "boot"));
 assert(package_extract_file("boot.img", "/tmp/boot.img"),
-       write_raw_image("/tmp/boot.img", "boot"),
        run_program("/tmp/bml_over_mtd.sh", "boot", "72", "reservoir", "2004", "/tmp/boot.img"),
        delete("/tmp/boot.img"));
 show_progress(0.100000, 0);
