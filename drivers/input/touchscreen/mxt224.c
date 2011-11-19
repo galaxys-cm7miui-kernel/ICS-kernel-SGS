@@ -39,7 +39,6 @@
 
 #define ID_BLOCK_SIZE			7
 
-// Accidental touch key prevention (see cypress-touchkey.c)
 unsigned int touch_state_val = 0;
 EXPORT_SYMBOL(touch_state_val);
 
@@ -352,10 +351,12 @@ static irqreturn_t mxt224_irq_thread(int irq, void *ptr)
 			return IRQ_HANDLED;
 
 		id = msg[0] - data->finger_type;
-
+		
 		/* If not a touch event, then keep going */
 		if (id < 0 || id >= data->num_fingers)
 			continue;
+		
+		
 
 		if (data->finger_mask & (1U << id))
 			report_input_data(data);
@@ -365,7 +366,6 @@ static irqreturn_t mxt224_irq_thread(int irq, void *ptr)
 			data->fingers[id].w = msg[5];
 			data->finger_mask |= 1U << id;
 			data->touch_mask &= ~(1U << id);
-			touch_state_val = 0;
 		} else if ((msg[1] & DETECT_MSG_MASK) && (msg[1] &
 				(PRESS_MSG_MASK | MOVE_MSG_MASK))) {
 			data->fingers[id].z = msg[6];
@@ -376,7 +376,6 @@ static irqreturn_t mxt224_irq_thread(int irq, void *ptr)
 					(msg[4] & 0xF)) >> data->y_dropbits;
 			data->finger_mask |= 1U << id;
 			data->touch_mask |= 1U << id;
-			touch_state_val = 1;
 		} else if ((msg[1] & SUPPRESS_MSG_MASK) &&
 			   (data->fingers[id].z != -1)) {
 			data->fingers[id].z = 0;
@@ -415,8 +414,6 @@ static int mxt224_internal_suspend(struct mxt224_data *data)
 	data->finger_mask = 0;
 	input_mt_sync(data->input_dev);
 	input_sync(data->input_dev);
-
-	touch_state_val = 0;
 
 	data->power_off();
 
