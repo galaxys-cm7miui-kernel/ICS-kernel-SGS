@@ -5148,6 +5148,7 @@ static void __init aries_machine_init(void)
 	arm_pm_restart = aries_pm_restart;
 
 	setup_ram_console_mem();
+	s3c_usb_set_serial();
 	platform_add_devices(aries_devices, ARRAY_SIZE(aries_devices));
 
 	/* smb380 */
