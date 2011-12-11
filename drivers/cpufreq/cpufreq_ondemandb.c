@@ -99,12 +99,9 @@ static DEFINE_PER_CPU(struct cpu_dbs_info_s, od_cpu_dbs_info);
 static unsigned int dbs_enable;	/* number of CPUs using this policy */
 
 /*
- * dbs_mutex protects data in dbs_tuners_ins from concurrent changes on
- * different CPUs. It protects dbs_enable in governor start/stop.
+ *  dbs_mutex protects dbs_enable in governor start/stop.
  */
 static DEFINE_MUTEX(dbs_mutex);
-
-static struct workqueue_struct	*kondemandb_wq;
 
 static struct dbs_tuners {
 	unsigned int sampling_rate;
@@ -278,9 +275,7 @@ static ssize_t store_sampling_rate(struct kobject *a, struct attribute *b,
 	if (ret != 1)
 		return -EINVAL;
 
-	mutex_lock(&dbs_mutex);
 	dbs_tuners_ins.sampling_rate = max(input, min_sampling_rate);
-	mutex_unlock(&dbs_mutex);
 
 	return count;
 }
@@ -295,9 +290,7 @@ static ssize_t store_io_is_busy(struct kobject *a, struct attribute *b,
 	if (ret != 1)
 		return -EINVAL;
 
-	mutex_lock(&dbs_mutex);
 	dbs_tuners_ins.io_is_busy = !!input;
-	mutex_unlock(&dbs_mutex);
 
 	return count;
 }
@@ -314,9 +307,7 @@ static ssize_t store_up_threshold(struct kobject *a, struct attribute *b,
 		return -EINVAL;
 	}
 
-	mutex_lock(&dbs_mutex);
 	dbs_tuners_ins.up_threshold = input;
-	mutex_unlock(&dbs_mutex);
 
 	return count;
 }
@@ -330,7 +321,7 @@ static ssize_t store_sampling_down_factor(struct kobject *a,
 
 	if (ret != 1 || input > MAX_SAMPLING_DOWN_FACTOR || input < 1)
 		return -EINVAL;
-	mutex_lock(&dbs_mutex);
+
 	dbs_tuners_ins.sampling_down_factor = input;
 
 	/* Reset down sampling multiplier in case it was active */
@@ -339,7 +330,6 @@ static ssize_t store_sampling_down_factor(struct kobject *a,
 		dbs_info = &per_cpu(od_cpu_dbs_info, j);
 		dbs_info->rate_mult = 1;
 	}
-	mutex_unlock(&dbs_mutex);
 
 	return count;
 }
@@ -359,9 +349,9 @@ static ssize_t store_ignore_nice_load(struct kobject *a, struct attribute *b,
 	if (input > 1)
 		input = 1;
 
-	mutex_lock(&dbs_mutex);
+
 	if (input == dbs_tuners_ins.ignore_nice) { /* nothing to do */
-		mutex_unlock(&dbs_mutex);
+
 		return count;
 	}
 	dbs_tuners_ins.ignore_nice = input;
@@ -376,7 +366,7 @@ static ssize_t store_ignore_nice_load(struct kobject *a, struct attribute *b,
 			dbs_info->prev_cpu_nice = kstat_cpu(j).cpustat.nice;
 
 	}
-	mutex_unlock(&dbs_mutex);
+
 
 	return count;
 }
@@ -394,10 +384,10 @@ static ssize_t store_powersave_bias(struct kobject *a, struct attribute *b,
 	if (input > 1000)
 		input = 1000;
 
-	mutex_lock(&dbs_mutex);
+
 	dbs_tuners_ins.powersave_bias = input;
 	ondemandb_powersave_bias_init();
-	mutex_unlock(&dbs_mutex);
+
 
 	return count;
 }
@@ -418,9 +408,9 @@ static ssize_t store_down_differential(struct kobject *a, struct attribute *b,
 	if (input < 0)
 		input = 0;
 
-	mutex_lock(&dbs_mutex);
+
 	dbs_tuners_ins.down_differential = input;
-	mutex_unlock(&dbs_mutex);
+
 
 	return count;
 }
@@ -626,7 +616,7 @@ static void do_dbs_timer(struct work_struct *work)
 		__cpufreq_driver_target(dbs_info->cur_policy,
 			dbs_info->freq_lo, CPUFREQ_RELATION_H);
 	}
-	queue_delayed_work_on(cpu, kondemandb_wq, &dbs_info->work, delay);
+	schedule_delayed_work_on(cpu, &dbs_info->work, delay);
 	mutex_unlock(&dbs_info->timer_mutex);
 }
 
@@ -640,7 +630,7 @@ static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 
 	dbs_info->sample_type = DBS_NORMAL_SAMPLE;
 	INIT_DELAYED_WORK_DEFERRABLE(&dbs_info->work, do_dbs_timer);
-	queue_delayed_work_on(dbs_info->cpu, kondemandb_wq, &dbs_info->work,
+	schedule_delayed_work_on(dbs_info->cpu, &dbs_info->work,
 		delay);
 }
 
@@ -689,11 +679,11 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 		mutex_lock(&dbs_mutex);
 
-		rc = sysfs_create_group(&policy->kobj, &dbs_attr_group_old);
+/*		rc = sysfs_create_group(&policy->kobj, &dbs_attr_group_old);
 		if (rc) {
 			mutex_unlock(&dbs_mutex);
 			return rc;
-		}
+		}*/
 
 		dbs_enable++;
 		for_each_cpu(j, policy->cpus) {
@@ -747,7 +737,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		dbs_timer_exit(this_dbs_info);
 
 		mutex_lock(&dbs_mutex);
-		sysfs_remove_group(&policy->kobj, &dbs_attr_group_old);
+//		sysfs_remove_group(&policy->kobj, &dbs_attr_group_old);
 		mutex_destroy(&this_dbs_info->timer_mutex);
 		dbs_enable--;
 		mutex_unlock(&dbs_mutex);
@@ -773,7 +763,7 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 static int __init cpufreq_gov_dbs_init(void)
 {
-	int err;
+//	int err;
 	cputime64_t wall;
 	u64 idle_time;
 	int cpu = get_cpu();
@@ -797,22 +787,13 @@ static int __init cpufreq_gov_dbs_init(void)
 			MIN_SAMPLING_RATE_RATIO * jiffies_to_usecs(10);
 	}
 
-	kondemandb_wq = create_workqueue("kondemandb");
-	if (!kondemandb_wq) {
-		printk(KERN_ERR "Creation of kondemandb failed\n");
-		return -EFAULT;
-	}
-	err = cpufreq_register_governor(&cpufreq_gov_ondemandb);
-	if (err)
-		destroy_workqueue(kondemandb_wq);
-
-	return err;
+	return cpufreq_register_governor(&cpufreq_gov_ondemand);
 }
 
 static void __exit cpufreq_gov_dbs_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_ondemandb);
-	destroy_workqueue(kondemandb_wq);
+//	destroy_workqueue(kondemandb_wq);
 }
 
 
