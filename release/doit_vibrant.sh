@@ -8,7 +8,7 @@
 echo "packaging it up"
 
 TYPE=$1
-[[ "$TYPE" == '' ]] && TYPE=SGS
+[[ "$TYPE" == '' ]] && TYPE=VIBRANT
 
 RELVER=$2
 [[ "$RELVER" == '' ]] && RELVER="0"

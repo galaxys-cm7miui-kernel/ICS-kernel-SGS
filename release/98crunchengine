@@ -1,0 +1,206 @@
+#!/system/bin/sh
+#
+# Crunch Tweaks 
+# Thanks Hardcore, Zacharias.Maladroit, Pikachu01
+
+STL=`ls -d /sys/block/stl*`;
+BML=`ls -d /sys/block/bml*`;
+MMC=`ls -d /sys/block/mmc*`;
+
+# SIO Scheduler
+for i in $STL $BML $MMC;
+do
+	echo "sio" > $i/queue/scheduler; 
+done;
+
+# Remount all partitions with noatime
+for k in $(busybox mount | grep relatime | cut -d " " -f3);
+do
+sync;
+busybox mount -o remount,noatime $k;
+done;
+
+# Optimise non-rotating storage; 
+for i in $STL $BML $MMC;
+do
+	#IMPORTANT!
+	if [ -e $i/queue/rotational ] 
+	then
+		echo 0 > $i/queue/rotational; 
+	fi;
+	if [ -e $i/queue/nr_requests ]
+	then
+		echo 1024 > $i/queue/nr_requests; # for starters: keep it sane
+	fi;
+	#CFQ specific
+	if [ -e $i/queue/iosched/back_seek_penalty ] 
+	then 
+		echo 1 > $i/queue/iosched/back_seek_penalty;
+	fi;
+	#CFQ specific
+	if [ -e $i/queue/iosched/low_latency ] 
+	then
+		echo 1 > $i/queue/iosched/low_latency;
+	fi;
+	#CFQ Specific
+	if [ -e $i/queue/iosched/slice_idle ]
+	then 
+		echo 1 > $i/queue/iosched/slice_idle; # previous: 1
+	fi;
+	# deadline/VR/SIO scheduler specific
+	if [ -e $i/queue/iosched/fifo_batch ]
+	then
+		echo 1 > $i/queue/iosched/fifo_batch;
+	fi;
+	if [ -e $i/queue/iosched/writes_starved ]
+	then
+		echo 1 > $i/queue/iosched/writes_starved;
+	fi;
+	#CFQ specific
+	if [ -e $i/queue/iosched/quantum ]
+	then
+		echo 8 > $i/queue/iosched/quantum;
+	fi;
+	#VR Specific
+	if [ -e $i/queue/iosched/rev_penalty ]
+	then
+		echo 1 > $i/queue/iosched/rev_penalty;
+	fi;
+	if [ -e $i/queue/rq_affinity ]
+	then
+	echo "1"   >  $i/queue/rq_affinity;   
+	fi;
+done;
+
+# Disable iostats
+for k in $STL $BML $MMC;
+do
+ echo "0" > $k/queue/iostats
+done;
+
+# Read Ahead values
+if [ -e /sys/devices/virtual/bdi/179:0/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/179:0/read_ahead_kb
+fi
+
+if [ -e /sys/devices/virtual/bdi/179:8/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/179:8/read_ahead_kb;
+fi
+
+if [ -e /sys/devices/virtual/bdi/179:8/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/179:16/read_ahead_kb;
+fi
+
+if [ -e /sys/devices/virtual/bdi/default/read_ahead_kb ]; then
+      echo "2048" > /sys/devices/virtual/bdi/default/read_ahead_kb;
+fi
+
+
+#VFS, VM Settings
+
+                echo 0 > /proc/sys/vm/swappiness  
+		echo 5 > /proc/sys/vm/page-cluster; # 12
+		echo 0 > /proc/sys/vm/laptop_mode; # do not omit syncing
+		echo 1000 > /proc/sys/vm/dirty_expire_centisecs; # 2000 # 700 is long enough [stability testing]
+		echo 1000 > /proc/sys/vm/dirty_writeback_centisecs; # 1000 # 500 is long enough [stability testing]
+		echo 55 > /proc/sys/vm/dirty_background_ratio; # 15 # 10 # 50 #10 #55
+		echo 90 > /proc/sys/vm/dirty_ratio; # 40 # 90
+		echo 20 > /proc/sys/vm/vfs_cache_pressure; # 100 while screen off # 200 # 50 # 20 [less reclaim] #
+		echo 0 > /proc/sys/vm/overcommit_memory;
+		echo 0 > /proc/sys/vm/oom_kill_allocating_task;
+		echo 0 > /proc/sys/vm/panic_on_oom;
+		echo 0 > /proc/sys/kernel/panic_on_oops;
+		echo 0 > /proc/sys/kernel/panic;
+
+# Optimise network speed and throughput
+echo 0 > /proc/sys/net/ipv4/tcp_timestamps;
+echo 1 > /proc/sys/net/ipv4/tcp_tw_reuse;
+echo 1 > /proc/sys/net/ipv4/tcp_sack;
+echo 1 > /proc/sys/net/ipv4/tcp_dsack;
+echo 1 > /proc/sys/net/ipv4/tcp_tw_recycle;
+echo 1 > /proc/sys/net/ipv4/tcp_window_scaling;
+echo 5 > /proc/sys/net/ipv4/tcp_keepalive_probes;
+echo 30 > /proc/sys/net/ipv4/tcp_keepalive_intvl;
+echo 30 > /proc/sys/net/ipv4/tcp_fin_timeout;
+echo 524288 > /proc/sys/net/core/wmem_max;
+echo 524288 > /proc/sys/net/core/rmem_max;
+echo 1 > /proc/sys/net/ipv4/tcp_moderate_rcvbuf 
+echo 256960 > /proc/sys/net/core/rmem_default;
+echo 256960 > /proc/sys/net/core/wmem_default;
+echo 4096 16384 404480 > /proc/sys/net/ipv4/tcp_wmem;
+echo 4096 87380 404480 > /proc/sys/net/ipv4/tcp_rmem;
+
+# Network Security related settings
+echo "1" >  /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts; # default
+if [ -e /proc/sys/net/ipv6/icmp_echo_ignore_broadcasts ]
+then
+	echo "1" >  /proc/sys/net/ipv6/icmp_echo_ignore_broadcasts; # default
+fi;
+echo "1" >  /proc/sys/net/ipv4/icmp_echo_ignore_all; # default: 0
+
+if [ -e /proc/sys/net/ipv6/icmp_echo_ignore_all ]
+then
+	echo "1" >  /proc/sys/net/ipv6/icmp_echo_ignore_all; # default: 0
+fi;
+echo "1" >  /proc/sys/net/ipv4/icmp_ignore_bogus_error_responses;
+
+if [ -e /proc/sys/net/ipv6/icmp_ignore_bogus_error_responses ]
+then
+	echo "1" >  /proc/sys/net/ipv6/icmp_ignore_bogus_error_responses;
+fi;
+echo 4096 > /proc/sys/net/ipv4/tcp_max_syn_backlog; # default: 128
+echo "2500" > /proc/sys/net/core/netdev_max_backlog; # default: 1000
+echo "1" > /proc/sys/net/ipv4/tcp_window_scaling; # default
+if [ -e /proc/sys/net/ipv4/tcp_syncookies ]
+then
+	echo "1" >  /proc/sys/net/ipv4/tcp_syncookies; # default
+fi;
+echo "1" > /proc/sys/net/ipv4/tcp_window_scaling; # default
+
+# Optimize SQlite Databases
+for i in \
+`find /data -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done;
+
+for i in \
+`find /dbdata -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done;
+
+for i in \
+`find /sdcard -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done;
+
+for i in \
+`find /datadata -iname "*.db"`; 
+do \
+	sqlite3 $i 'VACUUM;'; 
+done
+
+# Kernel Scheduler Tweaks
+if [ -e /proc/sys/kernel/rr_interval ]
+then
+	# BFS;
+	echo 6 > /proc/sys/kernel/rr_interval;
+	echo 100 > /proc/sys/kernel/iso_cpu;
+else
+	echo 100000 > /proc/sys/kernel/sched_latency_ns; # 1000000 # 18000000 # 1000000 # 100000 ## new
+	echo 25000 > /proc/sys/kernel/sched_wakeup_granularity_ns	; # 500000 # 3000000 # 25000 # 0 (?)
+	echo 1000000 > /proc/sys/kernel/sched_min_granularity_ns; # 1000000 # 1500000 # 100000 # 1000000 ## 750000 (upstream)
+fi;
+if [ -e /proc/sys/kernel/sem ]
+then
+	echo 500 512000 64 2048 > /proc/sys/kernel/sem; # allow more semaphores
+fi;
+
+# Scheduler Performance Settings
+echo "NO_GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features;
+echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features;
+echo "NO_NORMALIZED_SLEEPER" > /sys/kernel/debug/sched_features;
+
+
