@@ -1,6 +1,19 @@
-	Linux kernel release 2.6.xx <http://kernel.org/>
+	NEO-ICS kernel release 3.0.xx for the SGS (Samsung Galaxy S (1))
 
-These are the release notes for Linux version 2.6.  Read them carefully,
+This is the kernel repo for the preliminary 3.0 (linux kernel) based kernel for the Samsung Galaxy S,
+
+it will work with the future ICS (ice cream sandwich) based version of the AOSP (android open source project) "fork", CM9 (CyanogenMod 9)
+
+- the toolchain paths are held pretty pretty generic, so that the kernel can be built everywhere, therefore the toolchains are to be place
+in /opt (e.g. /opt/toolchains/arm-2009q3_arm for the arm-based 2009q3 CodeSourcery toolchain & e.g. /opt/toolchains/android-toolchain-eabi_4.5-2011.09/ 
+for the linaro-based gcc 4.5 toolchain of September 2011)
+
+- the kernel directory is to be place in ~/android/system/kernel/samsung/aries/
+
+
+################# Below follow the generic linux kernel related notes
+
+These are the release notes for Linux version 3.0.  Read them carefully,
 as they tell you what this is all about, explain how to install the
 kernel, and what to do if something goes wrong. 
 
