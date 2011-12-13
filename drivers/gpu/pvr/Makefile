@@ -1,77 +1,62 @@
-ccflags-y := \
-	-Wno-pointer-sign\
-	-fno-strict-overflow\
-	-fconserve-stack\
-	-Wdeclaration-after-statement\
-	-Wpointer-arith\
-	-Wmissing-format-attribute\
-	-Wno-format-zero-length\
-	-Wmissing-prototypes\
-	-Wstrict-prototypes\
-	-Wno-unused-parameter\
-	-Wno-sign-compare\
-	-Werror\
-	-fno-strict-aliasing\
-	-Wno-pointer-arith\
-	-Os
-
-ccflags-y += -DLINUX -D__linux__ -DANDROID
-ccflags-y += -Idrivers/gpu/pvr
-
-ccflags-y += \
-	-DSUPPORT_SGX_NEW_STATUS_VALS \
-	-DSUPPORT_SGX_HWPERF \
-	-DSYS_USING_INTERRUPTS \
-	-DPVR_SECURE_HANDLES \
+#
+ccflags-y = -DLINUX -D__linux__ -Idrivers/gpu/pvr \
+	-DANDROID \
+	-DPVR_BUILD_DIR="\"s3c_sgx_android\"" \
+	-DSYS_CUSTOM_POWERLOCK_WRAP \
 	-DSERVICES4 \
-	-DSUPPORT_SGX_EVENT_OBJECT \
-	-DTRANSFER_QUEUE \
-	-DSUPPORT_SGX \
 	-DSUPPORT_SRVINIT \
-	-DSUPPORT_HW_RECOVERY \
+	-DSUPPORT_PERCONTEXT_PB \
+	-DTRANSFER_QUEUE \
+	-DSYS_USING_INTERRUPTS \
+	-DSUPPORT_LINUX_X86_WRITECOMBINE \
+	-DSUPPORT_LINUX_X86_PAT \
+	-DPVR_SECURE_HANDLES \
 	-DPVR_SECURE_FD_EXPORT \
-	-DSUPPORT_SGX_EVENT_OBJECT \
 	-DLDM_PLATFORM \
-	-DPVR2D_ALT_2DHW \
+	-DSUPPORT_SGX_HWPERF \
+	-DSUPPORT_MEMINFO_IDS \
+	-DDISPLAY_CONTROLLER=s3c_lcd \
+	-DSYS_SGX_ACTIVE_POWER_LATENCY_MS=100 \
+	-DPVR_BUILD_DATE="" \
+	-DSUPPORT_SGX \
+	-DCLIENT_DRIVER_DEFAULT_WAIT_RETRIES=50 \
+	-DPVR_LINUX_TIMERS_USING_WORKQUEUES \
+	-DFLIP_TECHNIQUE_OVERLAY \
 	-DPVR_LINUX_USING_WORKQUEUES \
 	-DPVR_LINUX_MISR_USING_PRIVATE_WORKQUEUE \
-	-DPVR_LINUX_TIMERS_USING_WORKQUEUES \
-	-DSYS_CUSTOM_POWERLOCK_WRAP \
-	-DSUPPORT_MEMINFO_IDS \
-	-DSYS_SGX_ACTIVE_POWER_LATENCY_MS=$(CONFIG_PVR_ACTIVE_POWER_LATENCY_MS) \
-	-DPVR_BUILD_DATE="" \
-	-DPVRSRV_MODNAME="\"pvrsrvkm\"" \
-	-Idrivers/gpu/pvr/sgx \
- 	-DPVRSRV_RESET_ON_HWTIMEOUT
+	-DSUPPORT_SGX_NEW_STATUS_VALS \
+	-DSGX_EARLYSUSPEND \
+	-DSUPPORT_SGX_LOW_LATENCY_SCHEDULING \
+	-DPVRSRV_MODNAME="\"pvrsrvkm"\" \
+	-Idrivers/gpu/pvr/s5pc110 -Idrivers/gpu/pvr/sgx \
+	-DSGX_CLK_CORE_DIV5 \
+	-DSGX540 -DSUPPORT_SGX540 \
+	-DSGX_CORE_REV=120 \
+	-DSLSI_S5PC110
 
 ccflags-$(CONFIG_PVR_BUILD_RELEASE) += \
-	-DPVR_BUILD_TYPE="\"release\"" -DRELEASE
+	-DPVR_BUILD_TYPE="\"release\"" \
+	-DRELEASE \
+	-DSUPPORT_ACTIVE_POWER_MANAGEMENT \
+	-DSUPPORT_HW_RECOVERY
 
 ccflags-$(CONFIG_PVR_BUILD_DEBUG) += \
-	-DPVR_BUILD_TYPE="\"debug\"" -DDEBUG
-
-ccflags-$(CONFIG_PVR_NEED_PVR_DPF) += -DPVRSRV_NEED_PVR_DPF
-ccflags-$(CONFIG_PVR_NEED_PVR_ASSERT) += -DPVRSRV_NEED_PVR_ASSERT
-
-ccflags-$(CONFIG_PVR_DEBUG_MEMORY) += \
+	-DPVR_BUILD_TYPE="\"debug\""  -DDEBUG \
 	-DDEBUG_LINUX_MEMORY_ALLOCATIONS \
 	-DDEBUG_LINUX_MEM_AREAS \
-	-DDEBUG_LINUX_MMAP_AREAS
+	-DDEBUG_LINUX_MMAP_AREAS \
+	-DDEBUG_BRIDGE_KM \
+	-DDEBUG_TRACE_BRIDGE_KM \
+	-DPVRSRV_DUMP_MK_TRACE \
+	-DSUPPORT_ACTIVE_POWER_MANAGEMENT \
+	-DSUPPORT_HW_RECOVERY \
+	-DDEBUG_LOG_PATH_TRUNCATE="\"eurasia_km\""
 
-ccflags-$(CONFIG_PVR_DEBUG_BRIDGE_KM) += -DDEBUG_BRIDGE_KM
-ccflags-$(CONFIG_PVR_DEBUG_TRACE_BRIDGE_KM) += -DDEBUG_TRACE_BRIDGE_KM
-ccflags-$(CONFIG_PVR_DEBUG_BRIDGE_KM_DISPATCH_TABLE) += -DDEBUG_BRIDGE_KM_DISPATCH_TABLE
+ccflags-$(CONFIG_PVR_PDUMP) += -Idrivers/gpu/pvr/dbgdrv \
+	-DPDUMP \
+	-DSUPPORT_DBGDRV_EVENT_OBJECTS
 
-ccflags-$(CONFIG_PVR_PERCONTEXT_PB) += -DSUPPORT_PERCONTEXT_PB
-ccflags-$(CONFIG_PVR_SGX_LOW_LATENCY_SCHEDULING) += -DSUPPORT_SGX_LOW_LATENCY_SCHEDULING
-ccflags-$(CONFIG_PVR_ACTIVE_POWER_MANAGEMENT) += -DSUPPORT_ACTIVE_POWER_MANAGEMENT
-ccflags-$(CONFIG_PVR_USSE_EDM_STATUS_DEBUG) += -DPVRSRV_USSE_EDM_STATUS_DEBUG
-ccflags-$(CONFIG_PVR_DUMP_MK_TRACE) += -DPVRSRV_DUMP_MK_TRACE
-
-ccflags-$(CONFIG_PVR_PDUMP) += \
-	-DPDUMP -DSUPPORT_DBGDRV_EVENT_OBJECTS -DSUPPORT_PDUMP_MULTI_PROCESS
-
-pvrsrvkm-y := \
+pvr_common-y := \
 	osfunc.o \
 	mutils.o \
 	mmap.o \
@@ -101,6 +86,14 @@ pvrsrvkm-y := \
 	bridged_pvr_bridge.o \
 	perproc.o \
 	lists.o \
+	mem_debug.o \
+	osfunc_common.o
+
+pvr540-$(CONFIG_PVR_SGX) := \
+	s5pc110/sysconfig.o \
+	s5pc110/sysutils.o
+
+sgx-y :=  \
 	sgx/bridged_sgx_bridge.o \
 	sgx/sgxinit.o \
 	sgx/sgxpower.o \
@@ -111,26 +104,17 @@ pvrsrvkm-y := \
 	sgx/mmu.o \
 	sgx/pb.o
 
-ccflags-$(CONFIG_ARCH_S5PV210) += \
-	-DPVR_BUILD_DIR="\"smdkc110_android\"" \
-	-Idrivers/gpu/pvr/s5pc110 \
-	-DDISPLAY_CONTROLLER=s3c_lcd \
-    -DSLSI_S5PC110
-
-ccflags-$(CONFIG_ARCH_S5PV210) += \
-	-DSGX540 -DSUPPORT_SGX540 \
-	-DSGX_CORE_REV=120
-
-pvrsrvkm-$(CONFIG_ARCH_S5PV210) += \
-	s5pc110/sysconfig.o \
-	s5pc110/sysutils.o
-
 s3c_lcd-y := \
 	s3c_lcd/s3c_displayclass.o \
 	s3c_lcd/s3c_lcd.o
 
-obj-$(CONFIG_PVR_PDUMP) += dbgdrv
+dbgdrv-$(CONFIG_PVR_PDUMP) := \
+	dbgdrv/main.o \
+	dbgdrv/dbgdriv.o \
+	dbgdrv/ioctl.o \
+	dbgdrv/handle.o \
+	dbgdrv/hostfunc.o \
+	dbgdrv/hotkey.o
 
-obj-$(CONFIG_PVR_SGX) += pvrsrvkm.o
-
-obj-$(CONFIG_ARCH_S5PV210) += s3c_lcd.o
+obj-$(CONFIG_PVR_SGX) := pvr_common.o sgx.o s3c_lcd.o pvr540.o
+obj-$(CONFIG_PVR_PDUMP) += dbgdrv.o

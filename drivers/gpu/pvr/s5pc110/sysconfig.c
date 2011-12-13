@@ -49,7 +49,7 @@
 //static struct resource		*mem;
 //static void __iomem		*io;
 
-#define SYS_SGX_CLOCK_SPEED					(220338983)
+#define SYS_SGX_CLOCK_SPEED					(200000000)
 
 #if 0
 #define SYS_SGX_HWRECOVERY_TIMEOUT_FREQ		(100) // 10ms (100hz)
@@ -475,7 +475,7 @@ PVRSRV_ERROR SysFinalise(IMG_VOID)
     }
 	else
 	{
-		PVR_DPF((PVR_DBG_VERBOSE, "SysFinalise: Version string: %s", gpsSysData->pszVersionString));
+		PVR_DPF((PVR_DBG_WARNING, "SysFinalise: Version string: %s", gpsSysData->pszVersionString));
 	}
 
 #if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
@@ -789,12 +789,12 @@ PVRSRV_ERROR SysOEMFunction(IMG_UINT32	ui32ID,
 }
 
 
-PVRSRV_ERROR SysPowerLockWrap(SYS_DATA unref__ *psSysData)
+PVRSRV_ERROR SysPowerLockWrap(IMG_VOID)
 {                                                               
 	return PVRSRV_OK;                                       
 }                                                               
                                                                 
-IMG_VOID SysPowerLockUnwrap(SYS_DATA unref__ *psSysData)
+IMG_VOID SysPowerLockUnwrap(IMG_VOID)
 {                                                               
 }                                                               
 

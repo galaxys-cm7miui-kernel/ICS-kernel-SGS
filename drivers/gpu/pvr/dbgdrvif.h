@@ -1,6 +1,6 @@
 /**********************************************************************
  *
- * Copyright(c) 2008 Imagination Technologies Ltd. All rights reserved.
+ * Copyright (C) Imagination Technologies Ltd. All rights reserved.
  * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -28,7 +28,20 @@
 #define _DBGDRVIF_
 
 
+#if defined(__linux__)
+
+#define FILE_DEVICE_UNKNOWN             0
+#define METHOD_BUFFERED                 0
+#define FILE_ANY_ACCESS                 0
+
+#define CTL_CODE( DeviceType, Function, Method, Access ) (Function) 
+#define MAKEIOCTLINDEX(i)	((i) & 0xFFF)
+
+#else
+
 #include "ioctldef.h"
+
+#endif
 
 #define DEBUG_CAPMODE_FRAMED			0x00000001UL
 #define DEBUG_CAPMODE_CONTINUOUS		0x00000002UL
