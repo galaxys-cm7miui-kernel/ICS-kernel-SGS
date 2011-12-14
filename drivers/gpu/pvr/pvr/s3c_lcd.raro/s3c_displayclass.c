@@ -191,7 +191,7 @@ static IMG_VOID S3C_Flip(S3C_LCD_DEVINFO  *psDevInfo,
 	int res;
 	unsigned long ulYResVirtual;
 
-	console_lock();
+	acquire_console_sem();
 
 	sFBVar = psDevInfo->psFBInfo->var;
 
@@ -221,7 +221,7 @@ static IMG_VOID S3C_Flip(S3C_LCD_DEVINFO  *psDevInfo,
 		}
 	}
 
-	console_unlock();
+	release_console_sem();
 }
 
 static void FlushInternalVSyncQueue(S3C_LCD_DEVINFO*psDevInfo)
@@ -330,7 +330,7 @@ static void VsyncWorkqueueFunc(struct work_struct *psWork)
 
 static S3C_BOOL CreateVsyncWorkQueue(S3C_LCD_DEVINFO *psDevInfo)
 {
-	psDevInfo->psWorkQueue = create_singlethread_workqueue("vsync_workqueue");
+	psDevInfo->psWorkQueue = create_singlethread_workqueue("vsync_workqueue"); //modified from create_rt_workqueue
 
 	if (psDevInfo->psWorkQueue == IMG_NULL)
 	{
@@ -820,7 +820,7 @@ static S3C_BOOL InitDev(struct fb_info **s3c_fb_Info)
 	struct module *psLINFBOwner;
 	S3C_BOOL eError = S3C_TRUE;
 	
-	console_lock();
+	acquire_console_sem();
 
 	if (fb_idx < 0 || fb_idx >= num_registered_fb)
 	{
@@ -856,7 +856,7 @@ static S3C_BOOL InitDev(struct fb_info **s3c_fb_Info)
 errModPut:
 	module_put(psLINFBOwner);
 errRelSem:
-	console_unlock();
+	release_console_sem();
 
 	return eError;
 }
@@ -866,7 +866,7 @@ static void DeInitDev(S3C_LCD_DEVINFO  *psDevInfo)
 	struct fb_info *psLINFBInfo = psDevInfo->psFBInfo;
 	struct module *psLINFBOwner;
 
-	console_lock();
+	acquire_console_sem();
 
 	psLINFBOwner = psLINFBInfo->fbops->owner;
 
@@ -877,7 +877,7 @@ static void DeInitDev(S3C_LCD_DEVINFO  *psDevInfo)
 
 	module_put(psLINFBOwner);
 
-	console_unlock();
+	release_console_sem();
 }
 
 int s3c_displayclass_init(void)

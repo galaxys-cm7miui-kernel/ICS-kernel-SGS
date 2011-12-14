@@ -1,0 +1,26 @@
+config PVR_SGX
+	tristate "PowerVR SGX"
+	depends on ARCH_S5PV210
+	---help---
+	  Support for the PowerVR SGX 3D core.
+
+choice
+	prompt "PowerVR build type"
+	depends on PVR_SGX
+	default PVR_BUILD_RELEASE
+
+config PVR_BUILD_RELEASE
+       bool "SGX540 RELEASE"
+
+config PVR_BUILD_DEBUG
+       bool "SGX540 DEBUG"
+
+endchoice
+
+config PVR_PDUMP
+	depends on PVR_SGX
+	bool "PowerVR SGX Parameter Dump"
+	---help---
+	  This option enables the PDump (Parameter Dump) build to debug
+	  the SGX driver. The user side of the driver must be built with
+	  this option enabled as well
