@@ -25,17 +25,19 @@ else
 	FOLDER=experimental
 fi
 
-. ./setenv.sh
+#. ./setenv.sh
 
-echo "building kernel with voodoo color"
-sed -i 's/^.*FB_VOODOO.*$//' .config
-echo 'CONFIG_FB_VOODOO=y
-# CONFIG_FB_VOODOO_DEBUG_LOG is not set' >> .config
+ echo "building kernel with voodoo color"
+ sed -i 's/^.*FB_VOODOO.*$//' .config
+ echo 'CONFIG_FB_VOODOO=y
+ CONFIG_FB_VOODOO_DEBUG_LOG is not set' >> .config
 
 make -j8
 
 echo "creating boot.img with voodoo color"
-../../android/system/device/samsung/aries-common/mkshbootimg.py release/boot.img arch/arm/boot/zImage ../../android/system/out/target/product/galaxysmtd/ramdisk.img ../../android/system/out/target/product/galaxysmtd/ramdisk-recovery.img
+#../../android/system/device/samsung/aries-common/mkshbootimg.py release/boot.img arch/arm/boot/zImage ../../android/system/out/target/product/galaxysmtd/ramdisk.img ../../android/system/out/target/product/galaxysmtd/ramdisk-recovery.img
+
+../../../device/samsung/aries-common/mkshbootimg.py release/boot.img arch/arm/boot/zImage ../../../out/target/product/galaxysmtd/ramdisk.img ../../../out/target/product/galaxysmtd/ramdisk-recovery.img
 
 echo "launching packaging script with voodoo color"
 ./release/doit.sh ${RELVER}v
