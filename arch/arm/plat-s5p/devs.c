@@ -241,6 +241,7 @@ void __init s3cfb_set_platdata(struct s3c_platform_fb *pd)
 #endif
 
 #ifdef CONFIG_VIDEO_FIMC
+
 static struct resource s3c_fimc0_resource[] = {
 	[0] = {
 		.start	= S5P_PA_FIMC0,
@@ -254,11 +255,17 @@ static struct resource s3c_fimc0_resource[] = {
 	},
 };
 
+static u64 s3c_fimc0_dma_mask = DMA_BIT_MASK(32);
+
 struct platform_device s3c_device_fimc0 = {
 	.name		= "s3c-fimc",
 	.id		= 0,
 	.num_resources	= ARRAY_SIZE(s3c_fimc0_resource),
 	.resource	= s3c_fimc0_resource,
+	.dev		= {
+		.dma_mask		= &s3c_fimc0_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
 };
 
 static struct s3c_platform_fimc default_fimc0_data __initdata = {
@@ -310,11 +317,17 @@ static struct resource s3c_fimc1_resource[] = {
 	},
 };
 
+static u64 s3c_fimc1_dma_mask = DMA_BIT_MASK(32);
+
 struct platform_device s3c_device_fimc1 = {
 	.name		= "s3c-fimc",
 	.id		= 1,
 	.num_resources	= ARRAY_SIZE(s3c_fimc1_resource),
 	.resource	= s3c_fimc1_resource,
+	.dev		= {
+		.dma_mask		= &s3c_fimc1_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
 };
 
 static struct s3c_platform_fimc default_fimc1_data __initdata = {
@@ -366,11 +379,17 @@ static struct resource s3c_fimc2_resource[] = {
 	},
 };
 
+static u64 s3c_fimc2_dma_mask = DMA_BIT_MASK(32);
+
 struct platform_device s3c_device_fimc2 = {
 	.name		= "s3c-fimc",
 	.id		= 2,
 	.num_resources	= ARRAY_SIZE(s3c_fimc2_resource),
 	.resource	= s3c_fimc2_resource,
+	.dev		= {
+		.dma_mask		= &s3c_fimc2_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
 };
 
 static struct s3c_platform_fimc default_fimc2_data __initdata = {
