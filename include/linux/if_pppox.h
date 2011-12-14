@@ -61,10 +61,11 @@ struct pptp_addr {
  */
 #define PX_PROTO_OE    0 /* Currently just PPPoE */
 #define PX_PROTO_OL2TP 1 /* Now L2TP also */
-#define PX_PROTO_PPTP  2
-#define PX_PROTO_OLAC  3
-#define PX_PROTO_OPNS  4
-#define PX_MAX_PROTO   5
+#define PX_PROTO_DUMMY 2 /* Dummy inserted to match android userspace */
+#define PX_PROTO_PPTP  3
+#define PX_PROTO_OLAC  4
+#define PX_PROTO_OPNS  5
+#define PX_MAX_PROTO   6
 
 struct sockaddr_pppox {
 	sa_family_t     sa_family;            /* address family, AF_PPPOX */
