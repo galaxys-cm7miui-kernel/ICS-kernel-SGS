@@ -573,7 +573,7 @@ static int rtl8187_cmd_reset(struct ieee80211_hw *dev)
 	} while (--i);
 
 	if (!i) {
-		wiphy_err(dev->wiphy, "Reset timeout!\n");
+		printk(KERN_ERR "%s: Reset timeout!\n", wiphy_name(dev->wiphy));
 		return -ETIMEDOUT;
 	}
 
@@ -589,7 +589,8 @@ static int rtl8187_cmd_reset(struct ieee80211_hw *dev)
 	} while (--i);
 
 	if (!i) {
-		wiphy_err(dev->wiphy, "eeprom reset timeout!\n");
+		printk(KERN_ERR "%s: eeprom reset timeout!\n",
+		       wiphy_name(dev->wiphy));
 		return -ETIMEDOUT;
 	}
 
@@ -1176,12 +1177,13 @@ static void rtl8187_bss_info_changed(struct ieee80211_hw *dev,
 		else
 			reg = 0;
 
-		if (is_valid_ether_addr(info->bssid))
+		if (is_valid_ether_addr(info->bssid)) {
 			reg |= RTL818X_MSR_INFRA;
-		else
+			rtl818x_iowrite8(priv, &priv->map->MSR, reg);
+		} else {
 			reg |= RTL818X_MSR_NO_LINK;
-
-		rtl818x_iowrite8(priv, &priv->map->MSR, reg);
+			rtl818x_iowrite8(priv, &priv->map->MSR, reg);
+		}
 
 		mutex_unlock(&priv->conf_mutex);
 	}
@@ -1525,9 +1527,9 @@ static int __devinit rtl8187_probe(struct usb_interface *intf,
 	mutex_init(&priv->conf_mutex);
 	skb_queue_head_init(&priv->b_tx_status.queue);
 
-	wiphy_info(dev->wiphy, "hwaddr %pM, %s V%d + %s, rfkill mask %d\n",
-		   mac_addr, chip_name, priv->asic_rev, priv->rf->name,
-		   priv->rfkill_mask);
+	printk(KERN_INFO "%s: hwaddr %pM, %s V%d + %s, rfkill mask %d\n",
+	       wiphy_name(dev->wiphy), mac_addr,
+	       chip_name, priv->asic_rev, priv->rf->name, priv->rfkill_mask);
 
 #ifdef CONFIG_RTL8187_LEDS
 	eeprom_93cx6_read(&eeprom, 0x3F, &reg);

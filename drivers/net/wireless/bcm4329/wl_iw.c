@@ -647,24 +647,6 @@ wl_iw_get_macaddr(
 	return error;
 }
 
-static int
-wl_iw_set_country_code(struct net_device *dev, char *ccode)
-{
-	char country_code[WLC_CNTRY_BUF_SZ];
-	int ret = -1;
-
-	if (!ccode)
-		ccode = dhd_bus_country_get(dev);
-	strncpy(country_code, ccode, sizeof(country_code));
-	if (ccode && (country_code[0] != 0)) {
-		ret = dev_wlc_ioctl(dev, WLC_SET_COUNTRY, &country_code, sizeof(country_code));
-		if (ret >= 0) {
-			WL_ERROR(("%s: set country %s OK\n", __FUNCTION__, country_code));
-			dhd_bus_country_set(dev, &country_code[0]);
-		}
-	}
-	return ret;
-}
 
 static int
 wl_iw_set_country(
@@ -679,8 +661,12 @@ wl_iw_set_country(
 	char *p = extra;
 	int country_offset;
 	int country_code_size;
+	wl_country_t cspec = {{0}, 0, {0}};
+	char smbuf[WLC_IOCTL_SMLEN];
 
+	cspec.rev = -1;
 	memset(country_code, 0, sizeof(country_code));
+	memset(smbuf, 0, sizeof(smbuf));
 
 	country_offset = strcspn(extra, " ");
 	country_code_size = strlen(extra) - country_offset;
@@ -689,15 +675,24 @@ wl_iw_set_country(
 		strncpy(country_code, extra + country_offset +1,
 			MIN(country_code_size, sizeof(country_code)));
 
-			error = wl_iw_set_country_code(dev, country_code);
-			if (error >= 0) {
+
+		memcpy(cspec.country_abbrev, country_code, WLC_CNTRY_BUF_SZ);
+		memcpy(cspec.ccode, country_code, WLC_CNTRY_BUF_SZ);
+
+		get_customized_country_code((char *)&cspec.country_abbrev, &cspec);
+
+		if ((error = dev_iw_iovar_setbuf(dev, "country", &cspec, \
+			sizeof(cspec), smbuf, sizeof(smbuf))) >= 0) {
 			p += snprintf(p, MAX_WX_STRING, "OK");
-			WL_ERROR(("%s: set country %s OK\n", __FUNCTION__, country_code));
+			WL_ERROR(("%s: set country for %s as %s rev %d is OK\n", \
+				__FUNCTION__, country_code, cspec.ccode, cspec.rev));
+			dhd_bus_country_set(dev, &cspec);
 			goto exit;
 		}
 	}
 
-	WL_ERROR(("%s: set country %s failed code %d\n", __FUNCTION__, country_code, error));
+	WL_ERROR(("%s: set country for %s as %s rev %d failed\n", \
+			__FUNCTION__, country_code, cspec.ccode, cspec.rev));
 
 	p += snprintf(p, MAX_WX_STRING, "FAIL");
 
@@ -6419,16 +6414,8 @@ static int set_ap_cfg(struct net_device *dev, struct ap_profile *ap)
 	}
 
 	if (strlen(ap->country_code)) {
-		int error = 0;
-		if ((error = dev_wlc_ioctl(dev, WLC_SET_COUNTRY,
-			ap->country_code, sizeof(ap->country_code))) >= 0) {
-			WL_SOFTAP(("%s: set country %s OK\n",
-				__FUNCTION__, ap->country_code));
-			dhd_bus_country_set(dev, &ap->country_code[0]);
-		} else {
-			WL_ERROR(("%s: ERROR:%d setting country %s\n",
-				__FUNCTION__, error, ap->country_code));
-		}
+		WL_ERROR(("%s: Igonored: Country MUST be specified \
+				  COUNTRY command with \n",	__FUNCTION__));
 	} else {
 		WL_SOFTAP(("%s: Country code is not specified,"
 			" will use Radio's default\n",

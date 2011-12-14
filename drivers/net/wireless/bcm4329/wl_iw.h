@@ -238,7 +238,7 @@ extern int dhd_dev_pno_set(struct net_device *dev, wlc_ssid_t* ssids_local, \
 				 int nssid, ushort  scan_fr, int pno_repeat, int pno_freq_expo_max);
 extern int dhd_dev_pno_enable(struct net_device *dev,  int pfn_enabled);
 extern int dhd_dev_get_pno_status(struct net_device *dev);
-extern void dhd_bus_country_set(struct net_device *dev, char *country_code);
+extern void dhd_bus_country_set(struct net_device *dev, wl_country_t *cspec);
 
 #define PNO_TLV_PREFIX			'S'
 #define PNO_TLV_VERSION			'1'
