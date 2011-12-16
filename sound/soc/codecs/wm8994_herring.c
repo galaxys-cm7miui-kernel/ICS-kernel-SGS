@@ -3468,7 +3468,7 @@ void wm8994_set_voicecall_extra_dock_speaker(struct snd_soc_codec *codec)
 
         audio_ctrl_mic_bias_gpio(wm8994->pdata, 1);
 
-        wm8994_set_voicecall_common(codec);
+        wm8994_set_voicecall_common_setting(codec);
 
         wm8994_write(codec, 0x603, 0x000C);
         /* Tx -> AIF2 Path */
@@ -3532,7 +3532,7 @@ void wm8994_set_voicecall_extra_dock_speaker(struct snd_soc_codec *codec)
                 WM8994_DAC1R_ENA);
         wm8994_write(codec, WM8994_POWER_MANAGEMENT_5, val);
 
-        wm8994_set_codec_gain(codec, PLAYBACK_MODE, PLAYBACK_EXTRA_DOCK);
+        wm8994_set_codec_gain(codec, PLAYBACK_MODE, PLAYBACK_EXTRA_DOCK_SPEAKER);
 
         /* Unmute timeslot 0 */
         val = wm8994_read(codec, WM8994_AIF1_DAC1_FILTERS_1);
