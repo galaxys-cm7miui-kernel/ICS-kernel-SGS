@@ -83,9 +83,10 @@ Codec Output Path BIT
 #define VOICECALL_HP		(0x01 << 3)
 #define VOICECALL_HP_NO_MIC	(0x01 << 4)
 #define VOICECALL_BT		(0x01 << 5)
-#define VOICECALL_TTY_VCO	(0x01 << 6)
-#define VOICECALL_TTY_HCO	(0x01 << 7)
-#define VOICECALL_TTY_FULL	(0x01 << 8)
+#define VOICECALL_EXTRA_DOCK    (0x01 << 6)
+#define VOICECALL_TTY_VCO	(0x01 << 7)
+#define VOICECALL_TTY_HCO	(0x01 << 8)
+#define VOICECALL_TTY_FULL	(0x01 << 9)
 
 #define RECORDING_MAIN		(0x01 << 1)
 #define RECORDING_HP		(0x01 << 2)
@@ -234,6 +235,7 @@ void wm8994_set_voicecall_headset(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_headphone(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_speaker(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_bluetooth(struct snd_soc_codec *codec);
+void wm8994_set_voicecall_extra_dock_speaker(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_tty_vco(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_tty_hco(struct snd_soc_codec *codec);
 void wm8994_set_voicecall_tty_full(struct snd_soc_codec *codec);
