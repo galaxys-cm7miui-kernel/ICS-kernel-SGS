@@ -15,8 +15,6 @@
 *.a
 *.s
 *.ko
-*.so
-*.so.dbg
 *.mod.c
 *.i
 *.lst
@@ -83,3 +81,6 @@ GTAGS
 *.orig
 *~
 \#*#
+
+release/boot.img
+release/SGS/*
