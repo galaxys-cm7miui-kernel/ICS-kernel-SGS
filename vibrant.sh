@@ -7,7 +7,8 @@ echo "building kernel"
 make -j8
 
 echo "creating boot.img"
-../../../device/samsung/aries-common/mkshbootimg.py release/boot.img arch/arm/boot/zImage ../../../out/target/product/vibrantmtd/ramdisk.img ../../../out/target/product/vibrantmtd/ramdisk-recovery.img
+#../../../device/samsung/aries-common/mkshbootimg.py release/boot.img arch/arm/boot/zImage ../../../out/target/product/vibrantmtd/ramdisk.img ../../../out/target/product/vibrantmtd/ramdisk-recovery.img
+release/build-scripts/mkshbootimg.py release/boot.img arch/arm/boot/zImage release/ramdisks/vibrantmtd/ramdisk.img release/ramdisks/vibrantmtd/ramdisk-recovery.img
 
 echo "launching packaging script"
 ./release/doit_vibrant.sh
