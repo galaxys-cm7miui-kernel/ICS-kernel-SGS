@@ -509,9 +509,18 @@ config MODEM_HAS_CRAPPY_BOOTLOADER
          loading. This is a workaround for that, it only waits some 
          time and tries to to continue.
 
+
 config PN544
        bool "NXP PN544 NFC Controller Driver"
        default n
+
+
+config BLD
+       bool "Support for Backlight Dimmer"
+       default y
+       help
+         Say Y here to enable Backlight Dimmer
+
        help
          NXP PN544 Near Field Communication controller support.
 
