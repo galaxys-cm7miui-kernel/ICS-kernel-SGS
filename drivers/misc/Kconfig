@@ -510,6 +510,13 @@ config MODEM_HAS_CRAPPY_BOOTLOADER
          time and tries to to continue.
 
 
+config SAMSUNG_PARAM
+	bool "Samsung Param Driver"
+	depends on MACH_ARIES
+	default n
+	help
+	  Driver for communication with Samsung's secondary bootloader
+
 config PN544
        bool "NXP PN544 NFC Controller Driver"
        default n
@@ -523,5 +530,11 @@ config BLD
 
        help
          NXP PN544 Near Field Communication controller support.
+
+config BLX
+       bool "Support for Battery Life eXtender"
+       default y
+       help
+         Say Y here to enable Battery Life eXtender
 
 endif # MISC_DEVICES

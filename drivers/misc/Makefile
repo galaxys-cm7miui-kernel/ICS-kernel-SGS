@@ -51,4 +51,4 @@ obj-$(CONFIG_SAMSUNG_MODEMCTL)	+= samsung_modemctl/
 obj-$(CONFIG_PCH_PHUB)		+= pch_phub.o
 
 obj-$(CONFIG_BLD)    += bld.o
-
+obj-$(CONFIG_BLX)		+= blx.o
