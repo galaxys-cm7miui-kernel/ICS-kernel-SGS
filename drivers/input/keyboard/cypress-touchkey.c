@@ -246,9 +246,9 @@ static irqreturn_t touchkey_interrupt_thread(int irq, void *touchkey_devdata)
 			goto err;
 		}
 
-#ifdef CONFIG_TOUCH_WAKE
-		if (!device_is_suspended())
-#endif
+//#ifdef CONFIG_TOUCH_WAKE
+//		if (!device_is_suspended())
+//#endif
 		    {
 			input_report_key(devdata->input_dev,
 					 devdata->pdata->keycode[scancode],
@@ -260,15 +260,15 @@ static irqreturn_t touchkey_interrupt_thread(int irq, void *touchkey_devdata)
 #ifdef CONFIG_BLD			
 			touchkey_pressed();
 #endif
-#ifdef CONFIG_TOUCH_WAKE
-			touch_press();
-#endif
+//#ifdef CONFIG_TOUCH_WAKE
+//			touch_press();
+//#endif
 		    }
 #endif
 	} else {
-#ifdef CONFIG_TOUCH_WAKE
-		if (!device_is_suspended())
-#endif
+//#ifdef CONFIG_TOUCH_WAKE
+//		if (!device_is_suspended())
+//#endif
 		    {
 			for (i = 0; i < devdata->pdata->keycode_cnt; i++)
 			    input_report_key(devdata->input_dev,
@@ -284,9 +284,9 @@ static irqreturn_t touchkey_interrupt_thread(int irq, void *touchkey_devdata)
 #ifdef CONFIG_BLD			
 				touchkey_pressed();
 #endif
-#ifdef CONFIG_TOUCH_WAKE
-				touch_press();
-#endif
+//#ifdef CONFIG_TOUCH_WAKE
+//				touch_press();
+//#endif
 				break;
 			    }
 		    }
