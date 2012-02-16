@@ -132,6 +132,7 @@ static int bluetooth_set_power(void *data, enum rfkill_user_states state)
 		bt_running = false;
 #endif
 
+
 		ret = disable_irq_wake(irq);
 		if (ret < 0)
 			pr_err("[BT] unset wakeup src failed\n");
@@ -176,6 +177,7 @@ irqreturn_t bt_host_wake_irq_handler(int irq, void *dev_id)
 #ifdef CONFIG_CPU_DIDLE
 	bt_running = true;
 #endif
+
 
 	if (gpio_get_value(GPIO_BT_HOST_WAKE))
 		wake_lock(&rfkill_wake_lock);

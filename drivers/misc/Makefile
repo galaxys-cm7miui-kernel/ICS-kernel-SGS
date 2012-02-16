@@ -53,3 +53,4 @@ obj-$(CONFIG_PCH_PHUB)		+= pch_phub.o
 obj-$(CONFIG_BLD)    += bld.o
 obj-$(CONFIG_BLX)		+= blx.o
 obj-$(CONFIG_TOUCH_WAKE)	+= touch_wake.o
+obj-$(CONFIG_CPU_DIDLE)		+= deep_idle.o

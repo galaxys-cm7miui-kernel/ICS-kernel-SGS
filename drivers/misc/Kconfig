@@ -509,14 +509,6 @@ config MODEM_HAS_CRAPPY_BOOTLOADER
          loading. This is a workaround for that, it only waits some 
          time and tries to to continue.
 
-
-config SAMSUNG_PARAM
-	bool "Samsung Param Driver"
-	depends on MACH_ARIES
-	default n
-	help
-	  Driver for communication with Samsung's secondary bootloader
-
 config PN544
        bool "NXP PN544 NFC Controller Driver"
        default n

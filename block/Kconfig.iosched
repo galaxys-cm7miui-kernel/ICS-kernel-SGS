@@ -75,7 +75,7 @@ config IOSCHED_VR
 
 config IOSCHED_SIO
 	tristate "Simple I/O scheduler"
-	default y
+	default n
 	---help---
 	  The Simple I/O scheduler is an extremely simple scheduler,
 	  based on noop and deadline, that relies on deadlines to
@@ -119,7 +119,6 @@ config DEFAULT_IOSCHED
 	default "noop" if DEFAULT_NOOP
 	default "vr" if DEFAULT_VR
 	default "sio" if DEFAULT_SIO
-	default "noop" if DEFAULT_NOOP
 
 endmenu
 
