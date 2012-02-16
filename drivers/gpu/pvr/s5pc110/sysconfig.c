@@ -32,6 +32,7 @@
 #include "sgxinfokm.h"
 #include "pdump_km.h"
 #include "servicesext.h"
+#include <linux/cpufreq.h>
 
 
 #if defined(SLSI_S5PC110)
@@ -49,8 +50,8 @@
 //static struct resource		*mem;
 //static void __iomem		*io;
 
-#define SYS_SGX_CLOCK_SPEED					(220338983)
-
+#define SYS_SGX_CLOCK_SPEED					(250000000)
+								 
 #if 0
 #define SYS_SGX_HWRECOVERY_TIMEOUT_FREQ		(100) // 10ms (100hz)
 #define SYS_SGX_PDS_TIMER_FREQ				(1000) // 1ms (1000hz)
@@ -98,18 +99,78 @@ IMG_UINT32   PVRSRV_BridgeDispatchKM( IMG_UINT32  Ioctl,
 #if defined(SLSI_S5PC110)
 static struct clk		*g3d_clock;
 static struct regulator		*g3d_pd_regulator;
+
+#if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
+/*
+ * We need to keep the memory bus speed up when the GPU is active.
+ * On the  S5PV210, it is bound to the CPU freq.
+ * In arch/arm/mach-s5pv210/cpufreq.c, the bus speed is only lowered when the
+ * CPU freq is below 200MHz.
+ */
+
+
+
+#define MIN_CPU_KHZ_FREQ 200000
+#define CPU_LOW_SPEED 100000
+
+ 
+#ifdef CONFIG_LIVE_OC
+extern unsigned long get_gpuminfreq(void);
+extern unsigned long lowest_step(void);
+#endif
+
+static int limit_adjust_cpufreq_notifier(struct notifier_block *nb,
+					 unsigned long event, void *data)
+{
+	struct cpufreq_policy *policy = data;
+
+	if (event != CPUFREQ_ADJUST)
+		return 0;
+
+	/* This is our indicator of GPU activity */
+	if (regulator_is_enabled(g3d_pd_regulator))
+
+#ifdef CONFIG_LIVE_OC
+    cpufreq_verify_within_limits(policy, get_gpuminfreq(),
+               policy->cpuinfo.max_freq);
+#else
+		cpufreq_verify_within_limits(policy, MIN_CPU_KHZ_FREQ,
+					     policy->cpuinfo.max_freq);
+#endif
+
+else 
+
+#ifdef CONFIG_LIVE_OC
+	cpufreq_verify_within_limits(policy, lowest_step(),
+               policy->cpuinfo.max_freq);
+#else
+	cpufreq_verify_within_limits(policy, CPU_LOW_SPEED,
+					     policy->cpuinfo.max_freq);
+#endif
+
+
+	return 0;
+}
+
+
+static struct notifier_block cpufreq_limit_notifier = {
+	.notifier_call = limit_adjust_cpufreq_notifier,
+};
+
 static PVRSRV_ERROR EnableSGXClocks(void)
 {
 	regulator_enable(g3d_pd_regulator);
 	clk_enable(g3d_clock);
+	cpufreq_update_policy(current_thread_info()->cpu);
 
 	return PVRSRV_OK;
 }
-#if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
+
 static PVRSRV_ERROR DisableSGXClocks(void)
 {
 	clk_disable(g3d_clock);
 	regulator_disable(g3d_pd_regulator);
+	cpufreq_update_policy(current_thread_info()->cpu);
 
 	return PVRSRV_OK;
 }
@@ -415,6 +476,8 @@ PVRSRV_ERROR SysInitialise()
 #if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
 	
 	DisableSGXClocks();
+	cpufreq_register_notifier(&cpufreq_limit_notifier,
+        CPUFREQ_POLICY_NOTIFIER);
 #endif
 
 	return PVRSRV_OK;
@@ -501,6 +564,12 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 		PVR_DPF((PVR_DBG_ERROR, "SysDeinitialise: Called with NULL SYS_DATA pointer.  Probably called before."));
 		return PVRSRV_OK;
 	}
+#if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
+  /* TODO: regulator and clk put. */
+  cpufreq_unregister_notifier(&cpufreq_limit_notifier,
+            CPUFREQ_POLICY_NOTIFIER);
+  cpufreq_update_policy(current_thread_info()->cpu);
+#endif
 
 #if defined(SYS_USING_INTERRUPTS)
 
