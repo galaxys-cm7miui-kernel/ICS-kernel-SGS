@@ -5,7 +5,7 @@
 config VIDEO_TV20
 	bool "Samsung TV Driver"
 	depends on VIDEO_SAMSUNG
-	default n
+	default y
 	---help---
 	  This is a TV driver for Samsung S5P platform
 

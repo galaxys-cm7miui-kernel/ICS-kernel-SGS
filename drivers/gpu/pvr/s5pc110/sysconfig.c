@@ -114,10 +114,10 @@ static struct regulator		*g3d_pd_regulator;
 #define CPU_LOW_SPEED 100000
 
  
-#ifdef CONFIG_LIVE_OC
-extern unsigned long get_gpuminfreq(void);
-extern unsigned long lowest_step(void);
-#endif
+//#ifdef CONFIG_LIVE_OC
+//extern unsigned long get_gpuminfreq(void);
+//extern unsigned long lowest_step(void);
+//#endif
 
 static int limit_adjust_cpufreq_notifier(struct notifier_block *nb,
 					 unsigned long event, void *data)
@@ -130,23 +130,23 @@ static int limit_adjust_cpufreq_notifier(struct notifier_block *nb,
 	/* This is our indicator of GPU activity */
 	if (regulator_is_enabled(g3d_pd_regulator))
 
-#ifdef CONFIG_LIVE_OC
-    cpufreq_verify_within_limits(policy, get_gpuminfreq(),
-               policy->cpuinfo.max_freq);
-#else
+//#ifdef CONFIG_LIVE_OC
+ //   cpufreq_verify_within_limits(policy, get_gpuminfreq(),
+//               policy->cpuinfo.max_freq);
+//#else
 		cpufreq_verify_within_limits(policy, MIN_CPU_KHZ_FREQ,
 					     policy->cpuinfo.max_freq);
-#endif
+//#endif
 
 else 
 
-#ifdef CONFIG_LIVE_OC
-	cpufreq_verify_within_limits(policy, lowest_step(),
-               policy->cpuinfo.max_freq);
-#else
+//#ifdef CONFIG_LIVE_OC
+//	cpufreq_verify_within_limits(policy, lowest_step(),
+//               policy->cpuinfo.max_freq);
+//#else
 	cpufreq_verify_within_limits(policy, CPU_LOW_SPEED,
 					     policy->cpuinfo.max_freq);
-#endif
+//#endif
 
 
 	return 0;

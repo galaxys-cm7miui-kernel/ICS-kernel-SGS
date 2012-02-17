@@ -94,7 +94,6 @@
 #include <linux/max17040_battery.h>
 #include <linux/mfd/max8998.h>
 #include <linux/switch.h>
-#include <mach/voltages.h>
 
 #ifdef CONFIG_KERNEL_DEBUG_SEC
 #include <linux/kernel_sec_common.h>
@@ -425,37 +424,30 @@ static struct s5p_media_device aries_media_devs[] = {
 #ifdef CONFIG_CPU_FREQ
 static struct s5pv210_cpufreq_voltage smdkc110_cpufreq_volt[] = {
 	{
-		.freq	= 1400000,
-		.varm	= DVSARM1,
-		.vint	= DVSINT1,
-	}, {
-		.freq	= 1300000,
-		.varm	= DVSARM2,
-		.vint	= DVSINT2,
-	}, {
-		.freq	= 1200000,
-		.varm	= DVSARM3,
-		.vint	= DVSINT3,
-	}, {
+
 		.freq	= 1000000,
-		.varm	= DVSARM4,
-		.vint	= DVSINT4,
+		.varm	= 1275000,
+		.vint	= 1100000,
 	}, {
+
 		.freq	=  800000,
-		.varm	= DVSARM5,
-		.vint	= DVSINT5,
+		.varm	= 1200000,
+		.vint	= 1100000,
 	}, {
+
 		.freq	=  400000,
-		.varm	= DVSARM6,
-		.vint	= DVSINT5,
+		.varm	= 1050000,
+		.vint	= 1100000,
 	}, {
 		.freq	=  200000,
-		.varm	= DVSARM7,
-		.vint	= DVSINT5,
+		.varm	=  950000,
+		.vint	= 1100000,
 	}, {
 		.freq	=  100000,
-		.varm	= DVSARM8,
-		.vint	= DVSINT6,
+
+		.varm	=  950000,
+		.vint	= 1000000,
+
 	},
 };
 
@@ -744,7 +736,7 @@ static struct regulator_init_data aries_buck1_data = {
 				  REGULATOR_CHANGE_STATUS,
 		.state_mem	= {
 
-			.uV	= ARMBOOT,
+			.uV	= 1250000,
 
 			.mode	= REGULATOR_MODE_NORMAL,
 			.disabled = 1,
@@ -764,7 +756,7 @@ static struct regulator_init_data aries_buck2_data = {
 				  REGULATOR_CHANGE_STATUS,
 		.state_mem	= {
 
-			.uV	= INTBOOT,
+			.uV	= 1100000,
 
 			.mode	= REGULATOR_MODE_NORMAL,
 			.disabled = 1,
