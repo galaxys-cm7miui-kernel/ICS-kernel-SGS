@@ -1011,6 +1011,20 @@ void liveoc_update(unsigned int oc_value)
     return;
 }
 EXPORT_SYMBOL(liveoc_update);
+
+unsigned long get_gpuminfreq(void)
+{
+    return freq_table[L5].frequency;
+}
+
+EXPORT_SYMBOL(get_gpuminfreq);
+
+unsigned long lowest_step(void)
+{
+    return freq_table[L6].frequency;
+}
+EXPORT_SYMBOL(lowest_step);
+
 #endif
 
 
