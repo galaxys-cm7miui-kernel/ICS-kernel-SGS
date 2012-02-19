@@ -25,7 +25,7 @@ config IOSCHED_CFQ
 	tristate "CFQ I/O scheduler"
 	# If BLK_CGROUP is a module, CFQ has to be built as module.
 	depends on (BLK_CGROUP=m && m) || !BLK_CGROUP || BLK_CGROUP=y
-	default y
+	default n
 	---help---
 	  The CFQ I/O scheduler tries to distribute bandwidth equally
 	  among all processes in the system. It should provide a fair
@@ -54,13 +54,43 @@ config IOSCHED_VR
 
 config IOSCHED_SIO
 	tristate "Simple I/O scheduler"
-	default n
+	default y
 	---help---
 	  The Simple I/O scheduler is an extremely simple scheduler,
 	  based on noop and deadline, that relies on deadlines to
 	  ensure fairness. The algorithm does not do any sorting but
 	  basic merging, trying to keep a minimum overhead. It is aimed
 	  mainly for aleatory access devices (eg: flash devices).
+
+config IOSCHED_FIOPS
+ tristate "IOPS based I/O scheduler"
+  default y
+  ---help---
+    This is an IOPS based I/O scheduler. It will try to distribute
+         IOPS equally among all processes in the system. It's mainly for
+         Flash based storage.
+
+config IOSCHED_BFQ
+	tristate "BFQ I/O scheduler"
+	depends on EXPERIMENTAL
+	default n
+	---help---
+	  The BFQ I/O scheduler tries to distribute bandwidth among
+	  all processes according to their weights.
+	  It aims at distributing the bandwidth as desired, independently of
+	  the disk parameters and with any workload. It also tries to
+	  guarantee low latency to interactive and soft real-time
+	  applications.  If compiled built-in (saying Y here), BFQ can
+	  be configured to support hierarchical scheduling.
+
+config CGROUP_BFQIO
+	bool "BFQ hierarchical scheduling support"
+	depends on CGROUPS && IOSCHED_BFQ=y
+	default n
+	---help---
+	  Enable hierarchical scheduling in BFQ, using the cgroups
+	  filesystem interface.  The name of the subsystem will be
+	  bfqio.
 
 choice
 	prompt "Default I/O scheduler"
