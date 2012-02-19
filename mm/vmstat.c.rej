@@ -1,0 +1,10 @@
+--- mm/vmstat.c
++++ mm/vmstat.c
+@@ -702,6 +702,7 @@
+ 	"nr_unstable",
+ 	"nr_bounce",
+ 	"nr_vmscan_write",
++	"nr_vmscan_immediate_reclaim",
+ 	"nr_writeback_temp",
+ 	"nr_isolated_anon",
+ 	"nr_isolated_file",
